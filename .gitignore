@@ -24,6 +24,13 @@ profile.cov
 go.work
 go.work.sum
 
+# Build output
+bin/
+dist/
+
+# sdf local state (ephemeral, not committed)
+.sdf/local.json
+
 # env file
 .env
 
