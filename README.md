@@ -24,35 +24,37 @@ Run `sdf doctor` to verify all dependencies are available.
 
 ## Install
 
-### Download a binary (recommended)
+### Homebrew (macOS and Linux)
 
-Grab the latest release for your platform from [GitHub Releases](https://github.com/pavelpascari/sdf/releases/latest), or use curl:
+```sh
+brew install pavelpascari/tap/sdf
+```
+
+### Download a binary
+
+Grab the latest archive for your platform from [GitHub Releases](https://github.com/pavelpascari/sdf/releases/latest), or use curl:
 
 ```sh
 # macOS (Apple Silicon)
-curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-darwin-arm64 -o sdf
-
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-darwin-arm64.tar.gz | tar xz
 # macOS (Intel)
-curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-darwin-amd64 -o sdf
-
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-darwin-amd64.tar.gz | tar xz
 # Linux (x86_64)
-curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-amd64 -o sdf
-
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-amd64.tar.gz | tar xz
 # Linux (ARM)
-curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-arm64 -o sdf
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-arm64.tar.gz | tar xz
 ```
 
-Then make it executable and move it to your PATH:
+Then move the binary to your PATH:
 
 ```sh
-chmod +x sdf
 sudo mv sdf /usr/local/bin/
 ```
 
-Each release includes a `checksums.txt` file with SHA-256 hashes to verify your download:
+Each release includes a `checksums.txt` for verification:
 
 ```sh
-sha256sum --check checksums.txt
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/checksums.txt | sha256sum --check --ignore-missing
 ```
 
 ### From source
