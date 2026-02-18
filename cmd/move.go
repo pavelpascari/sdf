@@ -185,6 +185,9 @@ func RunMove(args []string) error {
 	}
 
 	// --- Phase 4: persist stack state ---
+	// Restore working branch before saving so the commit lands on the right branch
+	gitpkg.Checkout(branch)
+
 	if err := stack.Save(root, s); err != nil {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
@@ -192,9 +195,6 @@ func RunMove(args []string) error {
 	if err := gitpkg.Add(".sdf/stack.json"); err == nil {
 		gitpkg.Commit("sdf: update stack after move")
 	}
-
-	// Restore working branch
-	gitpkg.Checkout(branch)
 
 	fmt.Printf("\n✓ Moved %d commit(s) from %s to %s\n", len(resolvedCommits), branch, parent)
 	return nil
