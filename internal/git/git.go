@@ -140,6 +140,33 @@ func MergeBase(a, b string) (string, error) {
 	return run("merge-base", a, b)
 }
 
+// CherryPick applies the given commits onto the current branch.
+// Mirrors `git cherry-pick <commit>...`.
+func CherryPick(commits ...string) error {
+	args := append([]string{"cherry-pick"}, commits...)
+	_, err := run(args...)
+	return err
+}
+
+// CherryPickAbort aborts an in-progress cherry-pick.
+func CherryPickAbort() error {
+	_, err := run("cherry-pick", "--abort")
+	return err
+}
+
+// LogCommits returns the SHAs of commits between from (exclusive) and to
+// (inclusive), in chronological order (oldest first).
+func LogCommits(from, to string) ([]string, error) {
+	out, err := run("rev-list", "--reverse", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // BranchExists returns true if the branch exists locally.
 func BranchExists(branch string) bool {
 	_, err := run("rev-parse", "--verify", branch)

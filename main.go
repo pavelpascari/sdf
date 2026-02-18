@@ -32,6 +32,8 @@ func main() {
 		exitOnErr(cmd.RunSync(args))
 	case "pr":
 		exitOnErr(cmd.RunPR(args))
+	case "move":
+		exitOnErr(cmd.RunMove(args))
 	case "context":
 		exitOnErr(cmd.RunContext(args))
 	case "version", "--version", "-v":
@@ -65,6 +67,7 @@ Stack commands:
   branch <name>             Create a new branch in the stack
   status                    Show stack topology and sync state
   sync                      Detect merged PRs, cascade rebase, push
+  move <commit>...          Move commits from current branch to parent
   pr                        Create a GitHub PR for the current branch
 
 Context commands:
