@@ -39,6 +39,7 @@ brews:
   - repository:
       owner: pavelpascari
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/pavelpascari/sdf
     description: Stacked Diffs Flow — manage chains of dependent PRs
     license: MIT
