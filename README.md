@@ -16,7 +16,6 @@ Large features rarely fit in a single PR. Splitting work into a chain of depende
 
 ## Prerequisites
 
-- [Go](https://go.dev/) 1.24+ (build only)
 - [git](https://git-scm.com/)
 - [gh](https://cli.github.com/) — GitHub CLI (required for PR operations)
 - [claude](https://docs.anthropic.com/en/docs/claude-code) — Claude CLI (optional, for conflict resolution and context updates)
@@ -25,38 +24,52 @@ Run `sdf doctor` to verify all dependencies are available.
 
 ## Install
 
+### Download a binary (recommended)
+
+Grab the latest release for your platform from [GitHub Releases](https://github.com/pavelpascari/sdf/releases/latest), or use curl:
+
+```sh
+# macOS (Apple Silicon)
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-darwin-arm64 -o sdf
+
+# macOS (Intel)
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-darwin-amd64 -o sdf
+
+# Linux (x86_64)
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-amd64 -o sdf
+
+# Linux (ARM)
+curl -fsSL https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-arm64 -o sdf
+```
+
+Then make it executable and move it to your PATH:
+
+```sh
+chmod +x sdf
+sudo mv sdf /usr/local/bin/
+```
+
+Each release includes a `checksums.txt` file with SHA-256 hashes to verify your download:
+
+```sh
+sha256sum --check checksums.txt
+```
+
 ### From source
+
+Requires [Go](https://go.dev/) 1.24+.
 
 ```sh
 git clone https://github.com/pavelpascari/sdf.git
 cd sdf
 make build        # → bin/sdf
-```
-
-Move the binary somewhere on your `$PATH`:
-
-```sh
-cp bin/sdf /usr/local/bin/
+sudo cp bin/sdf /usr/local/bin/
 ```
 
 Or install directly to `$GOPATH/bin`:
 
 ```sh
 make install
-```
-
-### Cross-compile
-
-Build for all supported platforms (linux, macOS, Windows — amd64 and arm64):
-
-```sh
-make dist         # → dist/sdf-<os>-<arch>
-```
-
-Build for a specific platform:
-
-```sh
-make build-for OS=darwin ARCH=arm64
 ```
 
 ## Quick start
