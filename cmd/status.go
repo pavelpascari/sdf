@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 
@@ -10,12 +11,22 @@ import (
 )
 
 func RunStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	stackFlag := fs.String("stack", "", "stack to show (default: auto-detect)")
+	fs.Parse(args)
+
+	// Accept positional arg as stack name: sdf status <stack-name>
+	stackName := *stackFlag
+	if stackName == "" && fs.NArg() > 0 {
+		stackName = fs.Arg(0)
+	}
+
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, stackName)
 	if err != nil {
 		return err
 	}

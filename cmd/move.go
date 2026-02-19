@@ -31,7 +31,7 @@ func RunMove(args []string) error {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, "")
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func RunMove(args []string) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	if err := gitpkg.Add(".sdf/stack.json"); err == nil {
+	if err := gitpkg.Add(stack.StackRelPath(s)); err == nil {
 		gitpkg.Commit("sdf: update stack after move")
 	}
 
@@ -207,4 +207,3 @@ func short(sha string) string {
 	}
 	return sha
 }
-

@@ -38,6 +38,8 @@ func main() {
 		exitOnErr(cmd.RunRegister(args))
 	case "context":
 		exitOnErr(cmd.RunContext(args))
+	case "switch":
+		exitOnErr(cmd.RunSwitch(args))
 	case "version", "--version", "-v":
 		fmt.Printf("sdf %s\n", version)
 	case "help", "--help", "-h":
@@ -45,6 +47,10 @@ func main() {
 	case "doctor":
 		exitOnErr(runDoctor())
 	default:
+		// Try as branch shorthand: sdf <branch> → sdf switch <branch>
+		if cmd.TrySwitch(command) == nil {
+			return
+		}
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", command)
 		printUsage()
 		os.Exit(1)
@@ -65,13 +71,17 @@ Usage:
   sdf <command> [arguments]
 
 Stack commands:
-  init [--stack] <name>     Initialize a new stack in the current repo
-  register                  Discover and register existing PR stacks
-  branch <name>             Create a new branch in the stack
-  status                    Show stack topology and sync state
-  sync [-y]                 Detect merged PRs, cascade rebase, push
-  move <commit>...          Move commits from current branch to parent
-  pr                        Create a GitHub PR for the current branch
+  init [--stack] <name>              Initialize a new stack in the current repo
+  register                           Discover and register existing PR stacks
+  branch <name>                      Create a new branch in the stack
+  status [--stack <name>]            Show stack topology and sync state
+  sync [-y] [<stack>] [--stack <name>]  Detect merged PRs, cascade rebase, push
+  move <commit>...                   Move commits from current branch to parent
+  pr                                 Create a GitHub PR for the current branch
+
+Navigation:
+  switch [<branch>]                  Switch to a branch (shows stack context)
+  <branch>                           Shorthand for switch <branch>
 
 Context commands:
   context show              Print assembled context for current branch

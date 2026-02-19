@@ -1,4 +1,4 @@
-// Package stack manages the .sdf/stack.json file and stack topology.
+// Package stack manages the .sdf/stacks/*.json files and stack topology.
 package stack
 
 import (
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Node represents a single branch in the stack.
@@ -17,7 +18,7 @@ type Node struct {
 	BaseTip string `json:"base_tip,omitempty"`
 }
 
-// Stack represents the full stack topology persisted in stack.json.
+// Stack represents the full stack topology persisted in a stack JSON file.
 type Stack struct {
 	StackID string `json:"stack_id"`
 	Base    string `json:"base"`
@@ -27,14 +28,17 @@ type Stack struct {
 // SDFDir is the name of the sdf metadata directory.
 const SDFDir = ".sdf"
 
-// StackFile is the filename for the stack topology.
+// StacksDir is the subdirectory for per-stack JSON files.
+const StacksDir = "stacks"
+
+// StackFile is the legacy filename for a single-stack layout.
 const StackFile = "stack.json"
 
 // LocalFile is the filename for ephemeral local state.
 const LocalFile = "local.json"
 
 // FindRoot walks up from the current directory to find the repo root
-// containing a .sdf directory.
+// containing a .sdf directory (with either stacks/ or legacy stack.json).
 func FindRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -42,19 +46,98 @@ func FindRoot() (string, error) {
 	}
 
 	for {
-		if _, err := os.Stat(filepath.Join(dir, SDFDir, StackFile)); err == nil {
-			return dir, nil
+		sdfDir := filepath.Join(dir, SDFDir)
+		if info, err := os.Stat(sdfDir); err == nil && info.IsDir() {
+			// New multi-stack layout
+			if _, err := os.Stat(filepath.Join(sdfDir, StacksDir)); err == nil {
+				return dir, nil
+			}
+			// Legacy single-stack layout
+			if _, err := os.Stat(filepath.Join(sdfDir, StackFile)); err == nil {
+				return dir, nil
+			}
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("not inside an sdf stack (no .sdf/stack.json found)")
+			return "", errors.New("not inside an sdf stack (no .sdf/ found)")
 		}
 		dir = parent
 	}
 }
 
-// Load reads the stack from the .sdf/stack.json in the given repo root.
+// MigrateIfNeeded moves a legacy .sdf/stack.json to .sdf/stacks/<id>.json.
+// It is safe to call multiple times; it is a no-op if already migrated.
+func MigrateIfNeeded(root string) error {
+	stacksDir := filepath.Join(root, SDFDir, StacksDir)
+	if _, err := os.Stat(stacksDir); err == nil {
+		return nil // Already new format
+	}
+
+	oldPath := filepath.Join(root, SDFDir, StackFile)
+	data, err := os.ReadFile(oldPath)
+	if err != nil {
+		return nil // No old file either — fresh repo
+	}
+
+	var s Stack
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("cannot parse legacy %s: %w", oldPath, err)
+	}
+
+	if err := os.MkdirAll(stacksDir, 0755); err != nil {
+		return fmt.Errorf("cannot create %s: %w", stacksDir, err)
+	}
+
+	if err := Save(root, &s); err != nil {
+		return err
+	}
+
+	if err := os.Remove(oldPath); err != nil {
+		return fmt.Errorf("cannot remove legacy %s: %w", oldPath, err)
+	}
+
+	return nil
+}
+
+// StackPath returns the absolute path to a stack's JSON file.
+func StackPath(root string, stackID string) string {
+	return filepath.Join(root, SDFDir, StacksDir, stackID+".json")
+}
+
+// StackRelPath returns the repo-relative path for a stack's JSON file,
+// suitable for git add.
+func StackRelPath(s *Stack) string {
+	return filepath.Join(SDFDir, StacksDir, s.StackID+".json")
+}
+
+// LoadStack reads a specific stack by name from .sdf/stacks/<name>.json.
+func LoadStack(root, name string) (*Stack, error) {
+	path := StackPath(root, name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read stack %q: %w", name, err)
+	}
+	var s Stack
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("cannot parse stack %q: %w", name, err)
+	}
+	return &s, nil
+}
+
+// Load reads the stack for backward compatibility. It works when there is
+// exactly one stack in the new layout, or when the legacy stack.json exists.
+// Prefer LoadStack() or LoadByBranch() for multi-stack repos.
 func Load(root string) (*Stack, error) {
+	// Try new multi-stack layout first
+	names, err := ListStacks(root)
+	if err == nil && len(names) == 1 {
+		return LoadStack(root, names[0])
+	}
+	if err == nil && len(names) > 1 {
+		return nil, fmt.Errorf("multiple stacks found; use LoadStack() or LoadByBranch()")
+	}
+
+	// Fall back to legacy single-stack layout
 	path := filepath.Join(root, SDFDir, StackFile)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -67,9 +150,61 @@ func Load(root string) (*Stack, error) {
 	return &s, nil
 }
 
-// Save writes the stack back to .sdf/stack.json.
+// LoadAll reads all stacks from .sdf/stacks/.
+func LoadAll(root string) ([]*Stack, error) {
+	names, err := ListStacks(root)
+	if err != nil {
+		return nil, err
+	}
+	var stacks []*Stack
+	for _, name := range names {
+		s, err := LoadStack(root, name)
+		if err != nil {
+			return nil, err
+		}
+		stacks = append(stacks, s)
+	}
+	return stacks, nil
+}
+
+// LoadByBranch finds the stack that contains the given branch.
+func LoadByBranch(root, branch string) (*Stack, error) {
+	stacks, err := LoadAll(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range stacks {
+		if s.FindNode(branch) != nil {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("branch %q is not in any stack", branch)
+}
+
+// ListStacks returns the names of all stacks in .sdf/stacks/.
+func ListStacks(root string) ([]string, error) {
+	stacksDir := filepath.Join(root, SDFDir, StacksDir)
+	entries, err := os.ReadDir(stacksDir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		}
+	}
+	return names, nil
+}
+
+// Save writes the stack to .sdf/stacks/<stack_id>.json.
 func Save(root string, s *Stack) error {
-	path := filepath.Join(root, SDFDir, StackFile)
+	stacksDir := filepath.Join(root, SDFDir, StacksDir)
+	if err := os.MkdirAll(stacksDir, 0755); err != nil {
+		return fmt.Errorf("cannot create %s: %w", stacksDir, err)
+	}
+
+	path := StackPath(root, s.StackID)
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot marshal stack: %w", err)
@@ -108,7 +243,7 @@ func (s *Stack) ParentBranch(branch string) string {
 	return s.Nodes[idx-1].Branch
 }
 
-// Init creates the .sdf directory and writes an initial stack.json.
+// Init creates the .sdf directory structure and writes an initial stack file.
 func Init(root, stackID, base string) error {
 	sdfDir := filepath.Join(root, SDFDir)
 	if err := os.MkdirAll(sdfDir, 0755); err != nil {
@@ -120,6 +255,11 @@ func Init(root, stackID, base string) error {
 		return fmt.Errorf("cannot create %s: %w", contextDir, err)
 	}
 
+	stacksDir := filepath.Join(sdfDir, StacksDir)
+	if err := os.MkdirAll(stacksDir, 0755); err != nil {
+		return fmt.Errorf("cannot create %s: %w", stacksDir, err)
+	}
+
 	s := &Stack{
 		StackID: stackID,
 		Base:    base,
@@ -129,10 +269,12 @@ func Init(root, stackID, base string) error {
 		return err
 	}
 
-	// Create .sdf/local.json (gitignored)
+	// Create .sdf/local.json if it doesn't exist (gitignored)
 	localPath := filepath.Join(sdfDir, LocalFile)
-	if err := os.WriteFile(localPath, []byte("{}\n"), 0644); err != nil {
-		return fmt.Errorf("cannot create %s: %w", localPath, err)
+	if _, err := os.Stat(localPath); err != nil {
+		if writeErr := os.WriteFile(localPath, []byte("{}\n"), 0644); writeErr != nil {
+			return fmt.Errorf("cannot create %s: %w", localPath, writeErr)
+		}
 	}
 
 	return nil

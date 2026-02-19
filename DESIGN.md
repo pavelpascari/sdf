@@ -113,7 +113,7 @@ sdf sync
 1. Rebases `users/controller` onto the new tip of `users/repository`
 1. Force-pushes both branches
 1. Runs `gh pr edit 143 --base main` and `gh pr edit 144 --base users/repository`
-1. Updates `stack.json` — removes `users/db-schema` node, sets new base to `main`
+1. Updates `stacks/<name>.json` — removes `users/db-schema` node, sets new base to `main`
 
 The developer doesn't need to know what merge commit was used or what the new `main` tip is. The PRs on GitHub now show clean, correct diffs.
 
@@ -193,22 +193,32 @@ sdf status
   run `sdf sync` to rebase users/controller onto updated users/repository
 ```
 
-`needs sync` means the branch's recorded base tip in `stack.json` differs from the current tip of its parent — there are commits on the parent that this branch hasn't seen yet. This happens after Scenario 2 (amending an earlier branch) before `sdf sync` is run.
+`needs sync` means the branch's recorded base tip in `stacks/<name>.json` differs from the current tip of its parent — there are commits on the parent that this branch hasn't seen yet. This happens after Scenario 2 (amending an earlier branch) before `sdf sync` is run.
 
 -----
 
 ## Command Surface
 
 ```
-sdf init                  # initialize .sdf/ in current repo, create stack.json
+sdf init <name>           # initialize stack, auto-detect base branch from origin HEAD
 sdf branch <name>         # create branch, register in stack, push tracking branch
 sdf pr                    # gh pr create with body pre-populated from context doc
-sdf sync                  # detect merged PRs via gh, cascade rebase, push
-sdf status                # show stack topology with PR state
+sdf sync [<stack>]        # detect merged PRs via gh, cascade rebase, push
+sdf status [<stack>]      # show stack topology with PR state
+sdf switch [<branch>]     # checkout a branch, show its stack context
+sdf <branch>              # shorthand for switch
 sdf context show          # print assembled context for the current branch
 sdf context edit          # open context doc in $EDITOR
 sdf context update        # ask Claude to rewrite context doc based on current state
 ```
+
+Commands that operate on a stack (sync, status, branch) auto-detect which stack
+to use from the current branch. When multiple stacks exist and the current branch
+is ambiguous, pass `--stack <name>` or use a positional argument.
+
+`sdf init` always roots the stack at the base branch (auto-detected from
+`origin/HEAD`, or specified with `--base`). Your current branch doesn't matter —
+the stack is defined by its base, not by where you run the command.
 
 All three dependencies (`git`, `gh`, `claude`) are version-checked at startup.
 
@@ -218,14 +228,17 @@ All three dependencies (`git`, `gh`, `claude`) are version-checked at startup.
 
 ```
 .sdf/
-  stack.json              # stack topology, PR numbers, sync state
+  stacks/
+    auth-overhaul.json    # stack topology, PR numbers, sync state
+    billing.json          # multiple stacks can coexist
   context/
     auth/db-schema.md
     auth/session-api.md
     auth/ui-login.md
+  local.json              # ephemeral state (gitignored)
 ```
 
-Both `stack.json` and the context docs are committed alongside code. This means:
+Stack files and context docs are committed alongside code. This means:
 
 - Stack topology is available on any clone and in CI
 - Context docs appear in PR reviews — reviewers see the intent alongside the diff
@@ -260,8 +273,8 @@ The only exception is ephemeral state (active Claude session IDs, in-progress sy
 - If conflict → invoke Claude session (see below)
 - `git push --force-with-lease origin <branch>`
 - `gh pr edit <number> --base <new-base>` — update the PR's base in GitHub so the diff renders correctly
-1. Update `stack.json` (mark merged nodes, shift base pointers)
-1. Commit the updated `stack.json`
+1. Update `stacks/<name>.json` (mark merged nodes, shift base pointers)
+1. Commit the updated `stacks/<name>.json`
 
 The `gh pr edit --base` step is easy to miss but critical — without it, GitHub shows every commit from `main` in the PR diff after rebasing.
 
@@ -389,7 +402,7 @@ The session name `conflict-<branch>` is deterministic, so the session can be res
 ### Phase 1 — Stack Plumbing
 
 - `sdf init`, `sdf branch`, `sdf status`
-- `stack.json` management
+- `stacks/<name>.json` management
 - `gh` integration for PR state polling
 - `sdf sync` with cascade rebase — error on conflict (no Claude yet)
 

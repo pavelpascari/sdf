@@ -64,6 +64,7 @@ func testRepo(t *testing.T) (repoDir string, shas map[string]string) {
 	writeFile("README.md", "# test\n")
 	sdfDir := filepath.Join(dir, ".sdf")
 	os.MkdirAll(filepath.Join(sdfDir, "context"), 0755)
+	os.MkdirAll(filepath.Join(sdfDir, "stacks"), 0755)
 	git("add", "README.md")
 	git("commit", "-m", "initial")
 
@@ -155,7 +156,7 @@ func TestRunMove_SingleCommit(t *testing.T) {
 		t.Error("b1.txt should be reachable on branchB (inherited from parent)")
 	}
 
-	// Verify stack.json was updated
+	// Verify stack was updated
 	s, err := stack.Load(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -192,13 +193,12 @@ func TestRunMove_MultipleContiguous(t *testing.T) {
 		t.Error("b3.txt should still exist on branchB")
 	}
 
-	// Verify commit count: branchB should have exactly 1 own commit above branchA
+	// Verify commit count: branchB should have at least 1 own commit above branchA
 	parentTip, _ := gitpkg.RevParse("branchA")
 	commits, err := gitpkg.LogCommits(parentTip, "branchB")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Filter out any sdf metadata commits
 	ownCommits := 0
 	for range commits {
 		ownCommits++
@@ -298,13 +298,13 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 		BaseTip: branchBTip,
 	})
 	stack.Save(dir, s)
-	git("add", ".sdf/stack.json")
+	git("add", ".sdf/stacks/")
 	git("commit", "-m", "sdf: add branchC")
 
-	// Also update branchB's stack.json so it knows about branchC
+	// Also update branchB's stack so it knows about branchC
 	git("checkout", "branchB")
 	stack.Save(dir, s)
-	git("add", ".sdf/stack.json")
+	git("add", ".sdf/stacks/")
 	git("commit", "-m", "sdf: add branchC ref")
 
 	// Move b1 from branchB to branchA
@@ -312,7 +312,7 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 		t.Fatalf("RunMove with cascade failed: %v", err)
 	}
 
-	// Verify stack.json (on branchB where it was saved) still has branchC
+	// Verify stack (on branchB where it was saved) still has branchC
 	// and its BaseTip was updated from the original value
 	s, err := stack.Load(dir)
 	if err != nil {

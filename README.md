@@ -8,7 +8,8 @@ Large features rarely fit in a single PR. Splitting work into a chain of depende
 
 ## What it does
 
-- **Stack topology** — tracks branch ordering and PR metadata in `.sdf/stack.json`, committed alongside code
+- **Stack topology** — tracks branch ordering and PR metadata in `.sdf/stacks/<name>.json`, committed alongside code
+- **Multiple stacks** — a single repo can have several independent stacks, each with its own base branch
 - **Cascade rebase** — when a head PR merges or an earlier branch is amended, `sdf sync` rebases every downstream branch, force-pushes, and updates PR bases in GitHub
 - **Context documents** — each branch carries a Markdown doc (`.sdf/context/<branch>.md`) describing intent, upstream constraints, decisions, and open questions
 - **AI conflict resolution** — when rebase conflicts occur, Claude receives the full assembled stack context plus the conflicted files and resolves them in-place
@@ -77,13 +78,10 @@ make install
 ## Quick start
 
 ```sh
-# Start from main
-git checkout main
+# Initialize a stack (auto-detects base branch from origin HEAD)
+sdf init users-feature
 
-# Initialize a stack
-sdf init --stack users-feature
-
-# Create the first branch
+# Create the first branch (chains from the base branch)
 sdf branch users/db-schema
 # ... write code ...
 sdf context edit          # document intent, decisions, constraints
@@ -112,23 +110,70 @@ sdf sync
 
 This rebases the remaining branches onto `main`, pushes them, and updates their PR bases in GitHub — no manual rebase required.
 
+### Working with multiple stacks
+
+You can have multiple independent stacks in the same repo:
+
+```sh
+sdf init auth-feature
+sdf branch auth/db-schema
+# ... work on auth ...
+
+sdf init billing-feature
+sdf branch billing/models
+# ... work on billing ...
+
+# Sync a specific stack
+sdf sync auth-feature
+
+# Check status of a specific stack
+sdf status billing-feature
+
+# Switch between branches (shows stack context)
+sdf switch auth/db-schema
+# or just:
+sdf auth/db-schema
+```
+
+When you're on a branch that belongs to a stack, commands like `sdf sync`, `sdf status`, and `sdf branch` auto-detect which stack to use. If you have multiple stacks and your current branch isn't in any of them, pass `--stack <name>` or use the positional argument.
+
 ## Commands
 
 ```
-sdf init [--stack] <name>     Initialize a new stack in the current repo
-sdf branch <name>             Create a new branch in the stack
-sdf status                    Show stack topology and sync state
-sdf sync                      Detect merged PRs, cascade rebase, push
-sdf pr                        Create a GitHub PR for the current branch
+Stack commands:
+  init [--base <branch>] <name>      Initialize a new stack (base auto-detected)
+  register                           Discover and register existing PR stacks
+  branch [--stack <name>] <name>     Create a new branch in the stack
+  status [--stack <name>]            Show stack topology and sync state
+  sync [<stack>] [--stack <name>]    Detect merged PRs, cascade rebase, push
+  move <commit>...                   Move commits from current branch to parent
+  pr                                 Create a GitHub PR for the current branch
 
-sdf context show              Print assembled context for current branch
-sdf context edit              Open context doc in $EDITOR
-sdf context update            Ask Claude to rewrite context doc
+Navigation:
+  switch [<branch>]                  Switch to a branch (shows stack context)
+  <branch>                           Shorthand for switch <branch>
 
-sdf doctor                    Check that dependencies are available
-sdf version                   Print version
-sdf help                      Show help
+Context commands:
+  context show              Print assembled context for current branch
+  context edit              Open context doc in $EDITOR
+  context update            Ask Claude to rewrite context doc
+
+Other:
+  doctor                    Check that dependencies are available
+  version                   Print version
+  help                      Show this help
 ```
+
+## How `sdf init` works
+
+`sdf init <name>` creates a stack rooted at a **base branch**. The base branch is where PRs ultimately merge into — typically `main` or `master`.
+
+- **If `--base` is provided**, that branch is used as the base
+- **Otherwise**, the base is auto-detected from `origin/HEAD` (falling back to `main` or `master` if they exist)
+- **The base branch is validated** — init fails if the branch doesn't exist
+- **Your current branch doesn't matter** — the stack is always rooted at the base branch, not wherever you happen to be checked out. All branches created with `sdf branch` chain from the base (or from the last branch in the stack)
+
+This means `sdf init my-feature` does the same thing whether you run it from `main`, `develop`, or any other branch.
 
 ## How sync works
 
@@ -137,7 +182,27 @@ sdf help                      Show help
 3. Rebases each unmerged branch onto its new base
 4. If conflicts arise, invokes Claude with assembled stack context for resolution
 5. Force-pushes updated branches and runs `gh pr edit --base` to fix PR diffs
-6. Updates `.sdf/stack.json`
+6. Updates `.sdf/stacks/<name>.json`
+
+## Repository layout
+
+```
+.sdf/
+  stacks/
+    users-feature.json      # stack topology, PR numbers, sync state
+    auth-feature.json       # a second independent stack
+  context/
+    users/db-schema.md
+    users/repository.md
+    auth/db-schema.md
+  local.json                # ephemeral state (gitignored)
+```
+
+Both stack files and context docs are committed alongside code. This means:
+
+- Stack topology is available on any clone and in CI
+- Context docs appear in PR reviews — reviewers see the intent alongside the diff
+- `git log` on a context doc shows how intent evolved over the life of the PR
 
 ## License
 
