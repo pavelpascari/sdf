@@ -1,0 +1,117 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	"github.com/pavelpascari/sdf/internal/stack"
+)
+
+const (
+	stackNavOpen  = "<!-- sdf:stack-nav -->"
+	stackNavClose = "<!-- /sdf:stack-nav -->"
+)
+
+// buildStackNav generates the stack navigation markdown section for a PR.
+// currentBranch is the branch whose PR this nav will be embedded in.
+func buildStackNav(s *stack.Stack, prs map[int]ghpkg.PRInfo, currentBranch string) string {
+	var b strings.Builder
+
+	b.WriteString(stackNavOpen)
+	b.WriteString("\n---\n")
+	fmt.Fprintf(&b, "Stack: `%s`\n", s.StackID)
+
+	for i, node := range s.Nodes {
+		status := strings.ToLower(node.Status)
+		if pr, ok := prs[node.PR]; ok {
+			status = strings.ToLower(pr.State)
+		}
+
+		if node.PR > 0 {
+			pr := prs[node.PR]
+			url := pr.URL
+			if url == "" {
+				url = "#"
+			}
+			fmt.Fprintf(&b, "%d. [#%d %s](%s) - %s", i+1, node.PR, node.Branch, url, status)
+		} else {
+			fmt.Fprintf(&b, "%d. %s - %s", i+1, node.Branch, status)
+		}
+
+		if node.Branch == currentBranch {
+			b.WriteString(" ◀ this PR")
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(stackNavClose)
+	return b.String()
+}
+
+// replaceStackNav replaces the stack nav section in a PR body, or appends it
+// if no existing section is found. The nav section is always at the bottom.
+func replaceStackNav(body, nav string) string {
+	openIdx := strings.Index(body, stackNavOpen)
+	closeIdx := strings.Index(body, stackNavClose)
+
+	if openIdx >= 0 && closeIdx >= 0 {
+		// Replace existing section
+		return body[:openIdx] + nav
+	}
+
+	// Append at the bottom
+	return strings.TrimRight(body, "\n") + "\n\n" + nav
+}
+
+// updateStackNavForAllPRs fetches PR info and updates the stack navigation
+// section in every PR's description.
+func updateStackNavForAllPRs(s *stack.Stack) error {
+	// Collect branches that have PRs
+	var branches []string
+	for _, node := range s.Nodes {
+		if node.PR > 0 {
+			branches = append(branches, node.Branch)
+		}
+	}
+
+	if len(branches) == 0 {
+		return nil
+	}
+
+	// Fetch PR info for all branches
+	prList, err := ghpkg.PRList(branches)
+	if err != nil {
+		return fmt.Errorf("cannot fetch PR info: %w", err)
+	}
+
+	prMap := make(map[int]ghpkg.PRInfo)
+	for _, pr := range prList {
+		prMap[pr.Number] = pr
+	}
+
+	// Update each PR's description
+	for _, node := range s.Nodes {
+		if node.PR == 0 {
+			continue
+		}
+
+		nav := buildStackNav(s, prMap, node.Branch)
+
+		// Fetch current body
+		currentBody, err := ghpkg.PRViewBody(node.PR)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not read PR #%d body: %v\n", node.PR, err)
+			continue
+		}
+
+		newBody := replaceStackNav(currentBody, nav)
+
+		if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update PR #%d: %v\n", node.PR, err)
+		}
+	}
+
+	return nil
+}

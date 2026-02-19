@@ -289,6 +289,12 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 
 	if modified {
 		fmt.Println("\nSync complete. Stack updated.")
+
+		// Update stack navigation in all PRs
+		fmt.Println("Updating stack navigation in PR descriptions...")
+		if err := updateStackNavForAllPRs(s); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+		}
 	} else {
 		fmt.Println("\nEverything is in sync.")
 	}

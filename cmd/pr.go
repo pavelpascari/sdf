@@ -93,5 +93,12 @@ func RunPR(args []string) error {
 	}
 
 	fmt.Println(url)
+
+	// Update stack navigation in all PRs
+	fmt.Println("Updating stack navigation in PR descriptions...")
+	if err := updateStackNavForAllPRs(s); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+	}
+
 	return nil
 }
