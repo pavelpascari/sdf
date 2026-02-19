@@ -31,9 +31,12 @@ func RunInit(args []string) error {
 		return fmt.Errorf("not inside a git repository: %w", err)
 	}
 
-	// Check if already initialized
-	if _, err := os.Stat(root + "/.sdf/stack.json"); err == nil {
-		return fmt.Errorf(".sdf already exists in %s — use a different repo or remove .sdf/ first", root)
+	// Migrate legacy layout if needed
+	stack.MigrateIfNeeded(root)
+
+	// Check if a stack with this name already exists
+	if _, err := stack.LoadStack(root, *stackName); err == nil {
+		return fmt.Errorf("stack %q already exists in %s", *stackName, root)
 	}
 
 	if err := stack.Init(root, *stackName, *base); err != nil {

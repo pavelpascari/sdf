@@ -22,14 +22,14 @@ func RunPR(args []string) error {
 		return err
 	}
 
-	s, err := stack.Load(root)
-	if err != nil {
-		return err
-	}
-
 	branch, err := gitpkg.CurrentBranch()
 	if err != nil {
 		return fmt.Errorf("cannot determine current branch: %w", err)
+	}
+
+	s, err := resolveStack(root, "")
+	if err != nil {
+		return err
 	}
 
 	node := s.FindNode(branch)
@@ -89,7 +89,7 @@ func RunPR(args []string) error {
 	}
 
 	if err := stack.Save(root, s); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not update stack.json: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warning: could not update stack: %v\n", err)
 	}
 
 	fmt.Println(url)

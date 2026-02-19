@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -29,6 +28,9 @@ func RunRegister(args []string) error {
 	if err != nil {
 		return fmt.Errorf("not inside a git repository: %w", err)
 	}
+
+	// Migrate legacy layout if needed
+	stack.MigrateIfNeeded(root)
 
 	// Detect default branch
 	defaultBranch := *base
@@ -146,14 +148,14 @@ func RunRegister(args []string) error {
 	return RegisterStack(root, name, selected)
 }
 
-// RegisterStack performs the core registration: creates .sdf/, writes
-// stack.json with nodes from the discovered stack, creates context stubs,
-// and commits the result. This is separated from RunRegister so it can be
-// tested without gh or interactive stdin.
+// RegisterStack performs the core registration: creates .sdf/stacks/<name>.json
+// with nodes from the discovered stack, creates context stubs, and commits the
+// result. This is separated from RunRegister so it can be tested without gh or
+// interactive stdin.
 func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
-	// Check if already initialized
-	if _, err := os.Stat(filepath.Join(root, ".sdf", "stack.json")); err == nil {
-		return fmt.Errorf(".sdf already exists in %s — use `sdf branch` to add branches, or remove .sdf/ first", root)
+	// Check if a stack with this name already exists
+	if _, err := stack.LoadStack(root, name); err == nil {
+		return fmt.Errorf("stack %q already exists in %s — choose a different name or remove it first", name, root)
 	}
 
 	// Build the stack nodes

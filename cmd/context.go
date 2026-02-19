@@ -36,7 +36,7 @@ func runContextShow() error {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, "")
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func runContextEdit() error {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, "")
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func runContextUpdate() error {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, "")
 	if err != nil {
 		return err
 	}

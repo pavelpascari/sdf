@@ -278,7 +278,7 @@ func TestRegisterStack_TwoBranchMinimum(t *testing.T) {
 	}
 }
 
-func TestRegisterStack_ErrorIfAlreadyInitialized(t *testing.T) {
+func TestRegisterStack_ErrorIfSameNameAlreadyRegistered(t *testing.T) {
 	dir, _ := registerTestRepo(t)
 
 	ds := stack.DiscoveredStack{
@@ -294,10 +294,10 @@ func TestRegisterStack_ErrorIfAlreadyInitialized(t *testing.T) {
 		t.Fatalf("first RegisterStack failed: %v", err)
 	}
 
-	// Second register should fail because .sdf already exists
-	err := RegisterStack(dir, "second", ds)
+	// Second register with the same name should fail
+	err := RegisterStack(dir, "first", ds)
 	if err == nil {
-		t.Fatal("expected error on second RegisterStack, got nil")
+		t.Fatal("expected error on duplicate RegisterStack, got nil")
 	}
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("expected 'already exists' error, got: %v", err)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -10,19 +11,23 @@ import (
 )
 
 func RunBranch(args []string) error {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: sdf branch <name>")
+	fs := flag.NewFlagSet("branch", flag.ExitOnError)
+	stackFlag := fs.String("stack", "", "stack to add the branch to (default: auto-detect)")
+	fs.Parse(args)
+
+	if fs.NArg() == 0 {
+		fmt.Fprintln(os.Stderr, "usage: sdf branch [--stack <name>] <branch>")
 		os.Exit(1)
 	}
 
-	branchName := args[0]
+	branchName := fs.Arg(0)
 
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, *stackFlag)
 	if err != nil {
 		return err
 	}

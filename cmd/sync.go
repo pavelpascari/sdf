@@ -25,20 +25,27 @@ type syncAction struct {
 func RunSync(args []string) error {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	yes := fs.Bool("y", false, "skip confirmation prompt")
+	stackFlag := fs.String("stack", "", "stack to sync (default: auto-detect)")
 	fs.Parse(args)
+
+	// Accept positional arg as stack name: sdf sync <stack-name>
+	stackName := *stackFlag
+	if stackName == "" && fs.NArg() > 0 {
+		stackName = fs.Arg(0)
+	}
 
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
 	}
 
-	s, err := stack.Load(root)
+	s, err := resolveStack(root, stackName)
 	if err != nil {
 		return err
 	}
 
 	if len(s.Nodes) == 0 {
-		fmt.Println("No branches in stack. Nothing to sync.")
+		fmt.Printf("No branches in stack %q. Nothing to sync.\n", s.StackID)
 		return nil
 	}
 
@@ -58,6 +65,7 @@ func RunSync(args []string) error {
 	}
 
 	// Fetch latest from origin
+	fmt.Printf("Syncing stack %q...\n", s.StackID)
 	fmt.Println("Fetching from origin...")
 	if err := gitpkg.FetchAll(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: fetch failed: %v\n", err)
@@ -206,8 +214,8 @@ func RunSync(args []string) error {
 			return fmt.Errorf("cannot save stack: %w", err)
 		}
 
-		// Commit the updated stack.json
-		if err := gitpkg.Add(".sdf/stack.json"); err == nil {
+		// Commit the updated stack file
+		if err := gitpkg.Add(stack.StackRelPath(s)); err == nil {
 			gitpkg.Commit("sdf: update stack after sync")
 		}
 
