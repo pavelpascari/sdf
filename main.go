@@ -69,7 +69,7 @@ Stack commands:
   register                  Discover and register existing PR stacks
   branch <name>             Create a new branch in the stack
   status                    Show stack topology and sync state
-  sync                      Detect merged PRs, cascade rebase, push
+  sync [-y]                 Detect merged PRs, cascade rebase, push
   move <commit>...          Move commits from current branch to parent
   pr                        Create a GitHub PR for the current branch
 
