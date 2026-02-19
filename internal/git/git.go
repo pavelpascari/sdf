@@ -69,6 +69,29 @@ func FetchAll() error {
 	return err
 }
 
+// FastForward updates a local branch to match its remote tracking branch
+// without checking it out. Uses git update-ref to move the branch pointer.
+func FastForward(branch string) error {
+	remote := "origin/" + branch
+	remoteTip, err := RevParse(remote)
+	if err != nil {
+		return err
+	}
+	localTip, err := RevParse(branch)
+	if err != nil {
+		return err
+	}
+	if localTip == remoteTip {
+		return nil
+	}
+	// Only fast-forward if the local tip is an ancestor of remote
+	if !IsAncestor(localTip, remote) {
+		return fmt.Errorf("%s has diverged from %s", branch, remote)
+	}
+	_, err = run("update-ref", "refs/heads/"+branch, remoteTip)
+	return err
+}
+
 // RevParse returns the SHA for a given ref.
 func RevParse(ref string) (string, error) {
 	return run("rev-parse", ref)

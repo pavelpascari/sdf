@@ -250,8 +250,8 @@ func TestRunMove_ErrorNonContiguous(t *testing.T) {
 func TestRunMove_ErrorDirtyWorkingTree(t *testing.T) {
 	dir, shas := testRepo(t)
 
-	// Dirty the working tree
-	os.WriteFile(filepath.Join(dir, "dirty.txt"), []byte("dirty\n"), 0644)
+	// Dirty the working tree by modifying a tracked file
+	os.WriteFile(filepath.Join(dir, "a1.txt"), []byte("modified\n"), 0644)
 
 	err := RunMove([]string{shas["b1"]})
 	if err == nil {

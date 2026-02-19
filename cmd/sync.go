@@ -152,6 +152,11 @@ func runSyncFull(root, stackName string, skipConfirm bool) error {
 		fmt.Fprintf(os.Stderr, "warning: fetch failed: %v\n", err)
 	}
 
+	// Fast-forward the base branch so RevParse returns the latest tip
+	if err := gitpkg.FastForward(s.Base); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not fast-forward %s: %v\n", s.Base, err)
+	}
+
 	if ghpkg.Available() {
 		branches := make([]string, len(s.Nodes))
 		for i, n := range s.Nodes {
