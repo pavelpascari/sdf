@@ -173,6 +173,30 @@ func BranchExists(branch string) bool {
 	return err == nil
 }
 
+// CheckoutRemote creates a local branch tracking a remote branch.
+func CheckoutRemote(branch string) error {
+	_, err := run("checkout", "-b", branch, "origin/"+branch)
+	return err
+}
+
+// DefaultBranch returns the default branch of the remote origin
+// (e.g. "main" or "master") by inspecting the remote HEAD.
+func DefaultBranch() (string, error) {
+	out, err := run("symbolic-ref", "refs/remotes/origin/HEAD")
+	if err != nil {
+		// Fallback: try common defaults
+		for _, candidate := range []string{"main", "master"} {
+			if BranchExists("origin/" + candidate) {
+				return candidate, nil
+			}
+		}
+		return "", fmt.Errorf("cannot determine default branch: %w", err)
+	}
+	// out is like "refs/remotes/origin/main"
+	parts := strings.Split(out, "/")
+	return parts[len(parts)-1], nil
+}
+
 // CommitCount returns the number of commits between two refs.
 func CommitCount(from, to string) (string, error) {
 	return run("rev-list", "--count", from+".."+to)

@@ -92,6 +92,25 @@ func PREditBase(prNumber int, newBase string) error {
 	return err
 }
 
+// PRListForCurrentUser returns all open PRs authored by the current user in this repo.
+func PRListForCurrentUser() ([]PRInfo, error) {
+	out, err := run("pr", "list",
+		"--author", "@me",
+		"--state", "open",
+		"--json", "number,headRefName,state,baseRefName,url",
+		"--limit", "100",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var prs []PRInfo
+	if err := json.Unmarshal([]byte(out), &prs); err != nil {
+		return nil, fmt.Errorf("cannot parse gh pr list output: %w", err)
+	}
+	return prs, nil
+}
+
 // PRView returns PR info for a specific branch.
 func PRView(branch string) (*PRInfo, error) {
 	out, err := run("pr", "view", branch,
