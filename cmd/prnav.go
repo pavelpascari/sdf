@@ -25,20 +25,15 @@ func buildStackNav(s *stack.Stack, prs map[int]ghpkg.PRInfo, currentBranch strin
 	fmt.Fprintf(&b, "Stack: `%s`\n", s.StackID)
 
 	for i, node := range s.Nodes {
-		status := strings.ToLower(node.Status)
-		if pr, ok := prs[node.PR]; ok {
-			status = strings.ToLower(pr.State)
-		}
-
 		if node.PR > 0 {
 			pr := prs[node.PR]
-			url := pr.URL
-			if url == "" {
-				url = "#"
+			if pr.URL != "" {
+				fmt.Fprintf(&b, "%d. %s", i+1, pr.URL)
+			} else {
+				fmt.Fprintf(&b, "%d. %s", i+1, node.Branch)
 			}
-			fmt.Fprintf(&b, "%d. [#%d %s](%s) - %s", i+1, node.PR, node.Branch, url, status)
 		} else {
-			fmt.Fprintf(&b, "%d. %s - %s", i+1, node.Branch, status)
+			fmt.Fprintf(&b, "%d. %s", i+1, node.Branch)
 		}
 
 		if node.Branch == currentBranch {

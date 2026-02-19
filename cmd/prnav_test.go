@@ -57,7 +57,7 @@ func TestNavHash_ChangesWhenStackChanges(t *testing.T) {
 	}
 }
 
-func TestNavHash_ChangesWhenStatusChanges(t *testing.T) {
+func TestNavHash_SameWhenStatusChanges(t *testing.T) {
 	s := &stack.Stack{
 		StackID: "my-stack",
 		Base:    "main",
@@ -76,8 +76,8 @@ func TestNavHash_ChangesWhenStatusChanges(t *testing.T) {
 	hashOpen := navHash(s, prsOpen, "my-stack/first")
 	hashMerged := navHash(s, prsMerged, "my-stack/first")
 
-	if hashOpen == hashMerged {
-		t.Error("hash should change when PR status changes")
+	if hashOpen != hashMerged {
+		t.Error("hash should be the same — status is not part of nav output")
 	}
 }
 
@@ -113,27 +113,30 @@ func TestBuildStackNav(t *testing.T) {
 		t.Error("missing stack name")
 	}
 
-	// Should contain PR links
-	if !strings.Contains(nav, "[#16") {
-		t.Error("missing PR #16 link")
+	// Should contain bare PR URLs
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/16") {
+		t.Error("missing PR #16 URL")
 	}
-	if !strings.Contains(nav, "[#17") {
-		t.Error("missing PR #17 link")
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/17") {
+		t.Error("missing PR #17 URL")
 	}
-	if !strings.Contains(nav, "[#18") {
-		t.Error("missing PR #18 link")
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/18") {
+		t.Error("missing PR #18 URL")
 	}
 
 	// Current PR should be marked
-	if !strings.Contains(nav, "this PR") {
-		t.Error("current PR not marked")
+	for _, line := range strings.Split(nav, "\n") {
+		if strings.Contains(line, "pull/17") && !strings.Contains(line, "◀ this PR") {
+			t.Error("current PR not marked")
+		}
 	}
 
-	// The marker for current PR should be on the line with #17
-	for _, line := range strings.Split(nav, "\n") {
-		if strings.Contains(line, "#17") && !strings.Contains(line, "this PR") {
-			t.Error("current PR marker not on the #17 line")
-		}
+	// Should not contain status text or markdown links
+	if strings.Contains(nav, "- open") {
+		t.Error("should not contain status text")
+	}
+	if strings.Contains(nav, "[#") {
+		t.Error("should use bare URLs, not markdown links")
 	}
 }
 
@@ -154,13 +157,13 @@ func TestBuildStackNav_WithMergedPR(t *testing.T) {
 
 	nav := buildStackNav(s, prs, "init-dx/json-output")
 
-	// Merged PR should show merged status
-	for _, line := range strings.Split(nav, "\n") {
-		if strings.Contains(line, "#16") {
-			if !strings.Contains(strings.ToLower(line), "merged") {
-				t.Errorf("expected merged status for PR #16, got: %s", line)
-			}
-		}
+	// Merged PR should still have its URL (GitHub renders status via autolink)
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/16") {
+		t.Error("missing merged PR URL")
+	}
+	// Should not contain explicit status text
+	if strings.Contains(nav, "merged") {
+		t.Error("should not contain explicit status text — GitHub renders it via autolink")
 	}
 }
 
