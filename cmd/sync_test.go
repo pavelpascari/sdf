@@ -1,0 +1,550 @@
+package cmd
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	"github.com/pavelpascari/sdf/internal/stack"
+)
+
+// syncTestRepo sets up a temporary git repository with an SDF stack of 3
+// branches for testing sync plan computation:
+//
+//	main (base) ← branchA [a1] ← branchB [b1] ← branchC [c1]
+//
+// All BaseTips are set correctly. The caller is chdir'd into the repo on
+// branchC.
+func syncTestRepo(t *testing.T) (repoDir string) {
+	t.Helper()
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) })
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	writeFile := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Initialize repo
+	git("init", "-b", "main")
+	git("config", "user.email", "test@test.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+
+	// Initial commit on main
+	os.MkdirAll(filepath.Join(dir, ".sdf", "context"), 0755)
+	writeFile("README.md", "# test\n")
+	git("add", "README.md")
+	git("commit", "-m", "initial")
+	mainTip := git("rev-parse", "HEAD")
+
+	// branchA
+	git("checkout", "-b", "branchA")
+	writeFile("a1.txt", "a1\n")
+	git("add", "a1.txt")
+	git("commit", "-m", "a1")
+	branchATip := git("rev-parse", "HEAD")
+
+	// branchB
+	git("checkout", "-b", "branchB")
+	writeFile("b1.txt", "b1\n")
+	git("add", "b1.txt")
+	git("commit", "-m", "b1")
+	branchBTip := git("rev-parse", "HEAD")
+
+	// branchC
+	git("checkout", "-b", "branchC")
+	writeFile("c1.txt", "c1\n")
+	git("add", "c1.txt")
+	git("commit", "-m", "c1")
+
+	// Write SDF stack
+	s := &stack.Stack{
+		StackID: "test-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "branchA", Status: "open", BaseTip: mainTip},
+			{Branch: "branchB", Status: "open", BaseTip: branchATip},
+			{Branch: "branchC", Status: "open", BaseTip: branchBTip},
+		},
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".sdf")
+	git("commit", "-m", "sdf: init stack")
+
+	return dir
+}
+
+// filterActions returns only actions of the given kind from the plan.
+func filterActions(plan []syncAction, kind string) []syncAction {
+	var result []syncAction
+	for _, a := range plan {
+		if a.kind == kind {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
+// actionBranches extracts branch names from a list of actions.
+func actionBranches(actions []syncAction) []string {
+	var names []string
+	for _, a := range actions {
+		names = append(names, a.branch)
+	}
+	return names
+}
+
+// --- computeSyncPlan tests ---
+
+func TestComputeSyncPlan_InSync(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan := computeSyncPlan(s)
+
+	if len(plan) != 0 {
+		t.Errorf("expected empty plan when everything is in sync, got %d actions", len(plan))
+		for _, a := range plan {
+			t.Logf("  %s %s", a.kind, a.branch)
+		}
+	}
+}
+
+func TestComputeSyncPlan_MergedHead(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchA as merged
+	s.Nodes[0].Status = "merged"
+
+	plan := computeSyncPlan(s)
+
+	// Should have: remove branchA, rebase branchB onto main, push branchB
+	removes := filterActions(plan, "remove-merged")
+	rebases := filterActions(plan, "rebase")
+	pushes := filterActions(plan, "push")
+
+	if len(removes) != 1 || removes[0].branch != "branchA" {
+		t.Errorf("expected 1 remove-merged for branchA, got %v", removes)
+	}
+
+	// branchB should be rebased onto main (since branchA merged)
+	// branchC should cascade (since branchB was rebased)
+	if len(rebases) < 1 {
+		t.Fatal("expected at least 1 rebase action")
+	}
+	if rebases[0].branch != "branchB" || rebases[0].onto != "main" {
+		t.Errorf("expected rebase branchB onto main, got rebase %s onto %s",
+			rebases[0].branch, rebases[0].onto)
+	}
+
+	// branchB should be pushed
+	if len(pushes) < 1 || pushes[0].branch != "branchB" {
+		t.Errorf("expected push for branchB, got %v", pushes)
+	}
+}
+
+func TestComputeSyncPlan_MergedWithPR(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchA as merged, branchB has a PR
+	s.Nodes[0].Status = "merged"
+	s.Nodes[1].PR = 42
+
+	plan := computeSyncPlan(s)
+
+	// Check for update-pr-base action (only if gh is available)
+	prActions := filterActions(plan, "update-pr-base")
+	if ghpkg.Available() {
+		if len(prActions) < 1 {
+			t.Error("expected update-pr-base action for branchB PR #42 (gh is available)")
+		} else if prActions[0].pr != 42 || prActions[0].onto != "main" {
+			t.Errorf("expected update PR #42 base to main, got PR #%d base to %s",
+				prActions[0].pr, prActions[0].onto)
+		}
+	} else {
+		if len(prActions) != 0 {
+			t.Errorf("expected no update-pr-base actions when gh is unavailable, got %d", len(prActions))
+		}
+	}
+}
+
+func TestComputeSyncPlan_StaleBaseTip(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	// Add a commit to main to make branchA's BaseTip stale
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new\n"), 0644)
+	git("add", "new.txt")
+	git("commit", "-m", "new commit on main")
+	git("checkout", "branchC") // restore
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan := computeSyncPlan(s)
+
+	rebases := filterActions(plan, "rebase")
+	pushes := filterActions(plan, "push")
+
+	// branchA needs rebase (stale BaseTip)
+	if len(rebases) < 1 {
+		t.Fatal("expected at least 1 rebase action for stale BaseTip")
+	}
+	if rebases[0].branch != "branchA" || rebases[0].onto != "main" {
+		t.Errorf("expected rebase branchA onto main, got rebase %s onto %s",
+			rebases[0].branch, rebases[0].onto)
+	}
+
+	// branchA should be pushed
+	if len(pushes) < 1 || pushes[0].branch != "branchA" {
+		t.Errorf("expected push for branchA, got %v", actionBranches(pushes))
+	}
+}
+
+func TestComputeSyncPlan_CascadeFromMerge(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchA as merged → branchB rebases onto main,
+	// then branchC cascades because branchB was rebased
+	s.Nodes[0].Status = "merged"
+
+	plan := computeSyncPlan(s)
+
+	removes := filterActions(plan, "remove-merged")
+	rebases := filterActions(plan, "rebase")
+	pushes := filterActions(plan, "push")
+
+	if len(removes) != 1 {
+		t.Errorf("expected 1 remove-merged, got %d", len(removes))
+	}
+
+	// Both branchB and branchC should be rebased
+	rebaseBranches := actionBranches(rebases)
+	if len(rebases) != 2 {
+		t.Fatalf("expected 2 rebases (branchB + branchC cascade), got %d: %v",
+			len(rebases), rebaseBranches)
+	}
+	if rebases[0].branch != "branchB" || rebases[0].onto != "main" {
+		t.Errorf("expected first rebase: branchB onto main, got %s onto %s",
+			rebases[0].branch, rebases[0].onto)
+	}
+	if rebases[1].branch != "branchC" || rebases[1].onto != "branchB" {
+		t.Errorf("expected second rebase: branchC onto branchB, got %s onto %s",
+			rebases[1].branch, rebases[1].onto)
+	}
+
+	// Both should be pushed
+	pushBranches := actionBranches(pushes)
+	if len(pushes) != 2 {
+		t.Fatalf("expected 2 pushes (branchB + branchC), got %d: %v",
+			len(pushes), pushBranches)
+	}
+}
+
+func TestComputeSyncPlan_CascadeFromStaleParent(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	// Add a commit to main → branchA stale → cascade to B and C
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new\n"), 0644)
+	git("add", "new.txt")
+	git("commit", "-m", "new commit on main")
+	git("checkout", "branchC")
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan := computeSyncPlan(s)
+
+	rebases := filterActions(plan, "rebase")
+	pushes := filterActions(plan, "push")
+
+	// All three branches should be rebased in cascade
+	rebaseBranches := actionBranches(rebases)
+	if len(rebases) != 3 {
+		t.Fatalf("expected 3 rebases (full cascade), got %d: %v",
+			len(rebases), rebaseBranches)
+	}
+	if rebases[0].branch != "branchA" || rebases[0].onto != "main" {
+		t.Errorf("first rebase: want branchA onto main, got %s onto %s",
+			rebases[0].branch, rebases[0].onto)
+	}
+	if rebases[1].branch != "branchB" || rebases[1].onto != "branchA" {
+		t.Errorf("second rebase: want branchB onto branchA, got %s onto %s",
+			rebases[1].branch, rebases[1].onto)
+	}
+	if rebases[2].branch != "branchC" || rebases[2].onto != "branchB" {
+		t.Errorf("third rebase: want branchC onto branchB, got %s onto %s",
+			rebases[2].branch, rebases[2].onto)
+	}
+
+	// All three should be pushed
+	if len(pushes) != 3 {
+		t.Errorf("expected 3 pushes, got %d: %v", len(pushes), actionBranches(pushes))
+	}
+}
+
+func TestComputeSyncPlan_MergedTail(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark the last node (branchC) as merged → just remove, no downstream to rebase
+	s.Nodes[2].Status = "merged"
+
+	plan := computeSyncPlan(s)
+
+	removes := filterActions(plan, "remove-merged")
+	rebases := filterActions(plan, "rebase")
+
+	if len(removes) != 1 || removes[0].branch != "branchC" {
+		t.Errorf("expected 1 remove-merged for branchC, got %v", removes)
+	}
+	if len(rebases) != 0 {
+		t.Errorf("expected no rebases when tail node is merged, got %d: %v",
+			len(rebases), actionBranches(rebases))
+	}
+}
+
+func TestComputeSyncPlan_MultipleMerged(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchA and branchB as merged → both removed,
+	// branchC gets rebased onto main
+	s.Nodes[0].Status = "merged"
+	s.Nodes[1].Status = "merged"
+
+	plan := computeSyncPlan(s)
+
+	removes := filterActions(plan, "remove-merged")
+	rebases := filterActions(plan, "rebase")
+	pushes := filterActions(plan, "push")
+
+	if len(removes) != 2 {
+		t.Errorf("expected 2 remove-merged, got %d", len(removes))
+	}
+
+	// branchC should end up rebased onto main (both A and B are gone)
+	// The algorithm processes A first: remove A, rebase B onto main.
+	// Then B is processed: B is merged, remove B, rebase C onto main.
+	found := false
+	for _, r := range rebases {
+		if r.branch == "branchC" && r.onto == "main" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected rebase branchC onto main, got rebases: %v",
+			actionBranches(rebases))
+	}
+
+	if len(pushes) < 1 {
+		t.Error("expected at least 1 push action")
+	}
+}
+
+func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchB (middle) as merged → branchC rebases onto branchA
+	s.Nodes[1].Status = "merged"
+
+	plan := computeSyncPlan(s)
+
+	removes := filterActions(plan, "remove-merged")
+	rebases := filterActions(plan, "rebase")
+
+	if len(removes) != 1 || removes[0].branch != "branchB" {
+		t.Errorf("expected remove-merged for branchB, got %v", removes)
+	}
+
+	// branchC should be rebased onto main (that's what the algorithm does:
+	// the new base after a merged node is always s.Base)
+	if len(rebases) < 1 {
+		t.Fatal("expected at least 1 rebase")
+	}
+	if rebases[0].branch != "branchC" || rebases[0].onto != "main" {
+		t.Errorf("expected rebase branchC onto main, got %s onto %s",
+			rebases[0].branch, rebases[0].onto)
+	}
+}
+
+// --- printSyncPlan tests ---
+
+func TestPrintSyncPlan_Output(t *testing.T) {
+	plan := []syncAction{
+		{kind: "remove-merged", branch: "feat/auth"},
+		{kind: "rebase", branch: "feat/api", onto: "main"},
+		{kind: "push", branch: "feat/api"},
+		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
+	}
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printSyncPlan(plan)
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// Verify each action type appears in the output
+	checks := []struct {
+		label    string
+		contains string
+	}{
+		{"header", "Sync plan:"},
+		{"merged", "feat/auth is merged (remove from stack)"},
+		{"rebase", "rebase feat/api onto main"},
+		{"push", "force-push feat/api"},
+		{"pr-base", "update PR #42 base to main"},
+	}
+
+	for _, c := range checks {
+		if !strings.Contains(output, c.contains) {
+			t.Errorf("printSyncPlan output missing %s: expected to contain %q\ngot:\n%s",
+				c.label, c.contains, output)
+		}
+	}
+}
+
+// --- confirmSync tests ---
+
+func TestConfirmSync_Accepts(t *testing.T) {
+	inputs := []struct {
+		input string
+		want  bool
+	}{
+		{"\n", true},       // Enter (default yes)
+		{"y\n", true},      // lowercase y
+		{"Y\n", true},      // uppercase Y
+		{"yes\n", true},    // full word
+		{"YES\n", true},    // uppercase full word
+		{"n\n", false},     // no
+		{"no\n", false},    // no full word
+		{"N\n", false},     // uppercase N
+		{"abort\n", false}, // anything else
+	}
+
+	for _, tc := range inputs {
+		t.Run(fmt.Sprintf("input=%q", strings.TrimSpace(tc.input)), func(t *testing.T) {
+			// Replace stdin with a pipe
+			oldStdin := os.Stdin
+			r, w, _ := os.Pipe()
+			os.Stdin = r
+
+			// Capture stdout to suppress the "Proceed?" prompt
+			oldStdout := os.Stdout
+			_, devNull, _ := os.Pipe()
+			os.Stdout = devNull
+
+			w.WriteString(tc.input)
+			w.Close()
+
+			got := confirmSync()
+
+			os.Stdin = oldStdin
+			os.Stdout = oldStdout
+			devNull.Close()
+
+			if got != tc.want {
+				t.Errorf("confirmSync() with input %q = %v, want %v",
+					strings.TrimSpace(tc.input), got, tc.want)
+			}
+		})
+	}
+}

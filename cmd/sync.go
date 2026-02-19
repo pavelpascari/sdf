@@ -267,6 +267,12 @@ func computeSyncPlan(s *stack.Stack) []syncAction {
 						onto:   newBase,
 					})
 				}
+
+				// Update simulated BaseTip so the stale-tip check
+				// doesn't produce a duplicate rebase for this node.
+				if tip, err := gitpkg.RevParse(newBase); err == nil {
+					nodes[i+1].BaseTip = tip
+				}
 			}
 
 			// Simulate removal
