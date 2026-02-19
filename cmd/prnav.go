@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
@@ -50,6 +51,14 @@ func buildStackNav(s *stack.Stack, prs map[int]ghpkg.PRInfo, currentBranch strin
 	return b.String()
 }
 
+// navHash computes a short hash of the nav content for a given branch.
+// Used to skip PR description updates when nothing changed.
+func navHash(s *stack.Stack, prs map[int]ghpkg.PRInfo, currentBranch string) string {
+	nav := buildStackNav(s, prs, currentBranch)
+	h := sha256.Sum256([]byte(nav))
+	return fmt.Sprintf("%x", h[:8])
+}
+
 // replaceStackNav replaces the stack nav section in a PR body, or appends it
 // if no existing section is found. The nav section is always at the bottom.
 func replaceStackNav(body, nav string) string {
@@ -67,7 +76,7 @@ func replaceStackNav(body, nav string) string {
 
 // updateStackNavForAllPRs fetches PR info and updates the stack navigation
 // section in every PR's description.
-func updateStackNavForAllPRs(s *stack.Stack) error {
+func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 	// Collect branches that have PRs
 	var branches []string
 	for _, node := range s.Nodes {
@@ -91,9 +100,16 @@ func updateStackNavForAllPRs(s *stack.Stack) error {
 		prMap[pr.Number] = pr
 	}
 
-	// Update each PR's description
-	for _, node := range s.Nodes {
+	// Update each PR's description, skipping when nav hasn't changed
+	updated := 0
+	for i := range s.Nodes {
+		node := &s.Nodes[i]
 		if node.PR == 0 {
+			continue
+		}
+
+		hash := navHash(s, prMap, node.Branch)
+		if node.NavHash == hash {
 			continue
 		}
 
@@ -110,6 +126,17 @@ func updateStackNavForAllPRs(s *stack.Stack) error {
 
 		if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not update PR #%d: %v\n", node.PR, err)
+			continue
+		}
+
+		node.NavHash = hash
+		updated++
+	}
+
+	if updated > 0 {
+		fmt.Printf("Updated %d PR description(s).\n", updated)
+		if err := stack.Save(root, s); err != nil {
+			return fmt.Errorf("cannot save stack after nav update: %w", err)
 		}
 	}
 
