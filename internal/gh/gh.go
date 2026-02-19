@@ -126,3 +126,27 @@ func PRView(branch string) (*PRInfo, error) {
 	}
 	return &pr, nil
 }
+
+// PRViewBody returns the body (description) of a PR by number.
+func PRViewBody(prNumber int) (string, error) {
+	out, err := run("pr", "view", fmt.Sprintf("%d", prNumber),
+		"--json", "body",
+	)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		return "", fmt.Errorf("cannot parse gh pr view output: %w", err)
+	}
+	return result.Body, nil
+}
+
+// PREditBody updates the body (description) of a PR.
+func PREditBody(prNumber int, body string) error {
+	_, err := run("pr", "edit", fmt.Sprintf("%d", prNumber), "--body", body)
+	return err
+}

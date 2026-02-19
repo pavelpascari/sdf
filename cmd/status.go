@@ -61,7 +61,7 @@ func RunStatus(args []string) error {
 
 	// Print each node
 	needsSync := []string{}
-	for i, node := range s.Nodes {
+	for _, node := range s.Nodes {
 		icon := "●"
 		status := node.Status
 
@@ -82,10 +82,7 @@ func RunStatus(args []string) error {
 
 		// Check sync state
 		syncStatus := ""
-		parent := s.Base
-		if i > 0 {
-			parent = s.Nodes[i-1].Branch
-		}
+		parent := s.ParentBranch(node.Branch)
 
 		if status != "merged" && status != "closed" {
 			// Check if parent has commits this branch hasn't seen
