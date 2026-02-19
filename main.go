@@ -73,7 +73,7 @@ Usage:
   sdf <command> [arguments]
 
 Stack commands:
-  init [--stack] <name>              Initialize a new stack in the current repo
+  init [--base <branch>] [--branch <name>] <stack>  Initialize a stack and create the first branch
   register                           Discover and register existing PR stacks
   branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
