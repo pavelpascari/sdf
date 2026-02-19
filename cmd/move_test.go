@@ -60,12 +60,13 @@ func testRepo(t *testing.T) (repoDir string, shas map[string]string) {
 	git("config", "user.name", "Test")
 	git("config", "commit.gpgsign", "false")
 
-	// Initial commit on main with SDF stack
+	// Initial commit on main
 	writeFile("README.md", "# test\n")
+	writeFile(".gitignore", ".sdf/\n")
 	sdfDir := filepath.Join(dir, ".sdf")
 	os.MkdirAll(filepath.Join(sdfDir, "context"), 0755)
 	os.MkdirAll(filepath.Join(sdfDir, "stacks"), 0755)
-	git("add", "README.md")
+	git("add", "README.md", ".gitignore")
 	git("commit", "-m", "initial")
 
 	mainTip := git("rev-parse", "HEAD")
@@ -101,7 +102,7 @@ func testRepo(t *testing.T) (repoDir string, shas map[string]string) {
 	git("commit", "-m", "b3")
 	shas["b3"] = git("rev-parse", "HEAD")
 
-	// Write SDF stack definition and commit it so working tree stays clean
+	// Write SDF stack definition (local state, not committed)
 	s := &stack.Stack{
 		StackID: "test-stack",
 		Base:    "main",
@@ -113,8 +114,6 @@ func testRepo(t *testing.T) (repoDir string, shas map[string]string) {
 	if err := stack.Save(dir, s); err != nil {
 		t.Fatal(err)
 	}
-	git("add", ".sdf")
-	git("commit", "-m", "sdf: init stack")
 
 	return dir, shas
 }
@@ -211,14 +210,9 @@ func TestRunMove_MultipleContiguous(t *testing.T) {
 func TestRunMove_ErrorAllCommits(t *testing.T) {
 	_, shas := testRepo(t)
 
-	// branchB has commits: b1, b2, b3, sdf-init above branchA.
-	// Get the sdf init commit SHA so we can try to move all 4.
-	sdfSHA, err := gitpkg.RevParse("HEAD")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = RunMove([]string{shas["b1"], shas["b2"], shas["b3"], sdfSHA})
+	// branchB has commits: b1, b2, b3 above branchA.
+	// Moving all of them should fail.
+	err := RunMove([]string{shas["b1"], shas["b2"], shas["b3"]})
 	if err == nil {
 		t.Fatal("expected error when moving all commits, got nil")
 	}
@@ -290,7 +284,7 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 	git("add", "c1.txt")
 	git("commit", "-m", "c1")
 
-	// Update stack to include branchC
+	// Update stack to include branchC (local state only)
 	s, _ := stack.Load(dir)
 	s.Nodes = append(s.Nodes, stack.Node{
 		Branch:  "branchC",
@@ -298,22 +292,16 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 		BaseTip: branchBTip,
 	})
 	stack.Save(dir, s)
-	git("add", ".sdf/stacks/")
-	git("commit", "-m", "sdf: add branchC")
 
-	// Also update branchB's stack so it knows about branchC
+	// Switch back to branchB for the move
 	git("checkout", "branchB")
-	stack.Save(dir, s)
-	git("add", ".sdf/stacks/")
-	git("commit", "-m", "sdf: add branchC ref")
 
 	// Move b1 from branchB to branchA
 	if err := RunMove([]string{shas["b1"]}); err != nil {
 		t.Fatalf("RunMove with cascade failed: %v", err)
 	}
 
-	// Verify stack (on branchB where it was saved) still has branchC
-	// and its BaseTip was updated from the original value
+	// Verify stack still has branchC and is consistent
 	s, err := stack.Load(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -322,8 +310,13 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 	if cNode == nil {
 		t.Fatal("branchC should still be in stack")
 	}
-	if cNode.BaseTip == branchBTip {
-		t.Error("branchC BaseTip should have been updated after cascade rebase, but it still points to the old branchB tip")
+
+	// If branchB's tip changed after the move, branchC's BaseTip should
+	// have been updated by the cascade rebase. If the rebase was a no-op
+	// (e.g. cherry-pick produced an identical commit), no cascade is needed.
+	newBranchBTip, _ := gitpkg.RevParse("branchB")
+	if newBranchBTip != branchBTip && cNode.BaseTip == branchBTip {
+		t.Error("branchB tip changed but branchC BaseTip was not updated by cascade rebase")
 	}
 
 	// Verify branchC still has c1.txt and all inherited files

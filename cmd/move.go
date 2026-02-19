@@ -3,7 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	claudepkg "github.com/pavelpascari/sdf/internal/claude"
+	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
@@ -150,7 +153,7 @@ func RunMove(args []string) error {
 	// --- Phase 2: strip moved commits from current branch ---
 	fmt.Printf("→ rebasing %s onto updated %s...\n", branch, parent)
 	if err := gitpkg.RebaseOnto(newParentTip, lastMovedSHA, branch); err != nil {
-		if conflictErr := handleConflict(root, s, branch, err); conflictErr != nil {
+		if conflictErr := handleMoveConflict(root, s, branch, err); conflictErr != nil {
 			gitpkg.Checkout(branch)
 			return fmt.Errorf("rebase of %s failed: %w", branch, conflictErr)
 		}
@@ -173,7 +176,7 @@ func RunMove(args []string) error {
 			fmt.Printf("→ rebasing %s onto updated %s...\n", downstream.Branch, upstreamBranch)
 
 			if err := gitpkg.RebaseOnto(upstreamTip, downstream.BaseTip, downstream.Branch); err != nil {
-				if conflictErr := handleConflict(root, s, downstream.Branch, err); conflictErr != nil {
+				if conflictErr := handleMoveConflict(root, s, downstream.Branch, err); conflictErr != nil {
 					// Save partial progress before failing
 					stack.Save(root, s)
 					gitpkg.Checkout(branch)
@@ -192,12 +195,57 @@ func RunMove(args []string) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	if err := gitpkg.Add(stack.StackRelPath(s)); err == nil {
-		gitpkg.Commit("sdf: update stack after move")
-	}
-
 	fmt.Printf("\n✓ Moved %d commit(s) from %s to %s\n", len(resolvedCommits), branch, parent)
 	return nil
+}
+
+// handleMoveConflict tries Claude resolution for a rebase conflict during move.
+// Falls back to aborting the rebase and returning the error.
+func handleMoveConflict(root string, s *stack.Stack, branch string, rebaseErr error) error {
+	conflicted, err := gitpkg.ConflictedFiles()
+	if err != nil || len(conflicted) == 0 {
+		gitpkg.RebaseAbort()
+		return rebaseErr
+	}
+
+	fmt.Printf("  ⚠ Conflict in %s — %d file(s)\n", branch, len(conflicted))
+
+	if claudepkg.Available() {
+		fmt.Println("  → invoking Claude for conflict resolution...")
+
+		stackCtx, _ := ctxpkg.Assemble(root, s, branch)
+		parent := s.ParentBranch(branch)
+		upstreamSummary, _ := gitpkg.DiffSummary(s.FindNode(branch).BaseTip, parent)
+		branchCtx, _ := ctxpkg.Read(root, branch)
+
+		conflictContents := make(map[string]string)
+		for _, f := range conflicted {
+			data, err := os.ReadFile(f)
+			if err == nil {
+				conflictContents[f] = string(data)
+			}
+		}
+
+		p := ctxpkg.BuildConflictPrompt(stackCtx, upstreamSummary, branchCtx, conflictContents)
+		sessionName := claudepkg.SanitizeSessionName("conflict", branch)
+
+		output, err := claudepkg.RunPrompt(sessionName, p)
+		if err == nil {
+			if err := applyResolutions(output, conflicted); err == nil {
+				if err := gitpkg.Add("."); err == nil {
+					if err := gitpkg.RebaseContinue(); err == nil {
+						fmt.Println("  ✓ Conflicts resolved by Claude")
+						return nil
+					}
+				}
+			}
+		}
+		fmt.Fprintf(os.Stderr, "  Claude resolution failed, falling back to manual resolution\n")
+	}
+
+	gitpkg.RebaseAbort()
+	return fmt.Errorf("conflicts in %s — resolve manually and run `sdf move` again:\n  %s",
+		branch, strings.Join(conflicted, "\n  "))
 }
 
 // short returns the first 10 characters of a SHA.

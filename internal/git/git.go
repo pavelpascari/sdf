@@ -3,7 +3,9 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -200,4 +202,41 @@ func DefaultBranch() (string, error) {
 // CommitCount returns the number of commits between two refs.
 func CommitCount(from, to string) (string, error) {
 	return run("rev-list", "--count", from+".."+to)
+}
+
+// LSRemoteRef returns the SHA that origin currently has for a given ref,
+// without fetching any objects. This is the cheapest possible remote check.
+func LSRemoteRef(ref string) (string, error) {
+	out, err := run("ls-remote", "--exit-code", "origin", ref)
+	if err != nil {
+		return "", err
+	}
+	// Output format: "<sha>\t<refname>"
+	parts := strings.Fields(out)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("no output from ls-remote for %s", ref)
+	}
+	return parts[0], nil
+}
+
+// FetchBranch fetches a single branch from origin.
+func FetchBranch(branch string) error {
+	_, err := run("fetch", "origin", branch)
+	return err
+}
+
+// IsRebaseInProgress returns true if a rebase is currently paused
+// (e.g. waiting for conflict resolution).
+func IsRebaseInProgress() bool {
+	root, err := RepoRoot()
+	if err != nil {
+		return false
+	}
+	// Git stores rebase state in .git/rebase-merge or .git/rebase-apply
+	for _, dir := range []string{"rebase-merge", "rebase-apply"} {
+		if _, err := os.Stat(filepath.Join(root, ".git", dir)); err == nil {
+			return true
+		}
+	}
+	return false
 }

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	ctxpkg "github.com/pavelpascari/sdf/internal/context"
-	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -212,7 +211,7 @@ func TestRegisterStack_ContextStubsCreated(t *testing.T) {
 	}
 }
 
-func TestRegisterStack_CommitsSDFDirectory(t *testing.T) {
+func TestRegisterStack_DoesNotCommitSDFDirectory(t *testing.T) {
 	dir, _ := registerTestRepo(t)
 
 	ds := stack.DiscoveredStack{
@@ -227,19 +226,15 @@ func TestRegisterStack_CommitsSDFDirectory(t *testing.T) {
 		t.Fatalf("RegisterStack failed: %v", err)
 	}
 
-	// Working tree should be clean after registration
-	clean, err := gitpkg.IsClean()
-	if err != nil {
-		t.Fatalf("cannot check working tree: %v", err)
-	}
-	if !clean {
-		t.Error("working tree should be clean after RegisterStack commits .sdf/")
+	// .sdf/ should exist on disk
+	if _, err := os.Stat(filepath.Join(dir, ".sdf", "stacks", "test-stack.json")); err != nil {
+		t.Error("stack file should exist on disk after registration")
 	}
 
-	// The latest commit message should mention registration
+	// .sdf/ should NOT be committed (it's local-only state)
 	log, _ := exec.Command("git", "-C", dir, "log", "--oneline", "-1").CombinedOutput()
-	if !strings.Contains(string(log), "register") {
-		t.Errorf("latest commit should mention 'register', got: %s", string(log))
+	if strings.Contains(string(log), "register") {
+		t.Errorf("register should not create a commit, but latest commit is: %s", string(log))
 	}
 }
 
