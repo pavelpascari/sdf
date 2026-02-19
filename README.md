@@ -143,7 +143,7 @@ When you're on a branch that belongs to a stack, commands like `sdf sync`, `sdf 
 Stack commands:
   init [--base <branch>] <name>      Initialize a new stack (base auto-detected)
   register                           Discover and register existing PR stacks
-  branch [--stack <name>] <name>     Create a new branch in the stack
+  branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [<stack>] [--stack <name>]    Detect merged PRs, cascade rebase, push
   move <commit>...                   Move commits from current branch to parent
@@ -157,6 +157,10 @@ Context commands:
   context show              Print assembled context for current branch
   context edit              Open context doc in $EDITOR
   context update            Ask Claude to rewrite context doc
+
+Config commands:
+  config show               Display effective (merged) configuration
+  config set <key> <value>  Set a config value in repo or --global config
 
 Other:
   doctor                    Check that dependencies are available
@@ -184,10 +188,56 @@ This means `sdf init my-feature` does the same thing whether you run it from `ma
 5. Force-pushes updated branches and runs `gh pr edit --base` to fix PR diffs
 6. Updates `.sdf/stacks/<name>.json`
 
+## Configuration
+
+`sdf` uses a two-tier configuration system:
+
+- **Global**: `~/.config/sdf/config.json` — user-level defaults that apply to all repos
+- **Repo**: `.sdf/config.json` — per-repo overrides, committed alongside code
+
+Repo-level values override global values on a field-by-field basis. Missing files are fine — `sdf` works without any config file using sensible defaults.
+
+### Branch prefix enforcement
+
+By default, `sdf branch` automatically prefixes branch names with the stack ID and a separator. For example, in a stack called `users-feature`:
+
+```sh
+sdf branch db-schema
+# creates: users-feature/db-schema
+```
+
+This keeps branches organized and namespaced to their stack. The behavior is configurable:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `branch_prefix.enabled` | `true` | Whether to auto-prefix branch names |
+| `branch_prefix.prefix` | (stack ID) | Custom prefix string (empty = use stack ID) |
+| `branch_prefix.separator` | `/` | Character between prefix and branch name |
+
+```sh
+# Disable prefix enforcement for this repo
+sdf config set branch_prefix.enabled false
+
+# Use a custom prefix instead of stack ID
+sdf config set branch_prefix.prefix feat
+
+# Change separator (e.g. feat-db-schema instead of feat/db-schema)
+sdf config set branch_prefix.separator -
+
+# Set a global default
+sdf config set --global branch_prefix.separator -
+
+# Skip prefix for a single branch
+sdf branch --no-prefix my-branch
+```
+
+Use `sdf config show` to see the effective (merged) configuration and the file paths being used.
+
 ## Repository layout
 
 ```
 .sdf/
+  config.json               # repo-level configuration (committed)
   stacks/
     users-feature.json      # stack topology, PR numbers, sync state
     auth-feature.json       # a second independent stack
