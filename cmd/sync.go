@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +14,19 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
+// syncAction represents a single planned operation during sync.
+type syncAction struct {
+	kind   string // "remove-merged", "rebase", "push", "update-pr-base"
+	branch string
+	onto   string // target base for rebase or PR base update
+	pr     int    // PR number (for update-pr-base)
+}
+
 func RunSync(args []string) error {
+	fs := flag.NewFlagSet("sync", flag.ExitOnError)
+	yes := fs.Bool("y", false, "skip confirmation prompt")
+	fs.Parse(args)
+
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
@@ -72,7 +86,27 @@ func RunSync(args []string) error {
 		}
 	}
 
-	// Process merged nodes and cascade rebases
+	// Compute the sync plan
+	plan := computeSyncPlan(s)
+	if len(plan) == 0 {
+		fmt.Println("\nEverything is in sync.")
+		return nil
+	}
+
+	// Display the plan
+	printSyncPlan(plan)
+
+	// Confirm unless -y was passed
+	if !*yes {
+		if !confirmSync() {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	fmt.Println()
+
+	// Execute: process merged nodes and cascade rebases
 	modified := false
 	for i := 0; i < len(s.Nodes); i++ {
 		node := &s.Nodes[i]
@@ -186,6 +220,128 @@ func RunSync(args []string) error {
 	gitpkg.Checkout(originalBranch)
 
 	return nil
+}
+
+// computeSyncPlan determines what operations sync will perform without
+// executing them. It walks the stack nodes using the same logic as the
+// execution phase to predict rebases, pushes, and PR base updates.
+func computeSyncPlan(s *stack.Stack) []syncAction {
+	var actions []syncAction
+
+	// Work on a copy of nodes to simulate removals
+	nodes := make([]stack.Node, len(s.Nodes))
+	copy(nodes, s.Nodes)
+
+	rebased := make(map[string]bool)
+
+	for i := 0; i < len(nodes); i++ {
+		node := nodes[i]
+
+		if node.Status == "merged" {
+			actions = append(actions, syncAction{
+				kind:   "remove-merged",
+				branch: node.Branch,
+			})
+
+			if i+1 < len(nodes) {
+				next := nodes[i+1]
+				newBase := s.Base
+
+				actions = append(actions, syncAction{
+					kind:   "rebase",
+					branch: next.Branch,
+					onto:   newBase,
+				})
+				rebased[next.Branch] = true
+
+				actions = append(actions, syncAction{
+					kind:   "push",
+					branch: next.Branch,
+				})
+
+				if next.PR > 0 && ghpkg.Available() {
+					actions = append(actions, syncAction{
+						kind:   "update-pr-base",
+						branch: next.Branch,
+						pr:     next.PR,
+						onto:   newBase,
+					})
+				}
+			}
+
+			// Simulate removal
+			nodes = append(nodes[:i], nodes[i+1:]...)
+			i--
+			continue
+		}
+
+		// Check for stale base tip
+		parent := s.Base
+		if i > 0 {
+			parent = nodes[i-1].Branch
+		}
+
+		needsRebase := rebased[parent]
+		if !needsRebase {
+			currentParentTip, err := gitpkg.RevParse(parent)
+			if err == nil && node.BaseTip != "" && currentParentTip != node.BaseTip {
+				needsRebase = true
+			}
+		}
+
+		if needsRebase {
+			actions = append(actions, syncAction{
+				kind:   "rebase",
+				branch: node.Branch,
+				onto:   parent,
+			})
+			rebased[node.Branch] = true
+
+			actions = append(actions, syncAction{
+				kind:   "push",
+				branch: node.Branch,
+			})
+
+			if node.PR > 0 && ghpkg.Available() {
+				actions = append(actions, syncAction{
+					kind:   "update-pr-base",
+					branch: node.Branch,
+					pr:     node.PR,
+					onto:   parent,
+				})
+			}
+		}
+	}
+
+	return actions
+}
+
+// printSyncPlan displays the planned sync actions to the user.
+func printSyncPlan(plan []syncAction) {
+	fmt.Println("\nSync plan:")
+	for _, a := range plan {
+		switch a.kind {
+		case "remove-merged":
+			fmt.Printf("  ✓ %s is merged (remove from stack)\n", a.branch)
+		case "rebase":
+			fmt.Printf("  → rebase %s onto %s\n", a.branch, a.onto)
+		case "push":
+			fmt.Printf("  → force-push %s\n", a.branch)
+		case "update-pr-base":
+			fmt.Printf("  → update PR #%d base to %s\n", a.pr, a.onto)
+		}
+	}
+	fmt.Println()
+}
+
+// confirmSync prompts the user to confirm the sync plan.
+// Returns true if the user confirms (Enter, y, yes), false otherwise.
+func confirmSync() bool {
+	fmt.Printf("Proceed? [Y/n] ")
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	return answer == "" || answer == "y" || answer == "yes"
 }
 
 func handleConflict(root string, s *stack.Stack, branch string, rebaseErr error) error {
