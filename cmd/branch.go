@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -13,10 +14,11 @@ import (
 func RunBranch(args []string) error {
 	fs := flag.NewFlagSet("branch", flag.ExitOnError)
 	stackFlag := fs.String("stack", "", "stack to add the branch to (default: auto-detect)")
+	noPrefix := fs.Bool("no-prefix", false, "create branch without applying the configured prefix")
 	fs.Parse(args)
 
 	if fs.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: sdf branch [--stack <name>] <branch>")
+		fmt.Fprintln(os.Stderr, "usage: sdf branch [--stack <name>] [--no-prefix] <branch>")
 		os.Exit(1)
 	}
 
@@ -30,6 +32,16 @@ func RunBranch(args []string) error {
 	s, err := resolveStack(root, *stackFlag)
 	if err != nil {
 		return err
+	}
+
+	// Load config and apply prefix
+	cfg, err := cfgpkg.Load(root)
+	if err != nil {
+		return fmt.Errorf("cannot load config: %w", err)
+	}
+
+	if !*noPrefix {
+		branchName = cfgpkg.ApplyPrefix(cfg, s.StackID, branchName)
 	}
 
 	// Check if branch already exists in the stack

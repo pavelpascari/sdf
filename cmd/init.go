@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
@@ -56,6 +57,12 @@ func RunInit(args []string) error {
 
 	if err := stack.Init(root, *stackName, baseBranch); err != nil {
 		return err
+	}
+
+	// Create default config file so it's discoverable
+	cfgPath := cfgpkg.RepoPath(root)
+	if err := cfgpkg.Save(cfgPath, cfgpkg.Defaults()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
 	}
 
 	fmt.Printf("Initialized stack %q (base: %s) in %s/.sdf/\n", *stackName, baseBranch, root)

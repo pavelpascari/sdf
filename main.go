@@ -40,6 +40,8 @@ func main() {
 		exitOnErr(cmd.RunContext(args))
 	case "switch":
 		exitOnErr(cmd.RunSwitch(args))
+	case "config":
+		exitOnErr(cmd.RunConfig(args))
 	case "version", "--version", "-v":
 		fmt.Printf("sdf %s\n", version)
 	case "help", "--help", "-h":
@@ -73,7 +75,7 @@ Usage:
 Stack commands:
   init [--stack] <name>              Initialize a new stack in the current repo
   register                           Discover and register existing PR stacks
-  branch <name>                      Create a new branch in the stack
+  branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [-y] [<stack>] [--stack <name>]  Detect merged PRs, cascade rebase, push
   move <commit>...                   Move commits from current branch to parent
@@ -87,6 +89,10 @@ Context commands:
   context show              Print assembled context for current branch
   context edit              Open context doc in $EDITOR
   context update            Ask Claude to rewrite context doc
+
+Config commands:
+  config show               Display effective (merged) configuration
+  config set <key> <value>  Set a config value in repo or --global config
 
 Other:
   doctor                    Check that dependencies are available

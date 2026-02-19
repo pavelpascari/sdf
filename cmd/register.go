@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
@@ -201,6 +202,16 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 		}
 	}
 
+	// Infer prefix config from registered branch names
+	cfg := cfgpkg.Defaults()
+	if prefix, sep := inferBranchPrefix(nodes, name); prefix != "" {
+		cfg.BranchPrefix.Prefix = prefix
+		cfg.BranchPrefix.Separator = sep
+	}
+	if err := cfgpkg.Save(cfgpkg.RepoPath(root), cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+	}
+
 	// Commit the .sdf directory
 	if err := gitpkg.Add(".sdf/"); err == nil {
 		gitpkg.Commit("sdf: register existing stack " + name)
@@ -262,4 +273,31 @@ func commonPrefix(a, b string) string {
 		i++
 	}
 	return a[:i]
+}
+
+// inferBranchPrefix examines the registered branch names and tries to detect
+// a common prefix with separator. If all branches start with stackName+"/"
+// or stackName+"-", that prefix and separator are returned. Otherwise returns
+// empty strings, meaning the default (stack_id with /) will be used for new branches.
+func inferBranchPrefix(nodes []stack.Node, stackName string) (prefix, separator string) {
+	if len(nodes) == 0 {
+		return "", ""
+	}
+
+	// Check if all branches start with stackName + a separator
+	for _, sep := range []string{"/", "-"} {
+		full := stackName + sep
+		allMatch := true
+		for _, n := range nodes {
+			if !strings.HasPrefix(n.Branch, full) {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch {
+			return stackName, sep
+		}
+	}
+
+	return "", ""
 }
