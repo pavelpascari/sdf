@@ -93,7 +93,7 @@ func runInit(args []string) (string, error) {
 	}
 
 	// Load the config (may already exist with custom settings)
-	cfg, err = cfgpkg.Load(root)
+	cfg, err := cfgpkg.Load(root)
 	if err != nil {
 		cfg = cfgpkg.Defaults()
 	}

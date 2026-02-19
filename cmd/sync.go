@@ -59,18 +59,23 @@ func runSyncContinue(root string) error {
 	}
 	progress := local.SyncProgress
 
-	if !gitpkg.IsRebaseInProgress() {
-		fmt.Println("No rebase in progress. Clearing saved progress and running a fresh sync.")
+	if gitpkg.IsRebaseInProgress() {
+		fmt.Printf("Continuing rebase of %s...\n", progress.PausedAt)
+		if err := gitpkg.RebaseContinue(); err != nil {
+			return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
+		}
+		fmt.Printf("  ✓ %s rebased successfully\n", progress.PausedAt)
+	} else if gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt) {
+		// No rebase in progress but the parent tip is an ancestor of the
+		// paused branch — the user completed the rebase manually.
+		fmt.Printf("  ✓ %s was rebased (completed outside sdf)\n", progress.PausedAt)
+	} else {
+		// The parent tip is NOT an ancestor — the rebase was aborted.
+		fmt.Printf("Rebase of %s was aborted. Starting a fresh sync.\n", progress.PausedAt)
 		local.SyncProgress = nil
 		stack.SaveLocal(root, local)
 		return runSyncFull(root, "", false)
 	}
-
-	fmt.Printf("Continuing rebase of %s...\n", progress.PausedAt)
-	if err := gitpkg.RebaseContinue(); err != nil {
-		return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
-	}
-	fmt.Printf("  ✓ %s rebased successfully\n", progress.PausedAt)
 
 	s, err := stack.Load(root)
 	if err != nil {

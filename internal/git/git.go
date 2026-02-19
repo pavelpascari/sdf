@@ -142,6 +142,12 @@ func MergeBase(a, b string) (string, error) {
 	return run("merge-base", a, b)
 }
 
+// IsAncestor returns true if commit a is an ancestor of commit b.
+func IsAncestor(a, b string) bool {
+	_, err := run("merge-base", "--is-ancestor", a, b)
+	return err == nil
+}
+
 // CherryPick applies the given commits onto the current branch.
 // Mirrors `git cherry-pick <commit>...`.
 func CherryPick(commits ...string) error {
