@@ -201,7 +201,7 @@ sdf status
 
 ```
 sdf init <name>           # initialize stack, auto-detect base branch from origin HEAD
-sdf branch <name>         # create branch, register in stack, push tracking branch
+sdf branch [--no-prefix] <name>  # create branch, register in stack, push tracking branch
 sdf pr                    # gh pr create with body pre-populated from context doc
 sdf sync [<stack>]        # detect merged PRs via gh, cascade rebase, push
 sdf status [<stack>]      # show stack topology with PR state
@@ -210,6 +210,8 @@ sdf <branch>              # shorthand for switch
 sdf context show          # print assembled context for the current branch
 sdf context edit          # open context doc in $EDITOR
 sdf context update        # ask Claude to rewrite context doc based on current state
+sdf config show           # display effective (merged) configuration
+sdf config set <key> <val>  # set a value in repo config (or --global)
 ```
 
 Commands that operate on a stack (sync, status, branch) auto-detect which stack
@@ -228,6 +230,7 @@ All three dependencies (`git`, `gh`, `claude`) are version-checked at startup.
 
 ```
 .sdf/
+  config.json             # repo-level configuration (committed)
   stacks/
     auth-overhaul.json    # stack topology, PR numbers, sync state
     billing.json          # multiple stacks can coexist
@@ -326,6 +329,45 @@ Downstream branches (auth/ui-login) will call POST /sessions and GET /sessions/:
 [auth/db-schema context]
 [auth/session-api context]   ← current
 ```
+
+-----
+
+## Configuration
+
+`sdf` uses a two-tier configuration model. Values are loaded from two files and merged field-by-field, with repo-level values taking precedence over global defaults:
+
+| Level | Path | Committed |
+|-------|------|-----------|
+| Global | `~/.config/sdf/config.json` | No (user-specific) |
+| Repo | `.sdf/config.json` | Yes (shared with team) |
+
+Missing files are not errors — the tool works out of the box with sensible defaults.
+
+### Branch Prefix Enforcement
+
+When `sdf branch <name>` creates a branch, it auto-prefixes the name with the stack ID and a separator (default `/`). This is controlled by the `branch_prefix` config block:
+
+```json
+{
+  "branch_prefix": {
+    "enabled": true,
+    "prefix": "",
+    "separator": "/"
+  }
+}
+```
+
+- **enabled** (default `true`) — set to `false` to disable auto-prefixing
+- **prefix** (default: stack ID) — override the prefix string; when empty, the stack's `stack_id` is used
+- **separator** (default `/`) — character between prefix and branch name
+
+For example, in a stack with `stack_id = "auth"`, `sdf branch db-schema` creates `auth/db-schema`. The `--no-prefix` flag on `sdf branch` skips prefixing for a single invocation without changing config.
+
+`sdf init` and `sdf register` create a default `.sdf/config.json` so the file is discoverable immediately.
+
+### Merge Semantics
+
+When both files exist, non-zero/non-nil fields in the repo config override the corresponding global fields. Unset fields in the repo config fall through to global values. After merging, any remaining unset fields receive hardcoded defaults (`enabled=true`, `separator="/"`).
 
 -----
 
