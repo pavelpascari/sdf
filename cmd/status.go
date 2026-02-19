@@ -37,6 +37,10 @@ func RunStatus(args []string) error {
 		return nil
 	}
 
+	// Fetch and fast-forward the base branch so sync checks are accurate
+	gitpkg.FetchAll()
+	gitpkg.FastForward(s.Base)
+
 	// Try to get current branch for highlighting
 	currentBranch, _ := gitpkg.CurrentBranch()
 
@@ -52,6 +56,13 @@ func RunStatus(args []string) error {
 		if err == nil {
 			for _, pr := range prs {
 				prMap[pr.HeadRefName] = pr
+				// Update the stack node so ParentBranch() skips merged nodes
+				if node := s.FindNode(pr.HeadRefName); node != nil {
+					node.PR = pr.Number
+					if strings.ToUpper(pr.State) == "MERGED" {
+						node.Status = "merged"
+					}
+				}
 			}
 		}
 	}
