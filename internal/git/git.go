@@ -32,7 +32,7 @@ func RepoRoot() (string, error) {
 
 // IsClean returns true if the working tree has no uncommitted changes.
 func IsClean() (bool, error) {
-	out, err := run("status", "--porcelain")
+	out, err := run("status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return false, err
 	}
@@ -66,6 +66,29 @@ func PushNew(branch string) error {
 // FetchAll fetches from origin.
 func FetchAll() error {
 	_, err := run("fetch", "origin")
+	return err
+}
+
+// FastForward updates a local branch to match its remote tracking branch
+// without checking it out. Uses git update-ref to move the branch pointer.
+func FastForward(branch string) error {
+	remote := "origin/" + branch
+	remoteTip, err := RevParse(remote)
+	if err != nil {
+		return err
+	}
+	localTip, err := RevParse(branch)
+	if err != nil {
+		return err
+	}
+	if localTip == remoteTip {
+		return nil
+	}
+	// Only fast-forward if the local tip is an ancestor of remote
+	if !IsAncestor(localTip, remote) {
+		return fmt.Errorf("%s has diverged from %s", branch, remote)
+	}
+	_, err = run("update-ref", "refs/heads/"+branch, remoteTip)
 	return err
 }
 
@@ -140,6 +163,12 @@ func Log(from, to string) (string, error) {
 // MergeBase returns the merge base between two refs.
 func MergeBase(a, b string) (string, error) {
 	return run("merge-base", a, b)
+}
+
+// IsAncestor returns true if commit a is an ancestor of commit b.
+func IsAncestor(a, b string) bool {
+	_, err := run("merge-base", "--is-ancestor", a, b)
+	return err == nil
 }
 
 // CherryPick applies the given commits onto the current branch.

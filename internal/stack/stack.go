@@ -283,7 +283,13 @@ func (s *Stack) ParentBranch(branch string) string {
 	if idx <= 0 {
 		return s.Base
 	}
-	return s.Nodes[idx-1].Branch
+	// Skip over merged nodes — their changes are already in the base branch
+	for j := idx - 1; j >= 0; j-- {
+		if s.Nodes[j].Status != "merged" {
+			return s.Nodes[j].Branch
+		}
+	}
+	return s.Base
 }
 
 // Init creates the .sdf directory structure and writes an initial stack file.

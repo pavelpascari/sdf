@@ -157,13 +157,13 @@ func TestComputeSyncPlan_MergedHead(t *testing.T) {
 
 	plan := computeSyncPlan(s)
 
-	// Should have: remove branchA, rebase branchB onto main, push branchB
-	removes := filterActions(plan, "remove-merged")
+	// Should have: skip branchA (merged), rebase branchB onto main, push branchB
+	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
 
-	if len(removes) != 1 || removes[0].branch != "branchA" {
-		t.Errorf("expected 1 remove-merged for branchA, got %v", removes)
+	if len(skips) != 1 || skips[0].branch != "branchA" {
+		t.Errorf("expected 1 skip-merged for branchA, got %v", skips)
 	}
 
 	// branchB should be rebased onto main (since branchA merged)
@@ -272,12 +272,12 @@ func TestComputeSyncPlan_CascadeFromMerge(t *testing.T) {
 
 	plan := computeSyncPlan(s)
 
-	removes := filterActions(plan, "remove-merged")
+	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
 
-	if len(removes) != 1 {
-		t.Errorf("expected 1 remove-merged, got %d", len(removes))
+	if len(skips) != 1 {
+		t.Errorf("expected 1 skip-merged, got %d", len(skips))
 	}
 
 	// Both branchB and branchC should be rebased
@@ -367,16 +367,16 @@ func TestComputeSyncPlan_MergedTail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mark the last node (branchC) as merged → just remove, no downstream to rebase
+	// Mark the last node (branchC) as merged → just skip, no downstream to rebase
 	s.Nodes[2].Status = "merged"
 
 	plan := computeSyncPlan(s)
 
-	removes := filterActions(plan, "remove-merged")
+	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
 
-	if len(removes) != 1 || removes[0].branch != "branchC" {
-		t.Errorf("expected 1 remove-merged for branchC, got %v", removes)
+	if len(skips) != 1 || skips[0].branch != "branchC" {
+		t.Errorf("expected 1 skip-merged for branchC, got %v", skips)
 	}
 	if len(rebases) != 0 {
 		t.Errorf("expected no rebases when tail node is merged, got %d: %v",
@@ -392,34 +392,28 @@ func TestComputeSyncPlan_MultipleMerged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mark branchA and branchB as merged → both removed,
-	// branchC gets rebased onto main
+	// Mark branchA and branchB as merged → both skipped,
+	// branchC gets rebased onto main (ParentBranch skips merged nodes)
 	s.Nodes[0].Status = "merged"
 	s.Nodes[1].Status = "merged"
 
 	plan := computeSyncPlan(s)
 
-	removes := filterActions(plan, "remove-merged")
+	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
 
-	if len(removes) != 2 {
-		t.Errorf("expected 2 remove-merged, got %d", len(removes))
+	if len(skips) != 2 {
+		t.Errorf("expected 2 skip-merged, got %d", len(skips))
 	}
 
-	// branchC should end up rebased onto main (both A and B are gone)
-	// The algorithm processes A first: remove A, rebase B onto main.
-	// Then B is processed: B is merged, remove B, rebase C onto main.
-	found := false
-	for _, r := range rebases {
-		if r.branch == "branchC" && r.onto == "main" {
-			found = true
-			break
-		}
+	// branchC should be rebased onto main (both A and B are merged, skipped)
+	if len(rebases) < 1 {
+		t.Fatal("expected at least 1 rebase")
 	}
-	if !found {
-		t.Errorf("expected rebase branchC onto main, got rebases: %v",
-			actionBranches(rebases))
+	if rebases[0].branch != "branchC" || rebases[0].onto != "main" {
+		t.Errorf("expected rebase branchC onto main, got %s onto %s",
+			rebases[0].branch, rebases[0].onto)
 	}
 
 	if len(pushes) < 1 {
@@ -436,24 +430,24 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 	}
 
 	// Mark branchB (middle) as merged → branchC rebases onto branchA
+	// (ParentBranch skips merged branchB, lands on branchA)
 	s.Nodes[1].Status = "merged"
 
 	plan := computeSyncPlan(s)
 
-	removes := filterActions(plan, "remove-merged")
+	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
 
-	if len(removes) != 1 || removes[0].branch != "branchB" {
-		t.Errorf("expected remove-merged for branchB, got %v", removes)
+	if len(skips) != 1 || skips[0].branch != "branchB" {
+		t.Errorf("expected skip-merged for branchB, got %v", skips)
 	}
 
-	// branchC should be rebased onto main (that's what the algorithm does:
-	// the new base after a merged node is always s.Base)
+	// branchC should be rebased onto branchA (skipping merged branchB)
 	if len(rebases) < 1 {
 		t.Fatal("expected at least 1 rebase")
 	}
-	if rebases[0].branch != "branchC" || rebases[0].onto != "main" {
-		t.Errorf("expected rebase branchC onto main, got %s onto %s",
+	if rebases[0].branch != "branchC" || rebases[0].onto != "branchA" {
+		t.Errorf("expected rebase branchC onto branchA, got %s onto %s",
 			rebases[0].branch, rebases[0].onto)
 	}
 }
@@ -462,7 +456,7 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 
 func TestPrintSyncPlan_Output(t *testing.T) {
 	plan := []syncAction{
-		{kind: "remove-merged", branch: "feat/auth"},
+		{kind: "skip-merged", branch: "feat/auth"},
 		{kind: "rebase", branch: "feat/api", onto: "main"},
 		{kind: "push", branch: "feat/api"},
 		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
@@ -488,7 +482,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		contains string
 	}{
 		{"header", "Sync plan:"},
-		{"merged", "feat/auth is merged (remove from stack)"},
+		{"merged", "feat/auth is merged"},
 		{"rebase", "rebase feat/api onto main"},
 		{"push", "force-push feat/api"},
 		{"pr-base", "update PR #42 base to main"},
