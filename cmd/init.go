@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -11,11 +12,32 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
+// InitResult is the structured output of sdf init when --json is used.
+type InitResult struct {
+	Stack      string `json:"stack"`
+	Base       string `json:"base"`
+	Branch     string `json:"branch"`
+	ContextDoc string `json:"context_doc"`
+	Pushed     bool   `json:"pushed"`
+}
+
 func RunInit(args []string) error {
+	_, err := runInit(args)
+	return err
+}
+
+// RunInitWithOutput runs init and returns the JSON output string when --json
+// is used, or the empty string for human output.
+func RunInitWithOutput(args []string) (string, error) {
+	return runInit(args)
+}
+
+func runInit(args []string) (string, error) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	stackName := fs.String("stack", "", "name for the stack (required)")
 	base := fs.String("base", "", "base branch (default: auto-detected from origin HEAD)")
 	branchFlag := fs.String("branch", "", "name for the first branch (default: stack name)")
+	jsonFlag := fs.Bool("json", false, "output result as JSON")
 	fs.Parse(args)
 
 	if *stackName == "" {
@@ -23,15 +45,15 @@ func RunInit(args []string) error {
 		if fs.NArg() > 0 {
 			*stackName = fs.Arg(0)
 		} else {
-			fmt.Fprintln(os.Stderr, "usage: sdf init [--base <branch>] [--branch <name>] <stack-name>")
-			fmt.Fprintln(os.Stderr, "       sdf init --stack <name> [--base <branch>] [--branch <name>]")
+			fmt.Fprintln(os.Stderr, "usage: sdf init [--base <branch>] [--branch <name>] [--json] <stack-name>")
+			fmt.Fprintln(os.Stderr, "       sdf init --stack <name> [--base <branch>] [--branch <name>] [--json]")
 			os.Exit(1)
 		}
 	}
 
 	root, err := gitpkg.RepoRoot()
 	if err != nil {
-		return fmt.Errorf("not inside a git repository: %w", err)
+		return "", fmt.Errorf("not inside a git repository: %w", err)
 	}
 
 	// Migrate legacy layout if needed
@@ -39,7 +61,7 @@ func RunInit(args []string) error {
 
 	// Check if a stack with this name already exists
 	if _, err := stack.LoadStack(root, *stackName); err == nil {
-		return fmt.Errorf("stack %q already exists in %s", *stackName, root)
+		return "", fmt.Errorf("stack %q already exists in %s", *stackName, root)
 	}
 
 	// Resolve the base branch
@@ -47,25 +69,27 @@ func RunInit(args []string) error {
 	if baseBranch == "" {
 		detected, err := gitpkg.DefaultBranch()
 		if err != nil {
-			return fmt.Errorf("cannot auto-detect default branch: %w\nSpecify one explicitly with --base <branch>", err)
+			return "", fmt.Errorf("cannot auto-detect default branch: %w\nSpecify one explicitly with --base <branch>", err)
 		}
 		baseBranch = detected
 	}
 
 	// Validate the base branch exists
 	if !gitpkg.BranchExists(baseBranch) && !gitpkg.BranchExists("origin/"+baseBranch) {
-		return fmt.Errorf("base branch %q does not exist — check the name or use --base <branch>", baseBranch)
+		return "", fmt.Errorf("base branch %q does not exist — check the name or use --base <branch>", baseBranch)
 	}
 
 	if err := stack.Init(root, *stackName, baseBranch); err != nil {
-		return err
+		return "", err
 	}
 
 	// Create default config file so it's discoverable
 	cfg := cfgpkg.Defaults()
 	cfgPath := cfgpkg.RepoPath(root)
 	if err := cfgpkg.Save(cfgPath, cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+		if !*jsonFlag {
+			fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+		}
 	}
 
 	// Load the config (may already exist with custom settings)
@@ -84,18 +108,18 @@ func RunInit(args []string) error {
 	// Get the current tip of the base for tracking
 	baseTip, err := gitpkg.RevParse(baseBranch)
 	if err != nil {
-		return fmt.Errorf("cannot resolve base branch %s: %w", baseBranch, err)
+		return "", fmt.Errorf("cannot resolve base branch %s: %w", baseBranch, err)
 	}
 
 	// Create the git branch
 	if err := gitpkg.CreateBranch(branchName); err != nil {
-		return fmt.Errorf("cannot create branch: %w", err)
+		return "", fmt.Errorf("cannot create branch: %w", err)
 	}
 
 	// Load the stack and add the node
 	s, err := stack.LoadStack(root, *stackName)
 	if err != nil {
-		return fmt.Errorf("cannot load stack after init: %w", err)
+		return "", fmt.Errorf("cannot load stack after init: %w", err)
 	}
 	s.Nodes = append(s.Nodes, stack.Node{
 		Branch:  branchName,
@@ -103,26 +127,48 @@ func RunInit(args []string) error {
 		BaseTip: baseTip,
 	})
 	if err := stack.Save(root, s); err != nil {
-		return err
+		return "", err
 	}
 
 	// Create stub context document
 	if err := ctxpkg.CreateStub(root, branchName, baseBranch); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not create context stub: %v\n", err)
+		if !*jsonFlag {
+			fmt.Fprintf(os.Stderr, "warning: could not create context stub: %v\n", err)
+		}
 	}
 
 	// Push tracking branch to origin
 	pushed := true
 	if err := gitpkg.PushNew(branchName); err != nil {
 		pushed = false
-		fmt.Fprintf(os.Stderr, "warning: could not push to origin: %v\n", err)
-		fmt.Fprintln(os.Stderr, "  You can push later with: git push -u origin", branchName)
+		if !*jsonFlag {
+			fmt.Fprintf(os.Stderr, "warning: could not push to origin: %v\n", err)
+			fmt.Fprintln(os.Stderr, "  You can push later with: git push -u origin", branchName)
+		}
 	}
-	_ = pushed // used by --json in a future branch
+
+	contextDoc := fmt.Sprintf(".sdf/context/%s.md", branchName)
+
+	if *jsonFlag {
+		result := InitResult{
+			Stack:      *stackName,
+			Base:       baseBranch,
+			Branch:     branchName,
+			ContextDoc: contextDoc,
+			Pushed:     pushed,
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("cannot marshal result: %w", err)
+		}
+		output := string(data)
+		fmt.Println(output)
+		return output, nil
+	}
 
 	fmt.Printf("Initialized stack %q (base: %s)\n", *stackName, baseBranch)
 	fmt.Printf("Created branch %q (based on %s)\n", branchName, baseBranch)
-	fmt.Printf("Context doc: .sdf/context/%s.md\n", branchName)
+	fmt.Printf("Context doc: %s\n", contextDoc)
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  sdf context edit     Edit the context doc for this branch")
@@ -130,5 +176,5 @@ func RunInit(args []string) error {
 	fmt.Println("  sdf branch <name>    Add another branch to the stack")
 	fmt.Println("  sdf status           View stack topology")
 
-	return nil
+	return "", nil
 }

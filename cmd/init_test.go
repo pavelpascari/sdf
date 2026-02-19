@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,5 +153,69 @@ func TestInit_RejectsExistingStack(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("expected 'already exists' error, got: %s", err)
+	}
+}
+
+func TestInit_JSONOutput(t *testing.T) {
+	initTestRepo(t)
+
+	output, err := RunInitWithOutput([]string{"--base", "main", "--json", "my-feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var result InitResult
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("expected valid JSON, got parse error: %v\noutput: %s", err, output)
+	}
+
+	if result.Stack != "my-feature" {
+		t.Errorf("expected stack my-feature, got %s", result.Stack)
+	}
+	if result.Base != "main" {
+		t.Errorf("expected base main, got %s", result.Base)
+	}
+	if result.Branch != "my-feature/my-feature" {
+		t.Errorf("expected branch my-feature/my-feature, got %s", result.Branch)
+	}
+	if result.ContextDoc != ".sdf/context/my-feature/my-feature.md" {
+		t.Errorf("expected context doc path .sdf/context/my-feature/my-feature.md, got %s", result.ContextDoc)
+	}
+}
+
+func TestInit_JSONOutputWithCustomBranch(t *testing.T) {
+	initTestRepo(t)
+
+	output, err := RunInitWithOutput([]string{"--base", "main", "--branch", "db-schema", "--json", "my-feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var result InitResult
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("expected valid JSON, got parse error: %v\noutput: %s", err, output)
+	}
+
+	if result.Branch != "my-feature/db-schema" {
+		t.Errorf("expected branch my-feature/db-schema, got %s", result.Branch)
+	}
+}
+
+func TestInit_JSONOutputNotPushed(t *testing.T) {
+	// Test repo has no origin, so pushed should be false
+	initTestRepo(t)
+
+	output, err := RunInitWithOutput([]string{"--base", "main", "--json", "my-feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var result InitResult
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("expected valid JSON: %v", err)
+	}
+
+	if result.Pushed {
+		t.Error("expected pushed=false for repo without origin")
 	}
 }
