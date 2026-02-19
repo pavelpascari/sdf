@@ -42,9 +42,7 @@ func main() {
 		exitOnErr(cmd.RunSwitch(args))
 	case "config":
 		exitOnErr(cmd.RunConfig(args))
-	case "watch":
-		exitOnErr(cmd.RunWatch(args))
-	case "version", "--version", "-v":
+case "version", "--version", "-v":
 		fmt.Printf("sdf %s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
@@ -80,8 +78,7 @@ Stack commands:
   branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [-y] [--continue] [--stack <name>]  Detect merged PRs, cascade rebase, push
-  watch [--interval 2m]              Background daemon to detect stale branches
-  move <commit>...                   Move commits from current branch to parent
+move <commit>...                   Move commits from current branch to parent
   pr                                 Create a GitHub PR for the current branch
 
 Navigation:

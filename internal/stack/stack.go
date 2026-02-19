@@ -41,7 +41,6 @@ const LocalFile = "local.json"
 // Each subsystem owns its own field — they don't clobber each other.
 type LocalState struct {
 	SyncProgress *SyncProgress `json:"sync_progress,omitempty"`
-	Watch        *WatchInfo    `json:"watch,omitempty"`
 }
 
 // SyncProgress tracks a paused sync so `sdf sync --continue` can resume.
@@ -50,21 +49,6 @@ type SyncProgress struct {
 	ResumeIndex    int    `json:"resume_index"`     // index in Nodes to resume from
 	OriginalBranch string `json:"original_branch"`  // branch to restore when done
 	ParentTip      string `json:"parent_tip"`       // the parent tip we were rebasing onto
-}
-
-// WatchInfo holds the last watch check results.
-type WatchInfo struct {
-	LastCheck string      `json:"last_check,omitempty"`
-	Stale     []StaleRef  `json:"stale,omitempty"`
-	MergedPRs []string    `json:"merged_prs,omitempty"`
-}
-
-// StaleRef records a branch whose parent has moved on the remote.
-type StaleRef struct {
-	Branch    string `json:"branch"`
-	Parent    string `json:"parent"`
-	LocalTip  string `json:"local_tip"`
-	RemoteTip string `json:"remote_tip"`
 }
 
 // LoadLocal reads .sdf/local.json, returning an empty state if it doesn't exist.
