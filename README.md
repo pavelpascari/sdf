@@ -78,29 +78,26 @@ make install
 ## Quick start
 
 ```sh
-# Initialize a stack (auto-detects base branch from origin HEAD)
-sdf init users-feature
-
-# Create the first branch (chains from the base branch)
-sdf branch users/db-schema
+# Initialize a stack and create the first branch in one step
+sdf init users-feature --branch db-schema
 # ... write code ...
 sdf context edit          # document intent, decisions, constraints
 sdf pr                    # create PR with context doc as body
 
 # Stack another branch on top
-sdf branch users/repository
+sdf branch repository
 # ... write code ...
 sdf context edit
 sdf pr
 
 # Add a third layer
-sdf branch users/controller
+sdf branch controller
 # ... write code ...
 sdf context edit
 sdf pr
 ```
 
-You now have three PRs chained as `main <- db-schema <- repository <- controller`.
+You now have three PRs chained as `main <- users-feature/db-schema <- users-feature/repository <- users-feature/controller`.
 
 When the first PR merges:
 
@@ -115,12 +112,10 @@ This rebases the remaining branches onto `main`, pushes them, and updates their 
 You can have multiple independent stacks in the same repo:
 
 ```sh
-sdf init auth-feature
-sdf branch auth/db-schema
+sdf init auth-feature --branch login
 # ... work on auth ...
 
-sdf init billing-feature
-sdf branch billing/models
+sdf init billing-feature --branch models
 # ... work on billing ...
 
 # Sync a specific stack
@@ -141,9 +136,9 @@ When you're on a branch that belongs to a stack, commands like `sdf sync`, `sdf 
 
 ```
 Stack commands:
-  init [--base <branch>] <name>      Initialize a new stack (base auto-detected)
+  init [flags] <name>                Initialize a stack and create the first branch
   register                           Discover and register existing PR stacks
-  branch [--no-prefix] <name>        Create a new branch in the stack
+  branch [--no-prefix] <name>        Add another branch to the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [<stack>] [--stack <name>]    Detect merged PRs, cascade rebase, push
   move <commit>...                   Move commits from current branch to parent
@@ -170,14 +165,35 @@ Other:
 
 ## How `sdf init` works
 
-`sdf init <name>` creates a stack rooted at a **base branch**. The base branch is where PRs ultimately merge into — typically `main` or `master`.
+`sdf init <name>` creates a stack and its first branch in one step:
 
-- **If `--base` is provided**, that branch is used as the base
-- **Otherwise**, the base is auto-detected from `origin/HEAD` (falling back to `main` or `master` if they exist)
-- **The base branch is validated** — init fails if the branch doesn't exist
-- **Your current branch doesn't matter** — the stack is always rooted at the base branch, not wherever you happen to be checked out. All branches created with `sdf branch` chain from the base (or from the last branch in the stack)
+```
+sdf init <name> [--base <branch>] [--branch <name>] [--json]
+```
 
-This means `sdf init my-feature` does the same thing whether you run it from `main`, `develop`, or any other branch.
+- **Stack + branch** — creates the `.sdf/` metadata, a git branch, a context doc stub, and pushes to origin
+- **Branch name** defaults to the stack name. Override with `--branch <name>`
+- **Base branch** is auto-detected from `origin/HEAD`. Override with `--base <branch>`
+- **Branch prefix** is applied automatically (e.g. `sdf init users --branch db-schema` creates `users/db-schema`)
+- **Your current branch doesn't matter** — the stack is always rooted at the base branch. After init, you're checked out on the new branch
+
+### Machine-readable output
+
+Use `--json` for scripting or AI agent integration:
+
+```sh
+sdf init my-feature --json
+```
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "branch": "my-feature/my-feature",
+  "context_doc": ".sdf/context/my-feature/my-feature.md",
+  "pushed": true
+}
+```
 
 ## How sync works
 
