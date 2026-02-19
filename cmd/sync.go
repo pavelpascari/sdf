@@ -205,50 +205,6 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 
 		if node.Status == "merged" {
 			fmt.Printf("  ✓ %s is merged\n", node.Branch)
-
-			if i+1 < len(s.Nodes) {
-				next := &s.Nodes[i+1]
-				newBase := s.Base
-
-				if i+1 >= startIndex {
-					fmt.Printf("  → rebasing %s onto %s...\n", next.Branch, newBase)
-
-					oldBase := node.Branch
-					if err := gitpkg.RebaseOnto(newBase, oldBase, next.Branch); err != nil {
-						action, err := promptOnConflict(root, s, next.Branch, originalBranch, i+1, err)
-						if action == conflictPaused {
-							return err
-						}
-						if action == conflictAborted {
-							gitpkg.Checkout(originalBranch)
-							return err
-						}
-						if action == conflictFailed {
-							failed[next.Branch] = err
-						}
-					}
-
-					if _, didFail := failed[next.Branch]; !didFail {
-						newTip, _ := gitpkg.RevParse(newBase)
-						next.BaseTip = newTip
-
-						fmt.Printf("  → pushing %s...\n", next.Branch)
-						if err := gitpkg.Push(next.Branch); err != nil {
-							fmt.Fprintf(os.Stderr, "  warning: push failed for %s: %v\n", next.Branch, err)
-						}
-
-						if next.PR > 0 && ghpkg.Available() {
-							fmt.Printf("  → updating PR #%d base to %s\n", next.PR, newBase)
-							if err := ghpkg.PREditBase(next.PR, newBase); err != nil {
-								fmt.Fprintf(os.Stderr, "  warning: could not update PR base: %v\n", err)
-							}
-						}
-					}
-				}
-			}
-
-			s.Nodes = append(s.Nodes[:i], s.Nodes[i+1:]...)
-			i--
 			modified = true
 			continue
 		}
@@ -262,10 +218,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 			continue
 		}
 
-		parent := s.Base
-		if i > 0 {
-			parent = s.Nodes[i-1].Branch
-		}
+		parent := s.ParentBranch(node.Branch)
 
 		currentParentTip, err := gitpkg.RevParse(parent)
 		if err != nil {
@@ -273,7 +226,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 		}
 
 		if node.BaseTip != "" && currentParentTip != node.BaseTip {
-			fmt.Printf("  → rebasing %s onto updated %s...\n", node.Branch, parent)
+			fmt.Printf("  → rebasing %s onto %s...\n", node.Branch, parent)
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
 				action, err := promptOnConflict(root, s, node.Branch, originalBranch, i, err)
@@ -347,34 +300,11 @@ func computeSyncPlan(s *stack.Stack) []syncAction {
 		node := nodes[i]
 
 		if node.Status == "merged" {
-			actions = append(actions, syncAction{kind: "remove-merged", branch: node.Branch})
-
-			if i+1 < len(nodes) {
-				next := nodes[i+1]
-				newBase := s.Base
-
-				actions = append(actions, syncAction{kind: "rebase", branch: next.Branch, onto: newBase})
-				rebased[next.Branch] = true
-				actions = append(actions, syncAction{kind: "push", branch: next.Branch})
-
-				if next.PR > 0 && ghpkg.Available() {
-					actions = append(actions, syncAction{kind: "update-pr-base", branch: next.Branch, pr: next.PR, onto: newBase})
-				}
-
-				if tip, err := gitpkg.RevParse(newBase); err == nil {
-					nodes[i+1].BaseTip = tip
-				}
-			}
-
-			nodes = append(nodes[:i], nodes[i+1:]...)
-			i--
+			actions = append(actions, syncAction{kind: "skip-merged", branch: node.Branch})
 			continue
 		}
 
-		parent := s.Base
-		if i > 0 {
-			parent = nodes[i-1].Branch
-		}
+		parent := s.ParentBranch(node.Branch)
 
 		needsRebase := rebased[parent]
 		if !needsRebase {
@@ -402,8 +332,8 @@ func printSyncPlan(plan []syncAction) {
 	fmt.Println("\nSync plan:")
 	for _, a := range plan {
 		switch a.kind {
-		case "remove-merged":
-			fmt.Printf("  ✓ %s is merged (remove from stack)\n", a.branch)
+		case "skip-merged":
+			fmt.Printf("  ✓ %s is merged\n", a.branch)
 		case "rebase":
 			fmt.Printf("  → rebase %s onto %s\n", a.branch, a.onto)
 		case "push":
