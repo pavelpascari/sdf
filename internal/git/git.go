@@ -32,7 +32,7 @@ func RepoRoot() (string, error) {
 
 // IsClean returns true if the working tree has no uncommitted changes.
 func IsClean() (bool, error) {
-	out, err := run("status", "--porcelain")
+	out, err := run("status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return false, err
 	}
