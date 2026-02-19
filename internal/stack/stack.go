@@ -37,6 +37,65 @@ const StackFile = "stack.json"
 // LocalFile is the filename for ephemeral local state.
 const LocalFile = "local.json"
 
+// LocalState is the root structure of .sdf/local.json.
+// Each subsystem owns its own field — they don't clobber each other.
+type LocalState struct {
+	SyncProgress *SyncProgress `json:"sync_progress,omitempty"`
+	Watch        *WatchInfo    `json:"watch,omitempty"`
+}
+
+// SyncProgress tracks a paused sync so `sdf sync --continue` can resume.
+type SyncProgress struct {
+	PausedAt       string `json:"paused_at"`       // branch that had conflicts
+	ResumeIndex    int    `json:"resume_index"`     // index in Nodes to resume from
+	OriginalBranch string `json:"original_branch"`  // branch to restore when done
+	ParentTip      string `json:"parent_tip"`       // the parent tip we were rebasing onto
+}
+
+// WatchInfo holds the last watch check results.
+type WatchInfo struct {
+	LastCheck string      `json:"last_check,omitempty"`
+	Stale     []StaleRef  `json:"stale,omitempty"`
+	MergedPRs []string    `json:"merged_prs,omitempty"`
+}
+
+// StaleRef records a branch whose parent has moved on the remote.
+type StaleRef struct {
+	Branch    string `json:"branch"`
+	Parent    string `json:"parent"`
+	LocalTip  string `json:"local_tip"`
+	RemoteTip string `json:"remote_tip"`
+}
+
+// LoadLocal reads .sdf/local.json, returning an empty state if it doesn't exist.
+func LoadLocal(root string) (*LocalState, error) {
+	path := filepath.Join(root, SDFDir, LocalFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &LocalState{}, nil
+		}
+		return nil, fmt.Errorf("cannot read %s: %w", path, err)
+	}
+	var ls LocalState
+	if err := json.Unmarshal(data, &ls); err != nil {
+		// Corrupted file — start fresh
+		return &LocalState{}, nil
+	}
+	return &ls, nil
+}
+
+// SaveLocal writes .sdf/local.json.
+func SaveLocal(root string, ls *LocalState) error {
+	path := filepath.Join(root, SDFDir, LocalFile)
+	data, err := json.MarshalIndent(ls, "", "  ")
+	if err != nil {
+		return fmt.Errorf("cannot marshal local state: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0644)
+}
+
 // FindRoot walks up from the current directory to find the repo root
 // containing a .sdf directory (with either stacks/ or legacy stack.json).
 func FindRoot() (string, error) {

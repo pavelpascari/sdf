@@ -212,11 +212,6 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 		fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
 	}
 
-	// Commit the .sdf directory
-	if err := gitpkg.Add(".sdf/"); err == nil {
-		gitpkg.Commit("sdf: register existing stack " + name)
-	}
-
 	fmt.Printf("\nRegistered stack %q with %d branches (base: %s)\n\n", name, len(nodes), ds.Base)
 	for i, node := range nodes {
 		prefix := "├─"

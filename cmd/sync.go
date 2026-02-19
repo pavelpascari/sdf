@@ -114,61 +114,64 @@ func RunSync(args []string) error {
 
 	fmt.Println()
 
-	// Execute: process merged nodes and cascade rebases
+	// Execute: process merged nodes and cascade rebases.
+	// Partial recovery: if a branch fails, record it and skip its dependents
+	// instead of aborting the entire sync.
 	modified := false
+	failed := make(map[string]error) // branch → error
+
 	for i := 0; i < len(s.Nodes); i++ {
 		node := &s.Nodes[i]
 
 		if node.Status == "merged" {
-			// This node is merged — the next node needs to rebase
 			fmt.Printf("  ✓ %s is merged\n", node.Branch)
 
-			// If there's a next node, rebase it
 			if i+1 < len(s.Nodes) {
 				next := &s.Nodes[i+1]
 				newBase := s.Base
 
-				// The new base for the node after a merged node is the stack base
-				// (since the merged node's commits are now in the base)
 				fmt.Printf("  → rebasing %s onto %s...\n", next.Branch, newBase)
 
 				oldBase := node.Branch
 				if err := gitpkg.RebaseOnto(newBase, oldBase, next.Branch); err != nil {
-					// Rebase conflict
 					if err := handleConflict(root, s, next.Branch, err); err != nil {
-						// Restore original branch on failure
-						gitpkg.Checkout(originalBranch)
-						return fmt.Errorf("rebase of %s failed: %w", next.Branch, err)
+						fmt.Fprintf(os.Stderr, "  ✗ rebase of %s failed: %v\n", next.Branch, err)
+						failed[next.Branch] = err
+						// Still remove the merged node — it's merged regardless
 					}
 				}
 
-				// Update base tip
-				newTip, _ := gitpkg.RevParse(newBase)
-				next.BaseTip = newTip
+				if _, didFail := failed[next.Branch]; !didFail {
+					newTip, _ := gitpkg.RevParse(newBase)
+					next.BaseTip = newTip
 
-				// Push the rebased branch
-				fmt.Printf("  → pushing %s...\n", next.Branch)
-				if err := gitpkg.Push(next.Branch); err != nil {
-					fmt.Fprintf(os.Stderr, "  warning: push failed for %s: %v\n", next.Branch, err)
-				}
+					fmt.Printf("  → pushing %s...\n", next.Branch)
+					if err := gitpkg.Push(next.Branch); err != nil {
+						fmt.Fprintf(os.Stderr, "  warning: push failed for %s: %v\n", next.Branch, err)
+					}
 
-				// Update PR base in GitHub
-				if next.PR > 0 && ghpkg.Available() {
-					fmt.Printf("  → updating PR #%d base to %s\n", next.PR, newBase)
-					if err := ghpkg.PREditBase(next.PR, newBase); err != nil {
-						fmt.Fprintf(os.Stderr, "  warning: could not update PR base: %v\n", err)
+					if next.PR > 0 && ghpkg.Available() {
+						fmt.Printf("  → updating PR #%d base to %s\n", next.PR, newBase)
+						if err := ghpkg.PREditBase(next.PR, newBase); err != nil {
+							fmt.Fprintf(os.Stderr, "  warning: could not update PR base: %v\n", err)
+						}
 					}
 				}
 			}
 
 			// Remove the merged node
 			s.Nodes = append(s.Nodes[:i], s.Nodes[i+1:]...)
-			i-- // Adjust index after removal
+			i--
 			modified = true
 			continue
 		}
 
-		// Check if this non-merged node needs rebasing onto its parent
+		// Skip this node if it depends on a branch that failed.
+		if isBlocked(s, i, failed) {
+			fmt.Printf("  ⊘ skipping %s — depends on a branch that failed to rebase\n", node.Branch)
+			continue
+		}
+
 		parent := s.Base
 		if i > 0 {
 			parent = s.Nodes[i-1].Branch
@@ -184,21 +187,20 @@ func RunSync(args []string) error {
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
 				if err := handleConflict(root, s, node.Branch, err); err != nil {
-					gitpkg.Checkout(originalBranch)
-					return fmt.Errorf("rebase of %s failed: %w", node.Branch, err)
+					fmt.Fprintf(os.Stderr, "  ✗ rebase of %s failed: %v\n", node.Branch, err)
+					failed[node.Branch] = err
+					continue
 				}
 			}
 
 			node.BaseTip = currentParentTip
 			modified = true
 
-			// Push the rebased branch
 			fmt.Printf("  → pushing %s...\n", node.Branch)
 			if err := gitpkg.Push(node.Branch); err != nil {
 				fmt.Fprintf(os.Stderr, "  warning: push failed for %s: %v\n", node.Branch, err)
 			}
 
-			// Update PR base if needed
 			if node.PR > 0 && ghpkg.Available() {
 				fmt.Printf("  → updating PR #%d base to %s\n", node.PR, parent)
 				if err := ghpkg.PREditBase(node.PR, parent); err != nil {
@@ -208,24 +210,31 @@ func RunSync(args []string) error {
 		}
 	}
 
+	// Always save — even partial progress is worth keeping
 	if modified {
-		// Save updated stack
 		if err := stack.Save(root, s); err != nil {
 			return fmt.Errorf("cannot save stack: %w", err)
 		}
-
-		// Commit the updated stack file
-		if err := gitpkg.Add(stack.StackRelPath(s)); err == nil {
-			gitpkg.Commit("sdf: update stack after sync")
-		}
-
-		fmt.Println("\nSync complete. Stack updated.")
-	} else {
-		fmt.Println("\nEverything is in sync.")
 	}
 
 	// Restore original branch
 	gitpkg.Checkout(originalBranch)
+
+	// Report results
+	if len(failed) > 0 {
+		fmt.Printf("\nSync partially complete. %d branch(es) failed:\n", len(failed))
+		for branch, err := range failed {
+			fmt.Printf("  ✗ %s: %v\n", branch, err)
+		}
+		fmt.Println("\nResolve conflicts manually and run `sdf sync` again to retry.")
+		return fmt.Errorf("%d branch(es) could not be synced", len(failed))
+	}
+
+	if modified {
+		fmt.Println("\nSync complete. Stack updated.")
+	} else {
+		fmt.Println("\nEverything is in sync.")
+	}
 
 	return nil
 }
@@ -356,6 +365,16 @@ func confirmSync() bool {
 	answer, _ := reader.ReadString('\n')
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	return answer == "" || answer == "y" || answer == "yes"
+}
+
+// isBlocked returns true if the node at index i depends on a branch that failed.
+func isBlocked(s *stack.Stack, i int, failed map[string]error) bool {
+	for j := 0; j < i; j++ {
+		if _, ok := failed[s.Nodes[j].Branch]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func handleConflict(root string, s *stack.Stack, branch string, rebaseErr error) error {
