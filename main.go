@@ -42,7 +42,7 @@ func main() {
 		exitOnErr(cmd.RunSwitch(args))
 	case "config":
 		exitOnErr(cmd.RunConfig(args))
-	case "version", "--version", "-v":
+case "version", "--version", "-v":
 		fmt.Printf("sdf %s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
@@ -77,8 +77,8 @@ Stack commands:
   register                           Discover and register existing PR stacks
   branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
-  sync [-y] [<stack>] [--stack <name>]  Detect merged PRs, cascade rebase, push
-  move <commit>...                   Move commits from current branch to parent
+  sync [-y] [--continue] [--stack <name>]  Detect merged PRs, cascade rebase, push
+move <commit>...                   Move commits from current branch to parent
   pr                                 Create a GitHub PR for the current branch
 
 Navigation:

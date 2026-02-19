@@ -28,8 +28,8 @@ go.work.sum
 bin/
 dist/
 
-# sdf local state (ephemeral, not committed)
-.sdf/local.json
+# sdf local state (personal tool, not committed)
+.sdf/
 
 # env file
 .env
