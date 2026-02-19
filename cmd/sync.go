@@ -261,10 +261,18 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 				fmt.Fprintf(os.Stderr, "  warning: push failed for %s: %v\n", node.Branch, err)
 			}
 
+			// Only update PR base when the parent branch name changed
+			// (merged node skipped). Cascade rebases keep the same base.
 			if node.PR > 0 && ghpkg.Available() {
-				fmt.Printf("  → updating PR #%d base to %s\n", node.PR, parent)
-				if err := ghpkg.PREditBase(node.PR, parent); err != nil {
-					fmt.Fprintf(os.Stderr, "  warning: could not update PR base: %v\n", err)
+				directParent := s.Base
+				if i > 0 {
+					directParent = s.Nodes[i-1].Branch
+				}
+				if parent != directParent {
+					fmt.Printf("  → updating PR #%d base to %s\n", node.PR, parent)
+					if err := ghpkg.PREditBase(node.PR, parent); err != nil {
+						fmt.Fprintf(os.Stderr, "  warning: could not update PR base: %v\n", err)
+					}
 				}
 			}
 		}
@@ -276,7 +284,19 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 		}
 	}
 
-	gitpkg.Checkout(originalBranch)
+	// If the original branch was merged, switch to the first open branch
+	// in the stack (or the base branch if all are merged).
+	checkoutTarget := originalBranch
+	if node := s.FindNode(originalBranch); node != nil && node.Status == "merged" {
+		checkoutTarget = s.Base
+		for _, n := range s.Nodes {
+			if n.Status != "merged" {
+				checkoutTarget = n.Branch
+				break
+			}
+		}
+	}
+	gitpkg.Checkout(checkoutTarget)
 
 	if len(failed) > 0 {
 		fmt.Printf("\nSync partially complete. %d branch(es) failed:\n", len(failed))
@@ -335,8 +355,17 @@ func computeSyncPlan(s *stack.Stack) []syncAction {
 			rebased[node.Branch] = true
 			actions = append(actions, syncAction{kind: "push", branch: node.Branch})
 
+			// Only update the PR base when the parent branch name changed
+			// (e.g., merged node was skipped). Cascade rebases don't change
+			// the PR base — just the content.
 			if node.PR > 0 && ghpkg.Available() {
-				actions = append(actions, syncAction{kind: "update-pr-base", branch: node.Branch, pr: node.PR, onto: parent})
+				directParent := s.Base
+				if i > 0 {
+					directParent = nodes[i-1].Branch
+				}
+				if parent != directParent {
+					actions = append(actions, syncAction{kind: "update-pr-base", branch: node.Branch, pr: node.PR, onto: parent})
+				}
 			}
 		}
 	}
