@@ -8,6 +8,79 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
+func TestNavHash_Deterministic(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "my-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "my-stack/first", PR: 10, Status: "open"},
+			{Branch: "my-stack/second", PR: 11, Status: "open"},
+		},
+	}
+
+	prs := map[int]ghpkg.PRInfo{
+		10: {Number: 10, URL: "https://github.com/owner/repo/pull/10", State: "OPEN"},
+		11: {Number: 11, URL: "https://github.com/owner/repo/pull/11", State: "OPEN"},
+	}
+
+	hash1 := navHash(s, prs, "my-stack/first")
+	hash2 := navHash(s, prs, "my-stack/first")
+
+	if hash1 != hash2 {
+		t.Errorf("same input produced different hashes: %s vs %s", hash1, hash2)
+	}
+}
+
+func TestNavHash_ChangesWhenStackChanges(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "my-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "my-stack/first", PR: 10, Status: "open"},
+		},
+	}
+
+	prs := map[int]ghpkg.PRInfo{
+		10: {Number: 10, URL: "https://github.com/owner/repo/pull/10", State: "OPEN"},
+	}
+
+	hashBefore := navHash(s, prs, "my-stack/first")
+
+	// Add a node
+	s.Nodes = append(s.Nodes, stack.Node{Branch: "my-stack/second", PR: 11, Status: "open"})
+	prs[11] = ghpkg.PRInfo{Number: 11, URL: "https://github.com/owner/repo/pull/11", State: "OPEN"}
+
+	hashAfter := navHash(s, prs, "my-stack/first")
+
+	if hashBefore == hashAfter {
+		t.Error("hash should change when stack changes")
+	}
+}
+
+func TestNavHash_SameWhenStatusChanges(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "my-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "my-stack/first", PR: 10, Status: "open"},
+		},
+	}
+
+	prsOpen := map[int]ghpkg.PRInfo{
+		10: {Number: 10, URL: "https://github.com/owner/repo/pull/10", State: "OPEN"},
+	}
+	prsMerged := map[int]ghpkg.PRInfo{
+		10: {Number: 10, URL: "https://github.com/owner/repo/pull/10", State: "MERGED"},
+	}
+
+	hashOpen := navHash(s, prsOpen, "my-stack/first")
+	hashMerged := navHash(s, prsMerged, "my-stack/first")
+
+	if hashOpen != hashMerged {
+		t.Error("hash should be the same — status is not part of nav output")
+	}
+}
+
 func TestBuildStackNav(t *testing.T) {
 	s := &stack.Stack{
 		StackID: "init-dx",
@@ -40,27 +113,30 @@ func TestBuildStackNav(t *testing.T) {
 		t.Error("missing stack name")
 	}
 
-	// Should contain PR links
-	if !strings.Contains(nav, "[#16") {
-		t.Error("missing PR #16 link")
+	// Should contain bare PR URLs
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/16") {
+		t.Error("missing PR #16 URL")
 	}
-	if !strings.Contains(nav, "[#17") {
-		t.Error("missing PR #17 link")
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/17") {
+		t.Error("missing PR #17 URL")
 	}
-	if !strings.Contains(nav, "[#18") {
-		t.Error("missing PR #18 link")
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/18") {
+		t.Error("missing PR #18 URL")
 	}
 
 	// Current PR should be marked
-	if !strings.Contains(nav, "this PR") {
-		t.Error("current PR not marked")
+	for _, line := range strings.Split(nav, "\n") {
+		if strings.Contains(line, "pull/17") && !strings.Contains(line, "◀ this PR") {
+			t.Error("current PR not marked")
+		}
 	}
 
-	// The marker for current PR should be on the line with #17
-	for _, line := range strings.Split(nav, "\n") {
-		if strings.Contains(line, "#17") && !strings.Contains(line, "this PR") {
-			t.Error("current PR marker not on the #17 line")
-		}
+	// Should not contain status text or markdown links
+	if strings.Contains(nav, "- open") {
+		t.Error("should not contain status text")
+	}
+	if strings.Contains(nav, "[#") {
+		t.Error("should use bare URLs, not markdown links")
 	}
 }
 
@@ -81,13 +157,13 @@ func TestBuildStackNav_WithMergedPR(t *testing.T) {
 
 	nav := buildStackNav(s, prs, "init-dx/json-output")
 
-	// Merged PR should show merged status
-	for _, line := range strings.Split(nav, "\n") {
-		if strings.Contains(line, "#16") {
-			if !strings.Contains(strings.ToLower(line), "merged") {
-				t.Errorf("expected merged status for PR #16, got: %s", line)
-			}
-		}
+	// Merged PR should still have its URL (GitHub renders status via autolink)
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/16") {
+		t.Error("missing merged PR URL")
+	}
+	// Should not contain explicit status text
+	if strings.Contains(nav, "merged") {
+		t.Error("should not contain explicit status text — GitHub renders it via autolink")
 	}
 }
 

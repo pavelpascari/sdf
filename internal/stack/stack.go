@@ -16,6 +16,7 @@ type Node struct {
 	PR      int    `json:"pr,omitempty"`
 	Status  string `json:"status"` // "open", "merged", "draft"
 	BaseTip string `json:"base_tip,omitempty"`
+	NavHash string `json:"nav_hash,omitempty"`
 }
 
 // Stack represents the full stack topology persisted in a stack JSON file.

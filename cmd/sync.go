@@ -183,6 +183,10 @@ func runSyncFull(root, stackName string, skipConfirm bool) error {
 	plan := computeSyncPlan(s)
 	if len(plan) == 0 {
 		fmt.Println("\nEverything is in sync.")
+		// Still update stack navigation (catches empty/stale nav hashes)
+		if err := updateStackNavForAllPRs(root, s); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+		}
 		return nil
 	}
 
@@ -309,14 +313,14 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int) error {
 
 	if modified {
 		fmt.Println("\nSync complete. Stack updated.")
-
-		// Update stack navigation in all PRs
-		fmt.Println("Updating stack navigation in PR descriptions...")
-		if err := updateStackNavForAllPRs(s); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
-		}
 	} else {
 		fmt.Println("\nEverything is in sync.")
+	}
+
+	// Update stack navigation in all PRs (runs even when in sync,
+	// to catch stale nav hashes from PRs created before this feature)
+	if err := updateStackNavForAllPRs(root, s); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
 	}
 
 	return nil
