@@ -86,8 +86,10 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 	}
 
 	if len(branches) == 0 {
+		fmt.Println("  No branches with PRs found.")
 		return nil
 	}
+	fmt.Printf("  Checking nav for %d PR(s)...\n", len(branches))
 
 	// Fetch PR info for all branches
 	prList, err := ghpkg.PRList(branches)

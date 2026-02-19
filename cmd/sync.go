@@ -183,6 +183,10 @@ func runSyncFull(root, stackName string, skipConfirm bool) error {
 	plan := computeSyncPlan(s)
 	if len(plan) == 0 {
 		fmt.Println("\nEverything is in sync.")
+		// Still update stack navigation (catches empty/stale nav hashes)
+		if err := updateStackNavForAllPRs(root, s); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+		}
 		return nil
 	}
 
