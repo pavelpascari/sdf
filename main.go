@@ -34,6 +34,8 @@ func main() {
 		exitOnErr(cmd.RunPR(args))
 	case "move":
 		exitOnErr(cmd.RunMove(args))
+	case "register":
+		exitOnErr(cmd.RunRegister(args))
 	case "context":
 		exitOnErr(cmd.RunContext(args))
 	case "version", "--version", "-v":
@@ -64,6 +66,7 @@ Usage:
 
 Stack commands:
   init [--stack] <name>     Initialize a new stack in the current repo
+  register                  Discover and register existing PR stacks
   branch <name>             Create a new branch in the stack
   status                    Show stack topology and sync state
   sync                      Detect merged PRs, cascade rebase, push
