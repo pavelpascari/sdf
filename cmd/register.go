@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -27,11 +28,6 @@ func RunRegister(args []string) error {
 	root, err := gitpkg.RepoRoot()
 	if err != nil {
 		return fmt.Errorf("not inside a git repository: %w", err)
-	}
-
-	// Check if already initialized
-	if _, err := os.Stat(root + "/.sdf/stack.json"); err == nil {
-		return fmt.Errorf(".sdf already exists in %s — use `sdf branch` to add branches, or remove .sdf/ first", root)
 	}
 
 	// Detect default branch
@@ -147,13 +143,25 @@ func RunRegister(args []string) error {
 		}
 	}
 
-	// Build the stack
-	nodes := make([]stack.Node, len(selected.Chains))
-	for i, pr := range selected.Chains {
-		// Determine the parent for base_tip tracking
-		parent := selected.Base
+	return RegisterStack(root, name, selected)
+}
+
+// RegisterStack performs the core registration: creates .sdf/, writes
+// stack.json with nodes from the discovered stack, creates context stubs,
+// and commits the result. This is separated from RunRegister so it can be
+// tested without gh or interactive stdin.
+func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
+	// Check if already initialized
+	if _, err := os.Stat(filepath.Join(root, ".sdf", "stack.json")); err == nil {
+		return fmt.Errorf(".sdf already exists in %s — use `sdf branch` to add branches, or remove .sdf/ first", root)
+	}
+
+	// Build the stack nodes
+	nodes := make([]stack.Node, len(ds.Chains))
+	for i, pr := range ds.Chains {
+		parent := ds.Base
 		if i > 0 {
-			parent = selected.Chains[i-1].HeadRefName
+			parent = ds.Chains[i-1].HeadRefName
 		}
 
 		parentTip, _ := gitpkg.RevParse(parent)
@@ -168,12 +176,12 @@ func RunRegister(args []string) error {
 
 	s := &stack.Stack{
 		StackID: name,
-		Base:    selected.Base,
+		Base:    ds.Base,
 		Nodes:   nodes,
 	}
 
 	// Initialize .sdf directory and save
-	if err := stack.Init(root, name, selected.Base); err != nil {
+	if err := stack.Init(root, name, ds.Base); err != nil {
 		return err
 	}
 	if err := stack.Save(root, s); err != nil {
@@ -182,7 +190,7 @@ func RunRegister(args []string) error {
 
 	// Create context stubs for each branch
 	for i, node := range nodes {
-		parent := selected.Base
+		parent := ds.Base
 		if i > 0 {
 			parent = nodes[i-1].Branch
 		}
@@ -196,7 +204,7 @@ func RunRegister(args []string) error {
 		gitpkg.Commit("sdf: register existing stack " + name)
 	}
 
-	fmt.Printf("\nRegistered stack %q with %d branches (base: %s)\n\n", name, len(nodes), selected.Base)
+	fmt.Printf("\nRegistered stack %q with %d branches (base: %s)\n\n", name, len(nodes), ds.Base)
 	for i, node := range nodes {
 		prefix := "├─"
 		if i == len(nodes)-1 {
