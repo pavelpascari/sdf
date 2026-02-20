@@ -80,9 +80,13 @@ func runConfigSet(args []string) error {
 		fmt.Fprintln(os.Stderr, "usage: sdf config set [--global] <key> <value>")
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "Keys:")
-		fmt.Fprintln(os.Stderr, "  branch_prefix.enabled    true or false")
-		fmt.Fprintln(os.Stderr, "  branch_prefix.prefix     prefix string (empty = use stack_id)")
-		fmt.Fprintln(os.Stderr, "  branch_prefix.separator  separator character (default: /)")
+		fmt.Fprintln(os.Stderr, "  branch_prefix.enabled              true or false")
+		fmt.Fprintln(os.Stderr, "  branch_prefix.prefix               prefix string (empty = use stack_id)")
+		fmt.Fprintln(os.Stderr, "  branch_prefix.separator            separator character (default: /)")
+		fmt.Fprintln(os.Stderr, "  pr_title.conventional_commits      true or false")
+		fmt.Fprintln(os.Stderr, "  pr_title.ticket_pattern            regex to extract ticket from branch name")
+		fmt.Fprintln(os.Stderr, "  sync.update_descriptions           true or false")
+		fmt.Fprintln(os.Stderr, "  sync.update_titles                 true or false")
 		os.Exit(1)
 	}
 
@@ -120,6 +124,17 @@ func runConfigSet(args []string) error {
 		cfg.BranchPrefix.Prefix = value
 	case "branch_prefix.separator":
 		cfg.BranchPrefix.Separator = value
+	case "pr_title.conventional_commits":
+		val := strings.ToLower(value) == "true"
+		cfg.PRTitle.ConventionalCommits = &val
+	case "pr_title.ticket_pattern":
+		cfg.PRTitle.TicketPattern = value
+	case "sync.update_descriptions":
+		val := strings.ToLower(value) == "true"
+		cfg.Sync.UpdateDescriptions = &val
+	case "sync.update_titles":
+		val := strings.ToLower(value) == "true"
+		cfg.Sync.UpdateTitles = &val
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
