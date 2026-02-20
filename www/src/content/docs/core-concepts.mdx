@@ -1,0 +1,131 @@
+---
+title: Core Concepts
+description: Stacks, nodes, context documents, and how SDF models your PR chains.
+order: 3
+---
+
+# Core Concepts
+
+Understanding SDF's model makes every command feel obvious. There are three things to know: **stacks**, **nodes**, and **context documents**.
+
+---
+
+## Stacks
+
+A *stack* is a named, linear chain of branches that all descend from a common base (usually `main`). Each branch in the chain becomes a pull request that depends on the PR above it.
+
+```
+main
+ └─ users-feature/db-schema      ← PR #142
+     └─ users-feature/repository  ← PR #143
+         └─ users-feature/controller ← PR #144
+```
+
+A repository can have **multiple independent stacks** — one for each feature being developed in parallel. Each stack has its own JSON file in `.sdf/stacks/<name>.json`, committed to the repository.
+
+### Stack JSON
+
+```json
+{
+  "stack_id": "users-feature",
+  "base": "main",
+  "nodes": [
+    { "branch": "users-feature/db-schema",   "pr": 142, "status": "open", "base_tip": "abc123" },
+    { "branch": "users-feature/repository",  "pr": 143, "status": "open", "base_tip": "def456" },
+    { "branch": "users-feature/controller",  "pr": 144, "status": "open", "base_tip": "ghi789" }
+  ]
+}
+```
+
+The `base_tip` records the commit hash at the tip of the parent branch at the time of the last sync. This allows SDF to detect when a parent has moved and a rebase is needed.
+
+---
+
+## Nodes
+
+A *node* is one branch (and its corresponding PR) within a stack. Nodes are ordered — the first node's parent is the stack base, and each subsequent node's parent is the node above it.
+
+When a node's PR merges, `sdf sync` removes it from the stack and rebases all downstream nodes onto the newly promoted base.
+
+---
+
+## Context documents
+
+Every branch in a stack has a Markdown context file at:
+
+```
+.sdf/context/<stack-id>/<branch-name>.md
+```
+
+This file is **committed to the repository**. It documents:
+
+| Section | Contents |
+|---|---|
+| **Intent** | Why this layer exists. What problem it solves. What it adds. |
+| **Constraints** | What this layer expects from upstream and provides downstream. |
+| **Decisions** | Design choices made here and the reasoning behind them. |
+| **Open questions** | Unresolved issues for reviewers to weigh in on. |
+
+### Why this matters
+
+Context documents solve two problems:
+
+1. **Code reviewers** see intent alongside the diff. The PR body comes from the Intent section automatically via `sdf pr`.
+
+2. **Claude** uses the assembled context of all ancestor branches when resolving rebase conflicts. A conflict in `controller` is resolved with knowledge of what `db-schema` and `repository` intended to do. This produces semantically correct resolutions, not just textual merges.
+
+### Assembled context
+
+`sdf context show` prints the full assembled context for the current branch — all ancestor context documents concatenated — exactly as Claude receives it. Use this to verify Claude will have the right information before a sync.
+
+---
+
+## Configuration
+
+SDF uses a two-tier configuration system:
+
+- **Repo config** — `.sdf/config.json`, committed, shared with the team
+- **Global config** — `~/.config/sdf/config.json`, user-specific
+
+Repo config takes precedence. Run `sdf config show` to see the effective merged config.
+
+```json
+{
+  "branch_prefix": "users-feature",
+  "default_base": "main"
+}
+```
+
+---
+
+## Repository layout
+
+```
+.sdf/
+  config.json                             ← repo config (committed)
+  stacks/
+    users-feature.json                    ← stack topology (committed)
+    auth-feature.json                     ← another stack (committed)
+  context/
+    users-feature/
+      db-schema.md                        ← context doc (committed)
+      repository.md
+      controller.md
+    auth-feature/
+      ...
+  local.json                              ← ephemeral state (gitignored)
+```
+
+All committed files travel with the repository — clones, CI runners, and code reviewers all have access to the full stack topology and context.
+
+---
+
+## Design principles
+
+SDF is built around three principles:
+
+**Shell out, don't reimplement.** SDF delegates to `git`, `gh`, and `claude` CLIs. It is pure orchestration — no custom git library, no custom GitHub API client. This means you get the behavior of the tools you already know and trust.
+
+**Context is first-class.** The context document model is not a nice-to-have. It's what makes AI conflict resolution work correctly, and it's what makes code review valuable for stacked PRs.
+
+**Fail loudly, recover clearly.** When something goes wrong, SDF leaves the repository in a known state and tells you exactly what to run to recover. It never silently swallows errors.

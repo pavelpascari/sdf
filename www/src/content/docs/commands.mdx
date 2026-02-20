@@ -1,0 +1,218 @@
+---
+title: Commands
+description: Full reference for every sdf command.
+order: 4
+---
+
+# Commands
+
+All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf init`).
+
+---
+
+## Stack management
+
+### `sdf init <name>`
+
+Create a new stack and optionally check out its first branch.
+
+```bash
+sdf init users-feature                         # create stack only
+sdf init users-feature --branch db-schema      # create stack + first branch
+sdf init users-feature --branch db-schema --base develop  # custom base
+```
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--branch` | — | Name of the first branch to create |
+| `--base` | `main` | Base branch for the stack |
+| `--json` | false | Output machine-readable JSON (for AI agent integration) |
+
+---
+
+### `sdf branch <name>`
+
+Add a new branch to the current stack, based on the current branch.
+
+```bash
+sdf branch repository        # adds users-feature/repository
+```
+
+Must be run from a branch that is already in a stack. The new branch is based on the current branch and becomes the last node in the stack.
+
+---
+
+### `sdf sync [<stack>]`
+
+Detect merged PRs and cascade-rebase downstream branches.
+
+```bash
+sdf sync                  # sync the stack of the current branch
+sdf sync users-feature    # sync a specific stack by name
+```
+
+Steps performed:
+
+1. Query GitHub for the status of each PR in the stack
+2. Mark merged nodes and remove them
+3. For each downstream node, in order: rebase onto new parent, resolve conflicts (Claude if available, otherwise `$EDITOR`), push
+4. Update PR base branches on GitHub
+
+---
+
+### `sdf status [<stack>]`
+
+Show stack topology and sync state.
+
+```bash
+sdf status               # status of the current branch's stack
+sdf status users-feature # status of a named stack
+sdf status --all         # all stacks in the repository
+```
+
+---
+
+### `sdf pr`
+
+Create a GitHub PR for the current branch with context as the body.
+
+```bash
+sdf pr                         # uses Intent section of context doc as body
+sdf pr --title "Add users table"  # override title
+sdf pr --draft                 # create as draft PR
+```
+
+Delegates to `gh pr create`. The PR is automatically based on the parent branch in the stack.
+
+---
+
+### `sdf move <commit>...`
+
+Move commits from the current branch to the parent branch.
+
+```bash
+sdf move abc1234             # move one commit
+sdf move abc1234 def5678     # move multiple commits
+```
+
+Useful when you realize a commit belongs in an earlier layer of the stack.
+
+---
+
+### `sdf register`
+
+Discover and register an existing PR stack from GitHub.
+
+```bash
+sdf register
+```
+
+SDF will inspect open PRs, detect branch chains, and write the topology to `.sdf/stacks/`. Use this when you've built stacks manually and want SDF to manage them going forward.
+
+---
+
+## Context management
+
+### `sdf context show`
+
+Print the assembled context for the current branch — all ancestor context documents concatenated.
+
+```bash
+sdf context show
+```
+
+This is exactly what Claude receives when resolving conflicts.
+
+---
+
+### `sdf context edit`
+
+Open the context document for the current branch in `$EDITOR`.
+
+```bash
+sdf context edit
+```
+
+The context document is created if it doesn't exist.
+
+---
+
+### `sdf context update`
+
+Ask Claude to rewrite the context document based on the current diff and stack state.
+
+```bash
+sdf context update
+```
+
+Claude analyzes the current branch's changes against its parent and rewrites the Intent, Constraints, and Decisions sections. Review the result before committing.
+
+---
+
+## Navigation
+
+### `sdf switch [<branch>]`
+
+Switch to a branch within the current stack. Shows stack context on switch.
+
+```bash
+sdf switch db-schema         # switch to users-feature/db-schema
+sdf switch                   # interactive picker (requires fzf)
+```
+
+Short alias: `sdf <branch>` (if no subcommand matches the name).
+
+---
+
+## Configuration
+
+### `sdf config show`
+
+Display the effective merged configuration (global + repo).
+
+```bash
+sdf config show
+```
+
+---
+
+### `sdf config set <key> <value>`
+
+Set a configuration value in the repo config (`.sdf/config.json`).
+
+```bash
+sdf config set branch_prefix users-feature
+sdf config set default_base develop
+```
+
+Add `--global` to write to the global config instead:
+
+```bash
+sdf config set --global default_base main
+```
+
+---
+
+## Utilities
+
+### `sdf doctor`
+
+Check that all required dependencies are available and configured.
+
+```bash
+sdf doctor
+```
+
+Reports the status of `git`, `gh`, and `claude` CLIs.
+
+---
+
+### `sdf version`
+
+Print the installed SDF version.
+
+```bash
+sdf version
+```

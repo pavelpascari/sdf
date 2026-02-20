@@ -1,0 +1,116 @@
+---
+title: Configuration
+description: Two-tier configuration for repos and individual users.
+order: 5
+---
+
+# Configuration
+
+SDF uses a two-tier configuration system that separates team-wide settings from personal preferences.
+
+---
+
+## Config files
+
+| File | Scope | Committed |
+|---|---|---|
+| `.sdf/config.json` | Repository | Yes — shared with the team |
+| `~/.config/sdf/config.json` | User (global) | No |
+
+When both files exist, repository config takes precedence. Run `sdf config show` to see the effective merged result.
+
+---
+
+## Available settings
+
+### `default_base`
+
+The default base branch for new stacks.
+
+```json
+{ "default_base": "main" }
+```
+
+Default: `main`
+
+---
+
+### `branch_prefix`
+
+When set, SDF auto-prepends this prefix to branch names created with `sdf branch`.
+
+```json
+{ "branch_prefix": "users-feature" }
+```
+
+With this set, `sdf branch repository` creates `users-feature/repository` instead of `repository`.
+
+Useful for enforcing consistent naming conventions across a team.
+
+---
+
+### `editor`
+
+Override the editor used by `sdf context edit`.
+
+```json
+{ "editor": "nvim" }
+```
+
+Default: reads `$EDITOR`, then `$VISUAL`, then falls back to `vi`.
+
+---
+
+### `claude_session_prefix`
+
+Prefix for Claude CLI session names created during conflict resolution and context updates.
+
+```json
+{ "claude_session_prefix": "sdf" }
+```
+
+Default: `sdf`
+
+Sessions are named `<prefix>/<operation>/<branch>` (e.g., `sdf/sync/users-feature/repository`), making them resumable and discoverable in Claude.
+
+---
+
+## Setting values
+
+```bash
+# Set in repo config
+sdf config set default_base develop
+sdf config set branch_prefix my-feature
+
+# Set in global config
+sdf config set --global editor "code --wait"
+sdf config set --global claude_session_prefix "my-sdf"
+```
+
+Or edit the JSON files directly — they're plain JSON with no schema enforcement beyond what SDF reads.
+
+---
+
+## Example repo config
+
+```json
+{
+  "default_base": "main",
+  "branch_prefix": "team-name"
+}
+```
+
+Commit this as `.sdf/config.json` to apply it across the whole team.
+
+---
+
+## Example global config
+
+```json
+{
+  "editor": "zed --wait",
+  "claude_session_prefix": "sdf"
+}
+```
+
+This lives in `~/.config/sdf/config.json` and applies to all repositories on your machine.

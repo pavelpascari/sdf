@@ -1,0 +1,32 @@
+---
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+  docs: CollectionEntry<'docs'>[];
+  currentSlug: string;
+}
+
+const { docs, currentSlug } = Astro.props;
+---
+
+<nav class="flex flex-col gap-1">
+  <p class="text-xs font-semibold text-fg-subtle uppercase tracking-widest mb-3 px-3">
+    Documentation
+  </p>
+  {docs.map((doc) => {
+    const isActive = doc.slug === currentSlug || (currentSlug === '' && doc.slug === 'getting-started');
+    return (
+      <a
+        href={`/docs/${doc.slug}`}
+        class:list={[
+          'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
+          isActive
+            ? 'bg-brand/10 text-brand-light font-medium border-l-2 border-brand'
+            : 'text-fg-muted hover:text-fg hover:bg-panel border-l-2 border-transparent',
+        ]}
+      >
+        {doc.data.title}
+      </a>
+    );
+  })}
+</nav>

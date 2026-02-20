@@ -1,0 +1,111 @@
+---
+title: AI Features
+description: How SDF uses Claude for conflict resolution and context management.
+order: 6
+---
+
+# AI Features
+
+SDF integrates with the [Claude CLI](https://claude.ai/code) to provide two AI-powered capabilities: **semantic conflict resolution** during syncs and **context document generation**.
+
+Both features are optional. Without the Claude CLI, SDF opens `$EDITOR` for conflicts and you write context documents manually.
+
+---
+
+## Semantic conflict resolution
+
+When `sdf sync` triggers a cascade rebase and encounters a conflict, SDF invokes Claude with:
+
+1. **The full assembled stack context** — every ancestor branch's context document, in order from base to the current branch
+2. **A summary of what changed** in the upstream branch (the diff that caused the conflict)
+3. **The conflicted files** with standard conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+
+Claude resolves each conflict file and writes the resolution back to disk. SDF then runs `git rebase --continue`.
+
+### Why this works well
+
+Standard merge tools see only two versions of a file and a common ancestor. They have no knowledge of *intent*. Claude sees the complete context:
+
+- What the `db-schema` branch was trying to do
+- What constraints it declared for downstream branches
+- What `repository` intended to build on top of that
+- What actually changed in `db-schema` since `repository` was last rebased
+
+This produces resolutions that are semantically correct — not just textually non-conflicting.
+
+### Fallback behavior
+
+If the Claude CLI is not installed, or if Claude's output cannot be parsed, SDF opens `$EDITOR` and lets you resolve the conflict manually. Sync continues normally after you close the editor.
+
+---
+
+## Context document generation
+
+`sdf context update` asks Claude to (re)write the context document for the current branch.
+
+```bash
+sdf context update
+```
+
+Claude analyzes:
+
+- The diff of the current branch against its parent
+- The parent branch's context document (what constraints upstream declared)
+- Any existing content in the current context document
+
+It rewrites the Intent, Constraints, and Decisions sections. Review the output before committing — Claude's draft is a starting point, not a final answer.
+
+---
+
+## Claude CLI sessions
+
+SDF creates named Claude sessions for resumability:
+
+```
+sdf/sync/users-feature/repository
+sdf/context-update/users-feature/controller
+```
+
+If a sync is interrupted, you can resume the Claude session by name. The session prefix is configurable via `claude_session_prefix` in your config.
+
+---
+
+## Installing the Claude CLI
+
+```bash
+# macOS
+brew install claude
+
+# Or download from
+# https://claude.ai/code
+```
+
+Verify it's available:
+
+```bash
+sdf doctor
+```
+
+---
+
+## Privacy and data
+
+When SDF invokes Claude, it sends:
+
+- Context document contents (text you wrote)
+- Git diffs of your branches
+- File contents with conflict markers
+
+SDF does not send credentials, tokens, or any data outside your repository. The Claude CLI uses your existing Claude account and applies your account's data handling settings.
+
+---
+
+## Tips for better AI results
+
+**Write specific intent.** Vague context documents produce vague resolutions. "Adds users table" is less useful than "Adds the `users` table with columns `id`, `email`, `created_at`; uses `pgx/v5` driver; AppError pattern for DB errors."
+
+**Document constraints explicitly.** If a downstream branch depends on a specific function signature or interface from upstream, document it. Claude will preserve it during conflict resolution.
+
+**Review resolved files.** Claude's resolutions are good but not infallible. After a sync with AI-resolved conflicts, review the diff of each rebased branch before pushing.
+
+**Use `sdf context show` before a complex sync.** It prints exactly what Claude will see. If the assembled context looks thin, flesh out the context documents before running sync.

@@ -1,0 +1,120 @@
+---
+title: Getting Started
+description: Build and sync your first stacked PR chain in under five minutes.
+order: 1
+---
+
+# Getting Started
+
+SDF turns the painful work of managing stacked pull requests into a single command. This guide walks you through creating your first stack, adding layers, and syncing after a PR merges.
+
+## Prerequisites
+
+- **git** — any recent version
+- **gh** (GitHub CLI) — authenticated with `gh auth login`
+- **sdf** — see [Installation](/docs/installation)
+
+Run the health check first:
+
+```bash
+sdf doctor
+```
+
+All green? Let's go.
+
+---
+
+## 1. Create a stack
+
+A *stack* is a named chain of branches. Each branch becomes a PR that depends on the one above it.
+
+```bash
+# Creates the stack and checks out the first branch in one step
+sdf init users-feature --branch db-schema
+```
+
+This creates:
+
+- A stack named `users-feature` with `main` as the base
+- A branch `users-feature/db-schema` checked out and ready
+- `.sdf/stacks/users-feature.json` committed to track topology
+- `.sdf/context/users-feature/db-schema.md` for your context document
+
+## 2. Write code and document intent
+
+Do your work on the branch. Then open the context document:
+
+```bash
+sdf context edit
+```
+
+Your `$EDITOR` opens `.sdf/context/users-feature/db-schema.md`. Document:
+
+- **Intent** — why this layer exists
+- **Constraints** — what this layer provides to downstream branches
+- **Decisions** — design choices made here
+
+This context is what Claude reads when resolving conflicts. The more specific you are, the better the resolution quality.
+
+## 3. Create the PR
+
+```bash
+sdf pr
+```
+
+This runs `gh pr create` with the Intent section of your context document as the PR body. Reviewers see the *why* alongside the diff.
+
+## 4. Add more layers
+
+```bash
+sdf branch repository
+# ... implement UserRepository ...
+sdf context edit
+sdf pr
+
+sdf branch controller
+# ... implement endpoints ...
+sdf context edit
+sdf pr
+```
+
+Check the stack at any time:
+
+```bash
+sdf status
+```
+
+```
+users-feature
+  main
+   └─ db-schema     #142 open  ✓ in sync
+       └─ repository #143 open  ✓ in sync
+           └─ controller #144 open  ✓ in sync
+```
+
+## 5. Sync after a merge
+
+When PR #142 (db-schema) is approved and merged:
+
+```bash
+sdf sync
+```
+
+SDF will:
+
+1. Query GitHub for merged PRs in the stack
+2. Remove merged nodes from the stack
+3. Rebase each downstream branch onto its new base
+4. Resolve any conflicts with Claude (using full stack context)
+5. Force-push updated branches with `--force-with-lease`
+6. Update PR base branches on GitHub so diffs render correctly
+
+The result: `repository` and `controller` are cleanly rebased onto `main`, with PR bases updated.
+
+---
+
+## What's next
+
+- [Core Concepts](/docs/core-concepts) — understand stacks, nodes, and context documents
+- [Commands](/docs/commands) — full command reference
+- [AI Features](/docs/ai-features) — how Claude integrates for conflict resolution and context
