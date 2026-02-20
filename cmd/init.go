@@ -7,18 +7,16 @@ import (
 	"os"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
 // InitResult is the structured output of sdf init when --json is used.
 type InitResult struct {
-	Stack      string `json:"stack"`
-	Base       string `json:"base"`
-	Branch     string `json:"branch"`
-	ContextDoc string `json:"context_doc"`
-	Pushed     bool   `json:"pushed"`
+	Stack  string `json:"stack"`
+	Base   string `json:"base"`
+	Branch string `json:"branch"`
+	Pushed bool   `json:"pushed"`
 }
 
 func RunInit(args []string) error {
@@ -130,13 +128,6 @@ func runInit(args []string) (string, error) {
 		return "", err
 	}
 
-	// Create stub context document
-	if err := ctxpkg.CreateStub(root, branchName, baseBranch); err != nil {
-		if !*jsonFlag {
-			fmt.Fprintf(os.Stderr, "warning: could not create context stub: %v\n", err)
-		}
-	}
-
 	// Push tracking branch to origin
 	pushed := true
 	if err := gitpkg.PushNew(branchName); err != nil {
@@ -147,15 +138,12 @@ func runInit(args []string) (string, error) {
 		}
 	}
 
-	contextDoc := fmt.Sprintf(".sdf/context/%s.md", branchName)
-
 	if *jsonFlag {
 		result := InitResult{
-			Stack:      *stackName,
-			Base:       baseBranch,
-			Branch:     branchName,
-			ContextDoc: contextDoc,
-			Pushed:     pushed,
+			Stack:  *stackName,
+			Base:   baseBranch,
+			Branch: branchName,
+			Pushed: pushed,
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -168,10 +156,8 @@ func runInit(args []string) (string, error) {
 
 	fmt.Printf("Initialized stack %q (base: %s)\n", *stackName, baseBranch)
 	fmt.Printf("Created branch %q (based on %s)\n", branchName, baseBranch)
-	fmt.Printf("Context doc: %s\n", contextDoc)
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Println("  sdf context edit     Edit the context doc for this branch")
 	fmt.Println("  sdf pr               Create a pull request")
 	fmt.Println("  sdf branch <name>    Add another branch to the stack")
 	fmt.Println("  sdf status           View stack topology")

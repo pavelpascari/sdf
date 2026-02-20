@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -165,49 +164,6 @@ func TestRegisterStack_ThreeBranchChain(t *testing.T) {
 	// Third node should track feat/api's tip
 	if s.Nodes[2].BaseTip != shas["a1"] {
 		t.Errorf("node[2] BaseTip: got %q, want feat/api SHA %q", s.Nodes[2].BaseTip, shas["a1"])
-	}
-}
-
-func TestRegisterStack_ContextStubsCreated(t *testing.T) {
-	dir, _ := registerTestRepo(t)
-
-	ds := stack.DiscoveredStack{
-		Base: "main",
-		Chains: []stack.PRRecord{
-			{Number: 10, HeadRefName: "feat/schema", BaseRefName: "main"},
-			{Number: 11, HeadRefName: "feat/api", BaseRefName: "feat/schema"},
-		},
-	}
-
-	if err := RegisterStack(dir, "test-stack", ds); err != nil {
-		t.Fatalf("RegisterStack failed: %v", err)
-	}
-
-	// Verify context stubs exist for each branch
-	for _, branch := range []string{"feat/schema", "feat/api"} {
-		if !ctxpkg.Exists(dir, branch) {
-			t.Errorf("context stub for %q should exist", branch)
-		}
-		content, err := ctxpkg.Read(dir, branch)
-		if err != nil {
-			t.Errorf("cannot read context for %q: %v", branch, err)
-			continue
-		}
-		if !strings.Contains(content, "## Intent") {
-			t.Errorf("context stub for %q should contain '## Intent', got: %s", branch, content)
-		}
-	}
-
-	// Verify feat/api's context references its parent (feat/schema)
-	apiCtx, _ := ctxpkg.Read(dir, "feat/api")
-	if !strings.Contains(apiCtx, "feat/schema") {
-		t.Errorf("feat/api context should reference parent 'feat/schema'")
-	}
-
-	// Verify feat/schema's context references main
-	schemaCtx, _ := ctxpkg.Read(dir, "feat/schema")
-	if !strings.Contains(schemaCtx, "main") {
-		t.Errorf("feat/schema context should reference parent 'main'")
 	}
 }
 

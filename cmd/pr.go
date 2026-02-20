@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -48,13 +47,8 @@ func RunPR(args []string) error {
 	// Determine base branch
 	base := s.ParentBranch(branch)
 
-	// Build PR body from context doc
-	body, err := ctxpkg.Read(root, branch)
-	if err != nil || body == "" {
-		body = fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
-	} else {
-		body = body + fmt.Sprintf("\n\n---\n*Part of stack: **%s***", s.StackID)
-	}
+	// Build default PR body
+	body := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
 
 	// Determine title
 	prTitle := *title
