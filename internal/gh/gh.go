@@ -63,11 +63,23 @@ func PRList(branches []string) ([]PRInfo, error) {
 		branchSet[b] = true
 	}
 
-	var filtered []PRInfo
+	// When multiple PRs exist for the same branch (e.g. one closed, one open
+	// after a re-creation), keep only the most relevant one per branch.
+	// Priority: OPEN > MERGED > CLOSED.
+	best := make(map[string]PRInfo)
 	for _, pr := range prs {
-		if branchSet[pr.HeadRefName] {
-			filtered = append(filtered, pr)
+		if !branchSet[pr.HeadRefName] {
+			continue
 		}
+		existing, exists := best[pr.HeadRefName]
+		if !exists || prStatePriority(pr.State) > prStatePriority(existing.State) {
+			best[pr.HeadRefName] = pr
+		}
+	}
+
+	filtered := make([]PRInfo, 0, len(best))
+	for _, pr := range best {
+		filtered = append(filtered, pr)
 	}
 
 	return filtered, nil
@@ -181,4 +193,19 @@ func PRMerge(prNumber int, method string) error {
 	_, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
 		"--"+method, "--delete-branch")
 	return err
+}
+
+// prStatePriority returns a sort priority for PR states.
+// Higher value = more relevant when multiple PRs exist for the same branch.
+func prStatePriority(state string) int {
+	switch strings.ToUpper(state) {
+	case "OPEN":
+		return 3
+	case "MERGED":
+		return 2
+	case "CLOSED":
+		return 1
+	default:
+		return 0
+	}
 }
