@@ -77,7 +77,7 @@ Stack commands:
   status [--stack <name>]            Show stack topology and sync state
   sync [-y] [--continue] [--stack <name>]  Detect merged PRs, cascade rebase, push
 move <commit>...                   Move commits from current branch to parent
-  pr                                 Create a GitHub PR for the current branch
+  pr [--title "..."] [--json]        Create a GitHub PR for the current branch
 
 Navigation:
   switch [<branch>]                  Switch to a branch in the stack

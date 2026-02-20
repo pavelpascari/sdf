@@ -160,6 +160,18 @@ func Log(from, to string) (string, error) {
 	return run("log", "--oneline", from+".."+to)
 }
 
+// LogSubjects returns the subject lines of commits between two refs.
+func LogSubjects(from, to string) ([]string, error) {
+	out, err := run("log", "--format=%s", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // MergeBase returns the merge base between two refs.
 func MergeBase(a, b string) (string, error) {
 	return run("merge-base", a, b)
