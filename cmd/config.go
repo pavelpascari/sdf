@@ -85,9 +85,7 @@ func runConfigSet(args []string) error {
 		fmt.Fprintln(os.Stderr, "  branch_prefix.separator            separator character (default: /)")
 		fmt.Fprintln(os.Stderr, "  pr_title.conventional_commits      true or false")
 		fmt.Fprintln(os.Stderr, "  pr_title.ticket_pattern            regex to extract ticket from branch name")
-		fmt.Fprintln(os.Stderr, "  sync.update_descriptions           true or false")
-		fmt.Fprintln(os.Stderr, "  sync.update_titles                 true or false")
-		fmt.Fprintln(os.Stderr, "  sync.ai_titles                     true or false (use Claude for titles)")
+		fmt.Fprintln(os.Stderr, "  sync.with_content                  true or false (update titles + descriptions)")
 		os.Exit(1)
 	}
 
@@ -130,15 +128,9 @@ func runConfigSet(args []string) error {
 		cfg.PRTitle.ConventionalCommits = &val
 	case "pr_title.ticket_pattern":
 		cfg.PRTitle.TicketPattern = value
-	case "sync.update_descriptions":
+	case "sync.with_content":
 		val := strings.ToLower(value) == "true"
-		cfg.Sync.UpdateDescriptions = &val
-	case "sync.update_titles":
-		val := strings.ToLower(value) == "true"
-		cfg.Sync.UpdateTitles = &val
-	case "sync.ai_titles":
-		val := strings.ToLower(value) == "true"
-		cfg.Sync.AITitles = &val
+		cfg.Sync.WithContent = &val
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}

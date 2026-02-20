@@ -461,8 +461,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{kind: "rebase", branch: "feat/api", onto: "main"},
 		{kind: "push", branch: "feat/api"},
 		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
-		{kind: "update-title", branch: "feat/api", pr: 42, title: "feat: add API"},
-		{kind: "update-description", branch: "feat/api", pr: 42},
+		{kind: "update-content", branch: "feat/api", pr: 42},
 	}
 
 	// Capture stdout
@@ -489,8 +488,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{"rebase", "rebase feat/api onto main"},
 		{"push", "force-push feat/api"},
 		{"pr-base", "update PR #42 base to main"},
-		{"title", `update PR #42 title: "feat: add API"`},
-		{"description", "update PR #42 description via Claude"},
+		{"content", "update PR #42 title + description"},
 	}
 
 	for _, c := range checks {
@@ -503,7 +501,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 
 // --- computeSyncPlan with update options ---
 
-func TestComputeSyncPlan_WithUpdateTitles(t *testing.T) {
+func TestComputeSyncPlan_WithContent(t *testing.T) {
 	syncTestRepo(t)
 
 	s, err := stack.Load(".")
@@ -516,29 +514,17 @@ func TestComputeSyncPlan_WithUpdateTitles(t *testing.T) {
 	s.Nodes[1].PR = 11
 
 	opts := &syncOptions{
-		updateTitles:       true,
-		updateDescriptions: false,
-		cfg:                cfgpkg.Defaults(),
+		withContent: true,
+		cfg:         cfgpkg.Defaults(),
 	}
 
 	plan := computeSyncPlan(s, opts)
 
-	titleActions := filterActions(plan, "update-title")
-	descActions := filterActions(plan, "update-description")
+	contentActions := filterActions(plan, "update-content")
 
-	// Should have title updates for open PRs (branchA and branchB have PRs)
-	if len(titleActions) < 2 {
-		t.Errorf("expected at least 2 update-title actions, got %d", len(titleActions))
-	}
-	for _, a := range titleActions {
-		if a.title == "" {
-			t.Errorf("update-title action for PR #%d has empty title", a.pr)
-		}
-	}
-
-	// Should have no description updates (not enabled)
-	if len(descActions) != 0 {
-		t.Errorf("expected 0 update-description actions, got %d", len(descActions))
+	// Should have content updates for open PRs with PRs (branchA and branchB)
+	if len(contentActions) != 2 {
+		t.Errorf("expected 2 update-content actions, got %d", len(contentActions))
 	}
 }
 
@@ -557,24 +543,24 @@ func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
 	s.Nodes[2].PR = 12
 
 	opts := &syncOptions{
-		updateTitles: true,
-		cfg:          cfgpkg.Defaults(),
+		withContent: true,
+		cfg:         cfgpkg.Defaults(),
 	}
 
 	plan := computeSyncPlan(s, opts)
 
-	titleActions := filterActions(plan, "update-title")
+	contentActions := filterActions(plan, "update-content")
 
-	// Should NOT have title update for merged branchA
-	for _, a := range titleActions {
+	// Should NOT have content update for merged branchA
+	for _, a := range contentActions {
 		if a.pr == 10 {
-			t.Error("should not update title for merged PR #10")
+			t.Error("should not update content for merged PR #10")
 		}
 	}
 
-	// Should have title updates for open PRs (branchB #11 and branchC #12)
-	if len(titleActions) < 2 {
-		t.Errorf("expected at least 2 update-title actions for open PRs, got %d", len(titleActions))
+	// Should have content updates for open PRs (branchB #11 and branchC #12)
+	if len(contentActions) != 2 {
+		t.Errorf("expected 2 update-content actions for open PRs, got %d", len(contentActions))
 	}
 }
 
@@ -584,7 +570,7 @@ func TestBuildDescriptionPrompt(t *testing.T) {
 	subjects := []string{"feat: add user auth", "fix: handle edge case"}
 	diff := "diff --git a/auth.go b/auth.go\n+func Login() {}\n"
 
-	prompt := buildDescriptionPrompt("feat/auth", subjects, diff)
+	prompt := buildDescriptionPrompt("feat/auth", subjects, diff, "")
 
 	checks := []string{
 		"Branch: feat/auth",
@@ -604,7 +590,7 @@ func TestBuildDescriptionPrompt(t *testing.T) {
 
 func TestBuildDescriptionPrompt_NoDiff(t *testing.T) {
 	subjects := []string{"initial commit"}
-	prompt := buildDescriptionPrompt("feat/init", subjects, "")
+	prompt := buildDescriptionPrompt("feat/init", subjects, "", "")
 
 	if strings.Contains(prompt, "Diff:") {
 		t.Error("prompt should not contain Diff section when diff is empty")

@@ -32,9 +32,7 @@ type PRTitle struct {
 
 // SyncConfig holds sync-time PR update settings.
 type SyncConfig struct {
-	UpdateDescriptions *bool `json:"update_descriptions,omitempty"` // nil = unset (defaults false)
-	UpdateTitles       *bool `json:"update_titles,omitempty"`       // nil = unset (defaults false)
-	AITitles           *bool `json:"ai_titles,omitempty"`           // nil = unset (defaults false)
+	WithContent *bool `json:"with_content,omitempty"` // nil = unset (defaults false)
 }
 
 // Config represents the sdf configuration.
@@ -150,29 +148,14 @@ func (c Config) ConventionalCommitsEnabled() bool {
 	return *c.PRTitle.ConventionalCommits
 }
 
-// UpdateDescriptionsEnabled returns whether sync should update PR descriptions.
-func (c Config) UpdateDescriptionsEnabled() bool {
-	if c.Sync.UpdateDescriptions == nil {
+// WithContentEnabled returns whether sync should update PR titles and descriptions.
+func (c Config) WithContentEnabled() bool {
+	if c.Sync.WithContent == nil {
 		return false
 	}
-	return *c.Sync.UpdateDescriptions
+	return *c.Sync.WithContent
 }
 
-// UpdateTitlesEnabled returns whether sync should update PR titles.
-func (c Config) UpdateTitlesEnabled() bool {
-	if c.Sync.UpdateTitles == nil {
-		return false
-	}
-	return *c.Sync.UpdateTitles
-}
-
-// AITitlesEnabled returns whether sync should use Claude to generate PR titles.
-func (c Config) AITitlesEnabled() bool {
-	if c.Sync.AITitles == nil {
-		return false
-	}
-	return *c.Sync.AITitles
-}
 
 // loadFile reads and unmarshals a config file.
 // Returns zero Config if the file doesn't exist (not an error).
@@ -214,16 +197,9 @@ func merge(global, repo Config) Config {
 		result.PRTitle.TicketPattern = repo.PRTitle.TicketPattern
 	}
 
-	if repo.Sync.UpdateDescriptions != nil {
-		result.Sync.UpdateDescriptions = repo.Sync.UpdateDescriptions
+	if repo.Sync.WithContent != nil {
+		result.Sync.WithContent = repo.Sync.WithContent
 	}
-	if repo.Sync.UpdateTitles != nil {
-		result.Sync.UpdateTitles = repo.Sync.UpdateTitles
-	}
-	if repo.Sync.AITitles != nil {
-		result.Sync.AITitles = repo.Sync.AITitles
-	}
-
 	return result
 }
 
