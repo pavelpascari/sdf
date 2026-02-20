@@ -108,6 +108,11 @@ func RunMerge(args []string) error {
 		return fmt.Errorf("merge failed: %w", err)
 	}
 
+	// gh pr merge --delete-branch can leave staged changes in the index
+	// when it updates the local ref. Reset the index to keep the tree clean
+	// for the post-merge sync.
+	gitpkg.ResetHead()
+
 	node.Status = "merged"
 	if err := stack.Save(root, s); err != nil {
 		return fmt.Errorf("cannot save stack: %w", err)

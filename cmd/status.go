@@ -51,20 +51,31 @@ func RunStatus(args []string) error {
 		branches[i] = n.Branch
 	}
 
-	prMap := make(map[string]gh.PRInfo)
+	var driftWarnings []string
 	if gh.Available() {
 		prs, err := gh.PRList(branches)
 		if err == nil {
-			for _, pr := range prs {
-				prMap[pr.HeadRefName] = pr
-				// Update the stack node so ParentBranch() skips merged nodes
-				if node := s.FindNode(pr.HeadRefName); node != nil {
-					node.PR = pr.Number
-					if strings.ToUpper(pr.State) == "MERGED" {
-						node.Status = "merged"
-					}
+			// Build PRState list for reconciliation
+			states := make([]stack.PRState, len(prs))
+			for i, pr := range prs {
+				states[i] = stack.PRState{
+					Number:      pr.Number,
+					HeadRefName: pr.HeadRefName,
+					BaseRefName: pr.BaseRefName,
+					State:       pr.State,
 				}
 			}
+
+			// Reconcile: apply routine changes, collect notable ones
+			changes := stack.ReconcileFromPRs(s, states)
+			for _, c := range changes {
+				if !c.Notable {
+					stack.ApplyRoutineChange(s, c)
+				} else {
+					driftWarnings = append(driftWarnings, c.Detail)
+				}
+			}
+			stack.Save(root, s)
 		}
 	}
 
@@ -77,19 +88,11 @@ func RunStatus(args []string) error {
 		icon := ui.Gray.Render("●")
 		status := node.Status
 
-		// Update status from GitHub if available
-		if pr, ok := prMap[node.Branch]; ok {
-			node.PR = pr.Number
-			switch strings.ToUpper(pr.State) {
-			case "MERGED":
-				status = "merged"
-				icon = ui.SymOK
-			case "CLOSED":
-				status = "closed"
-				icon = ui.SymFail
-			default:
-				status = "open"
-			}
+		switch status {
+		case "merged":
+			icon = ui.SymOK
+		case "closed":
+			icon = ui.SymFail
 		}
 
 		// Check sync state
@@ -141,6 +144,16 @@ func RunStatus(args []string) error {
 	if len(needsSync) > 0 {
 		fmt.Println()
 		fmt.Printf("  run `sdf sync` to rebase %s\n", strings.Join(needsSync, ", "))
+	}
+
+	// Print drift warnings
+	if len(driftWarnings) > 0 {
+		fmt.Println()
+		fmt.Printf("  %s Drift detected:\n", ui.SymWarn)
+		for _, w := range driftWarnings {
+			fmt.Printf("    %s\n", w)
+		}
+		fmt.Printf("\n  Run `sdf fetch` to reconcile.\n")
 	}
 
 	return nil
