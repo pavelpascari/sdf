@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
@@ -406,45 +407,94 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			}
 		}
 
-		if opts.updateDescriptions && claudepkg.Available() {
+	}
+
+	// Generate descriptions in parallel with live two-line display per PR
+	if opts.updateDescriptions && claudepkg.Available() {
+		type descJob struct {
+			node        stack.Node
+			prompt      string
+			sessionName string
+			index       int // position in the display (0-based)
+		}
+
+		var jobs []descJob
+		for i := range s.Nodes {
+			node := &s.Nodes[i]
+			if node.PR == 0 || node.Status == "merged" {
+				continue
+			}
 			parent := s.ParentBranch(node.Branch)
 			subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
-			diff, _ := gitpkg.DiffFull(parent, node.Branch)
-
 			if len(subjects) == 0 {
 				continue
 			}
+			diff, _ := gitpkg.DiffFull(parent, node.Branch)
+			jobs = append(jobs, descJob{
+				node:        *node,
+				prompt:      buildDescriptionPrompt(node.Branch, subjects, diff),
+				sessionName: claudepkg.SanitizeSessionName("pr-desc", node.Branch),
+				index:       len(jobs),
+			})
+		}
 
-			p := buildDescriptionPrompt(node.Branch, subjects, diff)
-			sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
-
-			// Line 1: anchor — what we're doing
-			fmt.Printf("  Updating description for PR #%d\n", node.PR)
-			// Line 2: streaming status line (overwrites in place)
-			sw := &statusLineWriter{w: os.Stdout}
-			sw.update("waiting for Claude...")
-			description, err := claudepkg.RunPromptStreaming(sessionName, p, sw)
-			if err != nil {
-				sw.finish(fmt.Sprintf("✗ failed: %v", err))
-				continue
+		if len(jobs) > 0 {
+			// Print all anchor + status lines upfront
+			disp := &parallelDisplay{w: os.Stdout, count: len(jobs)}
+			for _, j := range jobs {
+				fmt.Printf("  Updating description for PR #%d\n", j.node.PR)
+				fmt.Printf("    waiting for Claude...\n")
 			}
 
-			currentBody, err := ghpkg.PRViewBody(node.PR)
-			if err != nil {
-				sw.finish(fmt.Sprintf("✗ could not read PR body: %v", err))
-				continue
+			type descResult struct {
+				job         descJob
+				description string
+				err         error
 			}
 
-			newBody := replaceDescription(currentBody, description)
-			if newBody != currentBody {
-				if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
-					sw.finish(fmt.Sprintf("✗ could not update: %v", err))
-				} else {
-					sw.finish("✓ done")
-					updated++
+			results := make([]descResult, len(jobs))
+			var wg sync.WaitGroup
+
+			for _, j := range jobs {
+				wg.Add(1)
+				go func(j descJob) {
+					defer wg.Done()
+					sw := disp.writerFor(j.index)
+					description, err := claudepkg.RunPromptStreaming(j.sessionName, j.prompt, sw)
+					results[j.index] = descResult{job: j, description: description, err: err}
+					if err != nil {
+						disp.setStatus(j.index, fmt.Sprintf("✗ failed: %v", err))
+					} else {
+						disp.setStatus(j.index, "✓ done — pushing to GitHub...")
+					}
+				}(j)
+			}
+
+			wg.Wait()
+
+			// Apply results and update final status
+			for _, r := range results {
+				if r.err != nil {
+					continue
 				}
-			} else {
-				sw.finish("✓ unchanged")
+
+				currentBody, err := ghpkg.PRViewBody(r.job.node.PR)
+				if err != nil {
+					disp.setStatus(r.job.index, fmt.Sprintf("✗ could not read PR body: %v", err))
+					continue
+				}
+
+				newBody := replaceDescription(currentBody, r.description)
+				if newBody != currentBody {
+					if err := ghpkg.PREditBody(r.job.node.PR, newBody); err != nil {
+						disp.setStatus(r.job.index, fmt.Sprintf("✗ could not update: %v", err))
+					} else {
+						disp.setStatus(r.job.index, "✓ done")
+						updated++
+					}
+				} else {
+					disp.setStatus(r.job.index, "✓ unchanged")
+				}
 			}
 		}
 	}
@@ -479,36 +529,58 @@ func buildDescriptionPrompt(branch string, subjects []string, diff string) strin
 	return b.String()
 }
 
-// statusLineWriter writes streaming tokens to a single terminal line,
-// overwriting the previous content on each write. The anchor line above
-// stays fixed; this line shows live progress and a final status.
-type statusLineWriter struct {
-	w   io.Writer
-	buf []byte
+// parallelDisplay manages a block of two-line entries (anchor + status)
+// printed to the terminal. Multiple goroutines can update their own status
+// lines concurrently using ANSI cursor movement.
+//
+// Layout (for 3 PRs, 6 lines total):
+//
+//	line 0:  Updating description for PR #21   (anchor, index 0)
+//	line 1:    waiting for Claude...            (status, index 0)
+//	line 2:  Updating description for PR #22   (anchor, index 1)
+//	line 3:    waiting for Claude...            (status, index 1)
+//	line 4:  Updating description for PR #23   (anchor, index 2)
+//	line 5:    waiting for Claude...            (status, index 2)
+//	cursor parks here (line 6, after all newlines)
+type parallelDisplay struct {
+	mu    sync.Mutex
+	w     io.Writer
+	count int // number of PR entries
 }
 
-// update overwrites the status line with a static message.
-func (sw *statusLineWriter) update(msg string) {
-	fmt.Fprintf(sw.w, "\r\033[K    %s", msg)
+// setStatus updates the status line for the entry at index.
+func (d *parallelDisplay) setStatus(index int, msg string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// Cursor is parked at the bottom (line 2*count).
+	// Status line for index is at line 2*index+1.
+	// Move up: 2*count - (2*index+1) = 2*(count-index) - 1
+	up := 2*(d.count-index) - 1
+	fmt.Fprintf(d.w, "\033[%dA\r\033[K    %s\033[%dB\r", up, msg, up)
 }
 
-// Write appends streaming tokens and rewrites the status line with a
-// truncated preview of the accumulated text.
-func (sw *statusLineWriter) Write(p []byte) (int, error) {
-	sw.buf = append(sw.buf, p...)
-	text := strings.ReplaceAll(string(sw.buf), "\n", " ")
+// writerFor returns an io.Writer that streams tokens into the status line
+// for the given index, showing a truncated live preview.
+func (d *parallelDisplay) writerFor(index int) io.Writer {
+	return &parallelStatusWriter{disp: d, index: index}
+}
+
+type parallelStatusWriter struct {
+	disp  *parallelDisplay
+	index int
+	buf   []byte
+}
+
+func (pw *parallelStatusWriter) Write(p []byte) (int, error) {
+	pw.buf = append(pw.buf, p...)
+	text := strings.ReplaceAll(string(pw.buf), "\n", " ")
 	text = strings.Join(strings.Fields(text), " ")
 	const maxLen = 68
 	if len(text) > maxLen {
 		text = "..." + text[len(text)-maxLen+3:]
 	}
-	fmt.Fprintf(sw.w, "\r\033[K    %s", text)
+	pw.disp.setStatus(pw.index, text)
 	return len(p), nil
-}
-
-// finish clears the status line and prints the final result.
-func (sw *statusLineWriter) finish(msg string) {
-	fmt.Fprintf(sw.w, "\r\033[K    %s\n", msg)
 }
 
 // computeSyncPlan determines what operations sync will perform without
