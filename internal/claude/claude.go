@@ -2,7 +2,8 @@
 package claude
 
 import (
-	"bytes"
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -39,20 +40,60 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	return output, nil
 }
 
-// RunPromptStreaming sends a prompt to Claude and streams the output to display
-// while also capturing the full response. The streamed output is shown in real-time
-// so the user can watch the description being generated.
+// RunPromptStreaming sends a prompt to Claude using stream-json output format,
+// displaying text tokens in real-time via display writer while capturing the
+// full response. Each JSON event is flushed line-by-line so tokens appear
+// immediately rather than buffering until completion.
 func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
-	cmd := exec.Command("claude", "-p", prompt)
-	var buf bytes.Buffer
-	cmd.Stdout = io.MultiWriter(display, &buf)
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	output := strings.TrimSpace(buf.String())
+	cmd := exec.Command("claude", "-p", "--output-format", "stream-json", prompt)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return output, fmt.Errorf("claude %s: %s", name, output)
+		return "", fmt.Errorf("claude %s: %w", name, err)
 	}
-	return output, nil
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("claude %s: %w", name, err)
+	}
+
+	var result string
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var event struct {
+			Type  string `json:"type"`
+			Delta struct {
+				Text string `json:"text"`
+			} `json:"delta"`
+			Result string `json:"result"`
+		}
+
+		if json.Unmarshal(line, &event) != nil {
+			continue
+		}
+
+		// Display streaming text deltas as they arrive
+		if event.Delta.Text != "" {
+			display.Write([]byte(event.Delta.Text))
+		}
+
+		// Capture the final result text
+		if event.Result != "" {
+			result = event.Result
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return result, fmt.Errorf("claude %s: failed", name)
+	}
+
+	return strings.TrimSpace(result), nil
 }
 
 // SanitizeSessionName produces a safe session name from a branch name.
