@@ -298,6 +298,83 @@ func TestApplyChanges_BaseChange(t *testing.T) {
 	}
 }
 
+func TestReconcile_MergedNodeNotRemoved(t *testing.T) {
+	// Merged nodes won't appear in open-PR discovery — they should
+	// NOT be flagged as "remove".
+	local := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "merged"},
+			{Branch: "branchB", PR: 11, Status: "merged"},
+			{Branch: "branchC", PR: 12, Status: "open"},
+		},
+	}
+	discovered := DiscoveredStack{
+		Base: "main",
+		Chains: []PRRecord{
+			{Number: 12, HeadRefName: "branchC", BaseRefName: "main", Status: "open"},
+		},
+	}
+
+	changes := Reconcile(local, discovered)
+	for _, c := range changes {
+		if c.Kind == "remove" {
+			t.Errorf("merged node should not be removed: %v", c)
+		}
+	}
+}
+
+func TestApplyChanges_PreservesMergedNodes(t *testing.T) {
+	// When discovery only returns open PRs, merged nodes should be
+	// preserved at the front of the node list.
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "merged", BaseTip: "aaa"},
+			{Branch: "branchB", PR: 11, Status: "merged", BaseTip: "bbb"},
+			{Branch: "branchC", PR: 12, Status: "open", BaseTip: "ccc"},
+			{Branch: "branchD", PR: 13, Status: "open", BaseTip: "ddd"},
+		},
+	}
+	discovered := DiscoveredStack{
+		Base: "main",
+		Chains: []PRRecord{
+			{Number: 12, HeadRefName: "branchC", BaseRefName: "main", Status: "open"},
+			{Number: 13, HeadRefName: "branchD", BaseRefName: "branchC", Status: "open"},
+		},
+	}
+
+	changes := Reconcile(s, discovered)
+	ApplyChanges(s, discovered, changes)
+
+	if len(s.Nodes) != 4 {
+		t.Fatalf("expected 4 nodes, got %d", len(s.Nodes))
+	}
+
+	expected := []struct {
+		branch string
+		status string
+	}{
+		{"branchA", "merged"},
+		{"branchB", "merged"},
+		{"branchC", "open"},
+		{"branchD", "open"},
+	}
+	for i, want := range expected {
+		if s.Nodes[i].Branch != want.branch || s.Nodes[i].Status != want.status {
+			t.Errorf("node %d: expected %s (%s), got %s (%s)",
+				i, want.branch, want.status, s.Nodes[i].Branch, s.Nodes[i].Status)
+		}
+	}
+
+	// Verify local-only fields preserved for merged nodes
+	if s.Nodes[0].BaseTip != "aaa" {
+		t.Errorf("merged node BaseTip not preserved: got %q", s.Nodes[0].BaseTip)
+	}
+}
+
 // assertHasChange verifies that changes contains a change with the given kind, branch, and notable flag.
 func assertHasChange(t *testing.T, changes []ReconcileChange, kind, branch string, notable bool) {
 	t.Helper()

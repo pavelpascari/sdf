@@ -95,9 +95,10 @@ func Reconcile(local *Stack, discovered DiscoveredStack) []ReconcileChange {
 		}
 	}
 
-	// Walk local nodes to detect removals
+	// Walk local nodes to detect removals (skip merged — they won't
+	// appear in the open-PR discovery and that's expected).
 	for _, n := range local.Nodes {
-		if _, exists := discoveredByBranch[n.Branch]; !exists {
+		if _, exists := discoveredByBranch[n.Branch]; !exists && n.Status != "merged" {
 			changes = append(changes, ReconcileChange{
 				Kind:    "remove",
 				Branch:  n.Branch,
@@ -112,6 +113,9 @@ func Reconcile(local *Stack, discovered DiscoveredStack) []ReconcileChange {
 
 // ApplyChanges rebuilds the stack from the discovered chain order,
 // preserving local-only fields (BaseTip, NavHash) for existing nodes.
+// Locally-merged nodes that are absent from the discovered chain are
+// kept at the front of the list — they won't appear in open-PR
+// discovery, but removing them would lose stack history.
 func ApplyChanges(s *Stack, discovered DiscoveredStack, changes []ReconcileChange) {
 	// Update base if changed
 	for _, c := range changes {
@@ -127,22 +131,35 @@ func ApplyChanges(s *Stack, discovered DiscoveredStack, changes []ReconcileChang
 		existingByBranch[n.Branch] = n
 	}
 
-	// Rebuild nodes from discovered order
-	newNodes := make([]Node, len(discovered.Chains))
+	// Collect merged nodes absent from the discovered chain
+	discoveredSet := make(map[string]bool)
+	for _, pr := range discovered.Chains {
+		discoveredSet[pr.HeadRefName] = true
+	}
+
+	var mergedPrefix []Node
+	for _, n := range s.Nodes {
+		if n.Status == "merged" && !discoveredSet[n.Branch] {
+			mergedPrefix = append(mergedPrefix, n)
+		}
+	}
+
+	// Rebuild active nodes from discovered order
+	activeNodes := make([]Node, len(discovered.Chains))
 	for i, pr := range discovered.Chains {
 		if existing, ok := existingByBranch[pr.HeadRefName]; ok {
 			// Preserve existing node, update from discovered
-			newNodes[i] = existing
+			activeNodes[i] = existing
 			if pr.Number != 0 {
-				newNodes[i].PR = pr.Number
+				activeNodes[i].PR = pr.Number
 			}
 			status := prStateToNodeStatus(pr)
 			if status != "" {
-				newNodes[i].Status = status
+				activeNodes[i].Status = status
 			}
 		} else {
 			// New node
-			newNodes[i] = Node{
+			activeNodes[i] = Node{
 				Branch: pr.HeadRefName,
 				PR:     pr.Number,
 				Status: "open",
@@ -150,7 +167,8 @@ func ApplyChanges(s *Stack, discovered DiscoveredStack, changes []ReconcileChang
 		}
 	}
 
-	s.Nodes = newNodes
+	// Merged nodes first, then active nodes from discovery
+	s.Nodes = append(mergedPrefix, activeNodes...)
 }
 
 // prStateToNodeStatus converts a PRRecord to a node status string.
