@@ -90,8 +90,21 @@ func RunMerge(args []string) error {
 		}
 	}
 
+	// Pre-merge: retarget the next open PR's base before the merge deletes
+	// the head branch. Without this, GitHub auto-closes the downstream PR
+	// when the base branch is deleted by --delete-branch.
+	nextNode := findNextOpenNode(s, node.Branch)
+	if nextNode != nil && nextNode.PR > 0 {
+		newBase := s.ParentBranch(node.Branch) // will be stack base after merge
+		fmt.Printf("  Retargeting PR %s base → %s...\n", ui.PR(nextNode.PR), ui.Branch(newBase))
+		if err := ghpkg.PREditBase(nextNode.PR, newBase); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s could not retarget PR %s: %v\n", ui.SymWarn, ui.PR(nextNode.PR), err)
+			fmt.Fprintln(os.Stderr, "    The PR may be auto-closed when the branch is deleted.")
+		}
+	}
+
 	// Merge
-	fmt.Printf("\n  Merging PR %s...\n", ui.PR(node.PR))
+	fmt.Printf("  Merging PR %s...\n", ui.PR(node.PR))
 	if err := ghpkg.PRMerge(node.PR, *method); err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
@@ -163,6 +176,21 @@ func refreshPRStates(s *stack.Stack) {
 			}
 		}
 	}
+}
+
+// findNextOpenNode returns the first open node after the given branch.
+func findNextOpenNode(s *stack.Stack, branch string) *stack.Node {
+	found := false
+	for i := range s.Nodes {
+		if s.Nodes[i].Branch == branch {
+			found = true
+			continue
+		}
+		if found && s.Nodes[i].Status != "merged" {
+			return &s.Nodes[i]
+		}
+	}
+	return nil
 }
 
 // countOpen returns the number of open (non-merged) PRs in the stack.
