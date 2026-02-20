@@ -87,6 +87,7 @@ func runConfigSet(args []string) error {
 		fmt.Fprintln(os.Stderr, "  pr_title.ticket_pattern            regex to extract ticket from branch name")
 		fmt.Fprintln(os.Stderr, "  sync.update_descriptions           true or false")
 		fmt.Fprintln(os.Stderr, "  sync.update_titles                 true or false")
+		fmt.Fprintln(os.Stderr, "  sync.ai_titles                     true or false (use Claude for titles)")
 		os.Exit(1)
 	}
 
@@ -135,6 +136,9 @@ func runConfigSet(args []string) error {
 	case "sync.update_titles":
 		val := strings.ToLower(value) == "true"
 		cfg.Sync.UpdateTitles = &val
+	case "sync.ai_titles":
+		val := strings.ToLower(value) == "true"
+		cfg.Sync.AITitles = &val
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}

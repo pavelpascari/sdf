@@ -34,6 +34,7 @@ type PRTitle struct {
 type SyncConfig struct {
 	UpdateDescriptions *bool `json:"update_descriptions,omitempty"` // nil = unset (defaults false)
 	UpdateTitles       *bool `json:"update_titles,omitempty"`       // nil = unset (defaults false)
+	AITitles           *bool `json:"ai_titles,omitempty"`           // nil = unset (defaults false)
 }
 
 // Config represents the sdf configuration.
@@ -165,6 +166,14 @@ func (c Config) UpdateTitlesEnabled() bool {
 	return *c.Sync.UpdateTitles
 }
 
+// AITitlesEnabled returns whether sync should use Claude to generate PR titles.
+func (c Config) AITitlesEnabled() bool {
+	if c.Sync.AITitles == nil {
+		return false
+	}
+	return *c.Sync.AITitles
+}
+
 // loadFile reads and unmarshals a config file.
 // Returns zero Config if the file doesn't exist (not an error).
 func loadFile(path string) (Config, error) {
@@ -210,6 +219,9 @@ func merge(global, repo Config) Config {
 	}
 	if repo.Sync.UpdateTitles != nil {
 		result.Sync.UpdateTitles = repo.Sync.UpdateTitles
+	}
+	if repo.Sync.AITitles != nil {
+		result.Sync.AITitles = repo.Sync.AITitles
 	}
 
 	return result

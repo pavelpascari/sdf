@@ -33,6 +33,23 @@ func GeneratePRTitle(cfg Config, stackID, branch string, commitSubjects []string
 	return commitType + ": " + desc
 }
 
+// TitlePrefix returns the conventional commit prefix for a title
+// (e.g. "feat: ", "fix(PROJ-123): "). Returns empty string if
+// conventional commits are disabled.
+func TitlePrefix(cfg Config, branch string, commitSubjects []string) string {
+	if !cfg.ConventionalCommitsEnabled() {
+		return ""
+	}
+
+	commitType := detectCommitType(commitSubjects)
+	ticket := extractTicket(cfg, branch)
+
+	if ticket != "" {
+		return commitType + "(" + ticket + "): "
+	}
+	return commitType + ": "
+}
+
 // humanizeBranch strips the configured prefix and converts the remaining
 // branch name into a human-readable title.
 func humanizeBranch(cfg Config, stackID, branch string) string {

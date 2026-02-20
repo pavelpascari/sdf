@@ -29,6 +29,7 @@ type syncAction struct {
 type syncOptions struct {
 	updateDescriptions bool
 	updateTitles       bool
+	aiTitles           bool
 	cfg                cfgpkg.Config
 }
 
@@ -201,6 +202,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagUpdateDescs, flagUpdat
 	opts := syncOptions{
 		updateDescriptions: cfg.UpdateDescriptionsEnabled() || flagUpdateDescs,
 		updateTitles:       cfg.UpdateTitlesEnabled() || flagUpdateTitles,
+		aiTitles:           cfg.AITitlesEnabled(),
 		cfg:                cfg,
 	}
 
@@ -383,10 +385,15 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	// Update titles in parallel with live two-line display per PR
 	if opts.updateTitles {
 		type titleJob struct {
-			node          stack.Node
-			proposedTitle string
-			index         int
+			node        stack.Node
+			prefix      string // conventional commit prefix (e.g. "feat: ")
+			prompt      string // non-empty when AI titles enabled
+			sessionName string
+			localTitle  string // fallback title from branch name
+			index       int
 		}
+
+		useAI := opts.aiTitles && claudepkg.Available()
 
 		var jobs []titleJob
 		for i := range s.Nodes {
@@ -396,41 +403,71 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			}
 			parent := s.ParentBranch(node.Branch)
 			subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
-			proposedTitle := cfgpkg.GeneratePRTitle(opts.cfg, s.StackID, node.Branch, subjects)
-			jobs = append(jobs, titleJob{
-				node:          *node,
-				proposedTitle: proposedTitle,
-				index:         len(jobs),
-			})
+			localTitle := cfgpkg.GeneratePRTitle(opts.cfg, s.StackID, node.Branch, subjects)
+
+			j := titleJob{
+				node:       *node,
+				localTitle: localTitle,
+				index:      len(jobs),
+			}
+
+			if useAI {
+				j.prefix = cfgpkg.TitlePrefix(opts.cfg, node.Branch, subjects)
+				diff, _ := gitpkg.DiffFull(parent, node.Branch)
+				j.prompt = buildTitlePrompt(node.Branch, subjects, diff)
+				j.sessionName = claudepkg.SanitizeSessionName("pr-title", node.Branch)
+			}
+
+			jobs = append(jobs, j)
 		}
 
 		if len(jobs) > 0 {
 			disp := &parallelDisplay{w: os.Stdout, count: len(jobs)}
 			for _, j := range jobs {
 				fmt.Printf("  Updating title for PR #%d\n", j.node.PR)
-				fmt.Printf("    %s\n", j.proposedTitle)
+				if useAI {
+					fmt.Printf("    waiting for Claude...\n")
+				} else {
+					fmt.Printf("    %s\n", j.localTitle)
+				}
 			}
 
-			results := make([]bool, len(jobs)) // true = updated
+			results := make([]bool, len(jobs))
 			var wg sync.WaitGroup
 			for _, j := range jobs {
 				wg.Add(1)
 				go func(j titleJob) {
 					defer wg.Done()
+
+					// Determine the proposed title
+					proposedTitle := j.localTitle
+					if j.prompt != "" {
+						sw := disp.writerFor(j.index)
+						aiDesc, err := claudepkg.RunPromptStreaming(j.sessionName, j.prompt, sw)
+						if err != nil {
+							// Fall back to local title on AI failure
+							disp.setStatus(j.index, fmt.Sprintf("⚠ Claude failed, using: %s", j.localTitle))
+						} else {
+							// Clean up: single line, no quotes, trim
+							aiDesc = strings.Split(aiDesc, "\n")[0]
+							aiDesc = strings.Trim(aiDesc, "\"' ")
+							proposedTitle = j.prefix + aiDesc
+						}
+					}
+
 					currentTitle, err := ghpkg.PRViewTitle(j.node.PR)
 					if err != nil {
 						disp.setStatus(j.index, fmt.Sprintf("✗ could not read title: %v", err))
 						return
 					}
-					if currentTitle == j.proposedTitle {
-						disp.setStatus(j.index, "✓ unchanged")
+					if currentTitle == proposedTitle {
+						disp.setStatus(j.index, fmt.Sprintf("✓ %s", proposedTitle))
 						return
 					}
-					disp.setStatus(j.index, fmt.Sprintf("→ %s", j.proposedTitle))
-					if err := ghpkg.PREditTitle(j.node.PR, j.proposedTitle); err != nil {
+					if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err != nil {
 						disp.setStatus(j.index, fmt.Sprintf("✗ could not update: %v", err))
 					} else {
-						disp.setStatus(j.index, fmt.Sprintf("✓ %s", j.proposedTitle))
+						disp.setStatus(j.index, fmt.Sprintf("✓ %s", proposedTitle))
 						results[j.index] = true
 					}
 				}(j)
@@ -537,6 +574,32 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	if updated > 0 {
 		fmt.Printf("\n  Updated %d PR(s).\n", updated)
 	}
+}
+
+// buildTitlePrompt creates a prompt for Claude to generate the descriptive part
+// of a PR title. The prefix (e.g. "feat: ") is added by the caller.
+func buildTitlePrompt(branch string, subjects []string, diff string) string {
+	var b strings.Builder
+
+	b.WriteString("You are a PR title generator. Output ONLY a short title — nothing else.\n")
+	b.WriteString("No prefix like 'feat:' or 'fix:' — just the descriptive part.\n")
+	b.WriteString("No preamble, no quotes, no punctuation at the end.\n")
+	b.WriteString("Keep it under 60 characters. Use lowercase.\n\n")
+	fmt.Fprintf(&b, "Branch: %s\n\n", branch)
+	b.WriteString("Commits:\n")
+	for _, subj := range subjects {
+		fmt.Fprintf(&b, "  - %s\n", subj)
+	}
+
+	if diff != "" {
+		b.WriteString("\nDiff:\n")
+		b.WriteString(diff)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\nWrite a concise title summarizing this change.")
+
+	return b.String()
 }
 
 // buildDescriptionPrompt creates a prompt for Claude to generate a PR description
