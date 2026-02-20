@@ -380,33 +380,68 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 
 	updated := 0
 
-	for i := range s.Nodes {
-		node := &s.Nodes[i]
-		if node.PR == 0 || node.Status == "merged" {
-			continue
+	// Update titles in parallel with live two-line display per PR
+	if opts.updateTitles {
+		type titleJob struct {
+			node          stack.Node
+			proposedTitle string
+			index         int
 		}
 
-		if opts.updateTitles {
+		var jobs []titleJob
+		for i := range s.Nodes {
+			node := &s.Nodes[i]
+			if node.PR == 0 || node.Status == "merged" {
+				continue
+			}
 			parent := s.ParentBranch(node.Branch)
 			subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
 			proposedTitle := cfgpkg.GeneratePRTitle(opts.cfg, s.StackID, node.Branch, subjects)
+			jobs = append(jobs, titleJob{
+				node:          *node,
+				proposedTitle: proposedTitle,
+				index:         len(jobs),
+			})
+		}
 
-			currentTitle, err := ghpkg.PRViewTitle(node.PR)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  warning: could not read PR #%d title: %v\n", node.PR, err)
-				continue
+		if len(jobs) > 0 {
+			disp := &parallelDisplay{w: os.Stdout, count: len(jobs)}
+			for _, j := range jobs {
+				fmt.Printf("  Updating title for PR #%d\n", j.node.PR)
+				fmt.Printf("    %s\n", j.proposedTitle)
 			}
 
-			if currentTitle != proposedTitle {
-				fmt.Printf("  → PR #%d title: %q\n", node.PR, proposedTitle)
-				if err := ghpkg.PREditTitle(node.PR, proposedTitle); err != nil {
-					fmt.Fprintf(os.Stderr, "  warning: could not update PR #%d title: %v\n", node.PR, err)
-				} else {
+			results := make([]bool, len(jobs)) // true = updated
+			var wg sync.WaitGroup
+			for _, j := range jobs {
+				wg.Add(1)
+				go func(j titleJob) {
+					defer wg.Done()
+					currentTitle, err := ghpkg.PRViewTitle(j.node.PR)
+					if err != nil {
+						disp.setStatus(j.index, fmt.Sprintf("✗ could not read title: %v", err))
+						return
+					}
+					if currentTitle == j.proposedTitle {
+						disp.setStatus(j.index, "✓ unchanged")
+						return
+					}
+					disp.setStatus(j.index, fmt.Sprintf("→ %s", j.proposedTitle))
+					if err := ghpkg.PREditTitle(j.node.PR, j.proposedTitle); err != nil {
+						disp.setStatus(j.index, fmt.Sprintf("✗ could not update: %v", err))
+					} else {
+						disp.setStatus(j.index, fmt.Sprintf("✓ %s", j.proposedTitle))
+						results[j.index] = true
+					}
+				}(j)
+			}
+			wg.Wait()
+			for _, ok := range results {
+				if ok {
 					updated++
 				}
 			}
 		}
-
 	}
 
 	// Generate descriptions in parallel with live two-line display per PR
