@@ -51,6 +51,13 @@ func Checkout(branch string) error {
 	return err
 }
 
+// ResetHead resets the index to HEAD, unstaging any staged changes
+// without modifying the working tree.
+func ResetHead() error {
+	_, err := run("reset", "HEAD")
+	return err
+}
+
 // Push pushes a branch to origin, with force-with-lease for safety.
 func Push(branch string) error {
 	_, err := run("push", "--force-with-lease", "origin", branch)
