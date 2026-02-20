@@ -45,7 +45,7 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 // full response. Each JSON event is flushed line-by-line so tokens appear
 // immediately rather than buffering until completion.
 func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
-	cmd := exec.Command("claude", "-p", "--output-format", "stream-json", prompt)
+	cmd := exec.Command("claude", "-p", "--verbose", "--output-format", "stream-json", prompt)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", fmt.Errorf("claude %s: %w", name, err)
