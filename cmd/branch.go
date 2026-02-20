@@ -6,7 +6,6 @@ import (
 	"os"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
@@ -77,11 +76,6 @@ func RunBranch(args []string) error {
 		return err
 	}
 
-	// Create stub context document
-	if err := ctxpkg.CreateStub(root, branchName, parent); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not create context stub: %v\n", err)
-	}
-
 	// Push tracking branch to origin
 	if err := gitpkg.PushNew(branchName); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not push to origin: %v\n", err)
@@ -89,7 +83,6 @@ func RunBranch(args []string) error {
 	}
 
 	fmt.Printf("Created branch %q in stack %q (based on %s)\n", branchName, s.StackID, parent)
-	fmt.Printf("Context doc: .sdf/context/%s.md\n", branchName)
-	fmt.Println("Next: implement your changes, then run `sdf context edit` and `sdf pr`.")
+	fmt.Println("Next: implement your changes, then run `sdf pr`.")
 	return nil
 }

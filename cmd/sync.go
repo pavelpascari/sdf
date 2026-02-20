@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -192,7 +191,16 @@ func runSyncFull(root, stackName string, skipConfirm bool) error {
 
 	printSyncPlan(plan)
 
-	if !skipConfirm {
+	// Skip confirmation when all actions are just acknowledging merged PRs
+	onlySkipMerged := true
+	for _, a := range plan {
+		if a.kind != "skip-merged" {
+			onlySkipMerged = false
+			break
+		}
+	}
+
+	if !skipConfirm && !onlySkipMerged {
 		if !confirmSync() {
 			fmt.Println("Aborted.")
 			return nil
@@ -461,10 +469,15 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, rebaseErr error, conflicted []string) (conflictAction, error) {
 	fmt.Println("  → Invoking Claude for conflict resolution...")
 
-	stackCtx, _ := ctxpkg.Assemble(root, s, branch)
 	parent := s.ParentBranch(branch)
 	upstreamSummary, _ := gitpkg.DiffSummary(s.FindNode(branch).BaseTip, parent)
-	branchCtx, _ := ctxpkg.Read(root, branch)
+
+	// Use PR description as context (replaces local context docs)
+	var branchDesc string
+	node := s.FindNode(branch)
+	if node != nil && node.PR > 0 && ghpkg.Available() {
+		branchDesc, _ = ghpkg.PRViewBody(node.PR)
+	}
 
 	conflictContents := make(map[string]string)
 	for _, f := range conflicted {
@@ -474,7 +487,7 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 		}
 	}
 
-	p := ctxpkg.BuildConflictPrompt(stackCtx, upstreamSummary, branchCtx, conflictContents)
+	p := buildConflictPrompt(upstreamSummary, branchDesc, conflictContents)
 	sessionName := claudepkg.SanitizeSessionName("conflict", branch)
 
 	output, err := claudepkg.RunPrompt(sessionName, p)
@@ -552,6 +565,36 @@ func prompt(msg string) string {
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
 	return line
+}
+
+// buildConflictPrompt constructs the conflict resolution prompt for Claude,
+// using upstream changes and the PR description as context.
+func buildConflictPrompt(upstreamSummary, branchDescription string, conflictedFiles map[string]string) string {
+	var b strings.Builder
+
+	b.WriteString("You are resolving conflicts during a stack rebase.\n\n")
+
+	if upstreamSummary != "" {
+		b.WriteString("=== UPSTREAM CHANGE SUMMARY ===\n")
+		b.WriteString(upstreamSummary)
+		b.WriteString("\n\n")
+	}
+
+	if branchDescription != "" {
+		b.WriteString("=== BRANCH PR DESCRIPTION ===\n")
+		b.WriteString(branchDescription)
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("=== CONFLICTS ===\n")
+	for filename, content := range conflictedFiles {
+		fmt.Fprintf(&b, "File: %s\n```\n%s\n```\n\n", filename, content)
+	}
+
+	b.WriteString("Resolve all conflicts. For each file output the complete resolved content in a\n")
+	b.WriteString("fenced code block with the filename: ```<lang> <filename>\n")
+
+	return b.String()
 }
 
 // applyResolutions parses Claude's output for fenced code blocks and writes

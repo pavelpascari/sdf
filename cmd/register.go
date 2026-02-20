@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -191,17 +190,6 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 		return err
 	}
 
-	// Create context stubs for each branch
-	for i, node := range nodes {
-		parent := ds.Base
-		if i > 0 {
-			parent = nodes[i-1].Branch
-		}
-		if err := ctxpkg.CreateStub(root, node.Branch, parent); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not create context stub for %s: %v\n", node.Branch, err)
-		}
-	}
-
 	// Infer prefix config from registered branch names
 	cfg := cfgpkg.Defaults()
 	if prefix, sep := inferBranchPrefix(nodes, name); prefix != "" {
@@ -221,8 +209,7 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 		}
 		fmt.Printf("  %s %s  (PR #%d)\n", prefix, node.Branch, node.PR)
 	}
-	fmt.Printf("\nContext stubs created in .sdf/context/\n")
-	fmt.Println("Next: run `sdf context edit` on each branch, then `sdf status` to verify.")
+	fmt.Println("\nNext: run `sdf status` to verify, then `sdf pr` on each branch to create PRs.")
 	return nil
 }
 

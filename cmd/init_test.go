@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -126,19 +125,6 @@ func TestInit_CreatesBranchWithCustomName(t *testing.T) {
 	}
 }
 
-func TestInit_CreatesContextStub(t *testing.T) {
-	dir := initTestRepo(t)
-
-	if err := RunInit([]string{"--base", "main", "my-feature"}); err != nil {
-		t.Fatal(err)
-	}
-
-	branchName := "my-feature/my-feature"
-	if !ctxpkg.Exists(dir, branchName) {
-		t.Errorf("expected context doc to exist for %s", branchName)
-	}
-}
-
 func TestInit_RejectsExistingStack(t *testing.T) {
 	initTestRepo(t)
 
@@ -177,9 +163,6 @@ func TestInit_JSONOutput(t *testing.T) {
 	}
 	if result.Branch != "my-feature/my-feature" {
 		t.Errorf("expected branch my-feature/my-feature, got %s", result.Branch)
-	}
-	if result.ContextDoc != ".sdf/context/my-feature/my-feature.md" {
-		t.Errorf("expected context doc path .sdf/context/my-feature/my-feature.md, got %s", result.ContextDoc)
 	}
 }
 

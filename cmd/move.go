@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
-	ctxpkg "github.com/pavelpascari/sdf/internal/context"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -153,7 +153,7 @@ func RunMove(args []string) error {
 	// --- Phase 2: strip moved commits from current branch ---
 	fmt.Printf("→ rebasing %s onto updated %s...\n", branch, parent)
 	if err := gitpkg.RebaseOnto(newParentTip, lastMovedSHA, branch); err != nil {
-		if conflictErr := handleMoveConflict(root, s, branch, err); conflictErr != nil {
+		if conflictErr := handleMoveConflict(s, branch, err); conflictErr != nil {
 			gitpkg.Checkout(branch)
 			return fmt.Errorf("rebase of %s failed: %w", branch, conflictErr)
 		}
@@ -176,7 +176,7 @@ func RunMove(args []string) error {
 			fmt.Printf("→ rebasing %s onto updated %s...\n", downstream.Branch, upstreamBranch)
 
 			if err := gitpkg.RebaseOnto(upstreamTip, downstream.BaseTip, downstream.Branch); err != nil {
-				if conflictErr := handleMoveConflict(root, s, downstream.Branch, err); conflictErr != nil {
+				if conflictErr := handleMoveConflict(s, downstream.Branch, err); conflictErr != nil {
 					// Save partial progress before failing
 					stack.Save(root, s)
 					gitpkg.Checkout(branch)
@@ -201,7 +201,7 @@ func RunMove(args []string) error {
 
 // handleMoveConflict tries Claude resolution for a rebase conflict during move.
 // Falls back to aborting the rebase and returning the error.
-func handleMoveConflict(root string, s *stack.Stack, branch string, rebaseErr error) error {
+func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error) error {
 	conflicted, err := gitpkg.ConflictedFiles()
 	if err != nil || len(conflicted) == 0 {
 		gitpkg.RebaseAbort()
@@ -213,10 +213,14 @@ func handleMoveConflict(root string, s *stack.Stack, branch string, rebaseErr er
 	if claudepkg.Available() {
 		fmt.Println("  → invoking Claude for conflict resolution...")
 
-		stackCtx, _ := ctxpkg.Assemble(root, s, branch)
 		parent := s.ParentBranch(branch)
 		upstreamSummary, _ := gitpkg.DiffSummary(s.FindNode(branch).BaseTip, parent)
-		branchCtx, _ := ctxpkg.Read(root, branch)
+
+		var branchDesc string
+		node := s.FindNode(branch)
+		if node != nil && node.PR > 0 && ghpkg.Available() {
+			branchDesc, _ = ghpkg.PRViewBody(node.PR)
+		}
 
 		conflictContents := make(map[string]string)
 		for _, f := range conflicted {
@@ -226,7 +230,7 @@ func handleMoveConflict(root string, s *stack.Stack, branch string, rebaseErr er
 			}
 		}
 
-		p := ctxpkg.BuildConflictPrompt(stackCtx, upstreamSummary, branchCtx, conflictContents)
+		p := buildConflictPrompt(upstreamSummary, branchDesc, conflictContents)
 		sessionName := claudepkg.SanitizeSessionName("conflict", branch)
 
 		output, err := claudepkg.RunPrompt(sessionName, p)

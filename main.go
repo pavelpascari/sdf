@@ -36,8 +36,6 @@ func main() {
 		exitOnErr(cmd.RunMove(args))
 	case "register":
 		exitOnErr(cmd.RunRegister(args))
-	case "context":
-		exitOnErr(cmd.RunContext(args))
 	case "switch":
 		exitOnErr(cmd.RunSwitch(args))
 	case "config":
@@ -82,13 +80,8 @@ move <commit>...                   Move commits from current branch to parent
   pr                                 Create a GitHub PR for the current branch
 
 Navigation:
-  switch [<branch>]                  Switch to a branch (shows stack context)
+  switch [<branch>]                  Switch to a branch in the stack
   <branch>                           Shorthand for switch <branch>
-
-Context commands:
-  context show              Print assembled context for current branch
-  context edit              Open context doc in $EDITOR
-  context update            Ask Claude to rewrite context doc
 
 Config commands:
   config show               Display effective (merged) configuration
@@ -124,9 +117,9 @@ func runDoctor() error {
 		fmt.Printf("  ✓ gh         %s (%s)\n", ver, path)
 	}
 
-	// claude (optional, needed for context update and conflict resolution)
+	// claude (optional, needed for conflict resolution)
 	if path, err := exec.LookPath("claude"); err != nil {
-		fmt.Println("  ● claude     not found (needed for context update and conflict resolution)")
+		fmt.Println("  ● claude     not found (needed for conflict resolution)")
 	} else {
 		ver := getVersion("claude", "--version")
 		fmt.Printf("  ✓ claude     %s (%s)\n", ver, path)
