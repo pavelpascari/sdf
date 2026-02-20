@@ -7,6 +7,7 @@ type PRRecord struct {
 	Number      int
 	HeadRefName string
 	BaseRefName string
+	Status      string // "open", "merged", "closed" — optional, used by Reconcile
 }
 
 // DiscoveredStack represents a chain of PRs that form a stack,
