@@ -2,99 +2,56 @@ package cmd
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
-func RunConfig(args []string) error {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: sdf config <show|set>")
-		fmt.Fprintln(os.Stderr, "  show            Display effective (merged) configuration")
-		fmt.Fprintln(os.Stderr, "  set <key> <val> Set a value in repo config (.sdf/config.json)")
-		os.Exit(1)
-	}
-
-	switch args[0] {
-	case "show":
-		return runConfigShow()
-	case "set":
-		return runConfigSet(args[1:])
-	default:
-		return fmt.Errorf("unknown config subcommand: %s", args[0])
-	}
+var configCmd = &cobra.Command{
+	Use:         "config",
+	Short:       "Manage sdf configuration",
+	Annotations: map[string]string{"category": "config"},
 }
 
-func runConfigShow() error {
-	root, err := stack.FindRoot()
-	if err != nil {
-		// If not in a stack, try to show just global config
-		fmt.Fprintln(os.Stderr, "Not inside an sdf stack — showing global config only.")
-		globalPath, err := cfgpkg.GlobalPath()
-		if err != nil {
-			return err
-		}
-		cfg, err := cfgpkg.Load("/dev/null") // no repo config
-		if err != nil {
-			return err
-		}
-		return printConfig(cfg, globalPath, "")
-	}
-
-	cfg, err := cfgpkg.Load(root)
-	if err != nil {
-		return err
-	}
-
-	globalPath, _ := cfgpkg.GlobalPath()
-	repoPath := cfgpkg.RepoPath(root)
-	return printConfig(cfg, globalPath, repoPath)
+var configShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Display effective merged configuration",
+	RunE:  runConfigShowCmd,
 }
 
-func printConfig(cfg cfgpkg.Config, globalPath, repoPath string) error {
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("Effective configuration (merged):")
-	fmt.Println(string(data))
-	fmt.Println()
-	fmt.Printf("Global: %s\n", globalPath)
-	if repoPath != "" {
-		fmt.Printf("Repo:   %s\n", repoPath)
-	}
-	return nil
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a configuration value",
+	Example: `  sdf config set branch_prefix.enabled true
+  sdf config set --global pr_title.conventional_commits true`,
+	Args: cobra.ExactArgs(2),
+	RunE: runConfigSetCmd,
 }
 
-func runConfigSet(args []string) error {
-	fs := flag.NewFlagSet("config set", flag.ExitOnError)
-	global := fs.Bool("global", false, "set value in global config (~/.config/sdf/config.json)")
-	fs.Parse(args)
+func init() {
+	rootCmd.AddCommand(configCmd)
+	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configSetCmd)
+	configSetCmd.Flags().Bool("global", false, "set value in global config (~/.config/sdf/config.json)")
+}
 
-	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage: sdf config set [--global] <key> <value>")
-		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "Keys:")
-		fmt.Fprintln(os.Stderr, "  branch_prefix.enabled              true or false")
-		fmt.Fprintln(os.Stderr, "  branch_prefix.prefix               prefix string (empty = use stack_id)")
-		fmt.Fprintln(os.Stderr, "  branch_prefix.separator            separator character (default: /)")
-		fmt.Fprintln(os.Stderr, "  pr_title.conventional_commits      true or false")
-		fmt.Fprintln(os.Stderr, "  pr_title.ticket_pattern            regex to extract ticket from branch name")
-		fmt.Fprintln(os.Stderr, "  sync.with_content                  true or false (update titles + descriptions)")
-		os.Exit(1)
-	}
+func runConfigShowCmd(cmd *cobra.Command, args []string) error {
+	return runConfigShow()
+}
 
-	key := fs.Arg(0)
-	value := fs.Arg(1)
+func runConfigSetCmd(cmd *cobra.Command, args []string) error {
+	global, _ := cmd.Flags().GetBool("global")
+	key := args[0]
+	value := args[1]
 
 	// Determine which config file to modify
 	var path string
-	if *global {
+	if global {
 		var err error
 		path, err = cfgpkg.GlobalPath()
 		if err != nil {
@@ -140,5 +97,53 @@ func runConfigSet(args []string) error {
 	}
 
 	fmt.Printf("Set %s = %s in %s\n", key, value, path)
+	return nil
+}
+
+// RunConfig is a compatibility wrapper for callers that use the old interface.
+func RunConfig(args []string) error {
+	rootCmd.SetArgs(append([]string{"config"}, args...))
+	return rootCmd.Execute()
+}
+
+func runConfigShow() error {
+	root, err := stack.FindRoot()
+	if err != nil {
+		// If not in a stack, try to show just global config
+		fmt.Fprintln(os.Stderr, "Not inside an sdf stack — showing global config only.")
+		globalPath, err := cfgpkg.GlobalPath()
+		if err != nil {
+			return err
+		}
+		cfg, err := cfgpkg.Load("/dev/null") // no repo config
+		if err != nil {
+			return err
+		}
+		return printConfig(cfg, globalPath, "")
+	}
+
+	cfg, err := cfgpkg.Load(root)
+	if err != nil {
+		return err
+	}
+
+	globalPath, _ := cfgpkg.GlobalPath()
+	repoPath := cfgpkg.RepoPath(root)
+	return printConfig(cfg, globalPath, repoPath)
+}
+
+func printConfig(cfg cfgpkg.Config, globalPath, repoPath string) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Effective configuration (merged):")
+	fmt.Println(string(data))
+	fmt.Println()
+	fmt.Printf("Global: %s\n", globalPath)
+	if repoPath != "" {
+		fmt.Printf("Repo:   %s\n", repoPath)
+	}
 	return nil
 }
