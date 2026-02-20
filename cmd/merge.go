@@ -165,21 +165,6 @@ func findNextOpenNode(s *stack.Stack, branch string) *stack.Node {
 	return nil
 }
 
-// findNextOpenNode returns the first open node after the given branch.
-func findNextOpenNode(s *stack.Stack, branch string) *stack.Node {
-	found := false
-	for i := range s.Nodes {
-		if s.Nodes[i].Branch == branch {
-			found = true
-			continue
-		}
-		if found && s.Nodes[i].Status != "merged" {
-			return &s.Nodes[i]
-		}
-	}
-	return nil
-}
-
 // countOpen returns the number of open (non-merged) PRs in the stack.
 func countOpen(s *stack.Stack) int {
 	count := 0
