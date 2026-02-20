@@ -15,6 +15,30 @@ var rootCmd = &cobra.Command{
 	Short:         "Stacked Diffs Flow — manage chains of dependent PRs",
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	Args:          cobra.ArbitraryArgs,
+	// Handle `sdf <branch>` as shorthand for `sdf switch <branch>`
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			if err := TrySwitch(args[0]); err == nil {
+				return nil
+			}
+		}
+		return cmd.Help()
+	},
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version",
+	Annotations: map[string]string{"category": "utility"},
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("sdf %s\n", version)
+	},
+}
+
+func init() {
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.AddCommand(versionCmd)
 }
 
 // SetVersion sets the version string on the root command.
