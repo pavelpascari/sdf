@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pavelpascari/sdf/cmd"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 // version is set at build time via -ldflags.
@@ -103,27 +104,27 @@ func runDoctor() error {
 
 	// git (required)
 	if path, err := exec.LookPath("git"); err != nil {
-		fmt.Println("  ✗ git        not found (required)")
+		fmt.Printf("  %s git        not found (required)\n", ui.SymFail)
 		allOk = false
 	} else {
 		ver := getVersion("git", "--version")
-		fmt.Printf("  ✓ git        %s (%s)\n", ver, path)
+		fmt.Printf("  %s git        %s (%s)\n", ui.SymOK, ver, path)
 	}
 
 	// gh (required for PR operations)
 	if path, err := exec.LookPath("gh"); err != nil {
-		fmt.Println("  ● gh         not found (needed for PR operations)")
+		fmt.Printf("  %s gh         not found (needed for PR operations)\n", ui.Gray.Render("●"))
 	} else {
 		ver := getVersion("gh", "version")
-		fmt.Printf("  ✓ gh         %s (%s)\n", ver, path)
+		fmt.Printf("  %s gh         %s (%s)\n", ui.SymOK, ver, path)
 	}
 
 	// claude (optional, needed for conflict resolution and PR description generation)
 	if path, err := exec.LookPath("claude"); err != nil {
-		fmt.Println("  ● claude     not found (needed for conflict resolution and PR descriptions)")
+		fmt.Printf("  %s claude     not found (needed for conflict resolution and PR descriptions)\n", ui.Gray.Render("●"))
 	} else {
 		ver := getVersion("claude", "--version")
-		fmt.Printf("  ✓ claude     %s (%s)\n", ver, path)
+		fmt.Printf("  %s claude     %s (%s)\n", ui.SymOK, ver, path)
 	}
 
 	fmt.Println()

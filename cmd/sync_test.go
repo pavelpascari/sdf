@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -13,6 +13,11 @@ import (
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
+
+// stripANSI removes ANSI escape codes from a string for test assertions.
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
 // syncTestRepo sets up a temporary git repository with an SDF stack of 3
 // branches for testing sync plan computation:
@@ -457,7 +462,7 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 
 func TestPrintSyncPlan_Output(t *testing.T) {
 	plan := []syncAction{
-		{kind: "skip-merged", branch: "feat/auth"},
+		{kind: "skip-merged", branch: "feat/auth", pr: 10},
 		{kind: "rebase", branch: "feat/api", onto: "main"},
 		{kind: "push", branch: "feat/api"},
 		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
@@ -476,7 +481,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
-	output := buf.String()
+	output := stripANSI(buf.String())
 
 	// Verify each action type appears in the output
 	checks := []struct {
@@ -484,11 +489,10 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		contains string
 	}{
 		{"header", "Sync plan:"},
-		{"merged", "feat/auth is merged"},
-		{"rebase", "rebase feat/api onto main"},
-		{"push", "force-push feat/api"},
-		{"pr-base", "update PR #42 base to main"},
-		{"content", "update PR #42 title + description"},
+		{"merged", "PR #10 (feat/auth) merged"},
+		{"rebase+push", "rebase feat/api onto main + push"},
+		{"pr-base", "update PR #42 base"},
+		{"content", "update PR #42 content"},
 	}
 
 	for _, c := range checks {
@@ -496,6 +500,11 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 			t.Errorf("printSyncPlan output missing %s: expected to contain %q\ngot:\n%s",
 				c.label, c.contains, output)
 		}
+	}
+
+	// Verify rebase+push are combined (no separate "push feat/api" line)
+	if strings.Contains(output, "push feat/api\n") {
+		t.Error("printSyncPlan should combine rebase+push, but found separate push line")
 	}
 }
 
@@ -600,49 +609,5 @@ func TestBuildDescriptionPrompt_NoDiff(t *testing.T) {
 	}
 }
 
-// --- confirmSync tests ---
-
-func TestConfirmSync_Accepts(t *testing.T) {
-	inputs := []struct {
-		input string
-		want  bool
-	}{
-		{"\n", true},       // Enter (default yes)
-		{"y\n", true},      // lowercase y
-		{"Y\n", true},      // uppercase Y
-		{"yes\n", true},    // full word
-		{"YES\n", true},    // uppercase full word
-		{"n\n", false},     // no
-		{"no\n", false},    // no full word
-		{"N\n", false},     // uppercase N
-		{"abort\n", false}, // anything else
-	}
-
-	for _, tc := range inputs {
-		t.Run(fmt.Sprintf("input=%q", strings.TrimSpace(tc.input)), func(t *testing.T) {
-			// Replace stdin with a pipe
-			oldStdin := os.Stdin
-			r, w, _ := os.Pipe()
-			os.Stdin = r
-
-			// Capture stdout to suppress the "Proceed?" prompt
-			oldStdout := os.Stdout
-			_, devNull, _ := os.Pipe()
-			os.Stdout = devNull
-
-			w.WriteString(tc.input)
-			w.Close()
-
-			got := confirmSync()
-
-			os.Stdin = oldStdin
-			os.Stdout = oldStdout
-			devNull.Close()
-
-			if got != tc.want {
-				t.Errorf("confirmSync() with input %q = %v, want %v",
-					strings.TrimSpace(tc.input), got, tc.want)
-			}
-		})
-	}
-}
+// confirmSync is now a thin wrapper around ui.Confirm (huh library).
+// Interactive prompt behavior is tested by huh's own test suite.

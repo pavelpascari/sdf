@@ -7,9 +7,10 @@ import (
 	"os"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
-	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 // PRResult is the structured output of sdf pr when --json is used.
@@ -78,7 +79,7 @@ func RunPR(args []string) error {
 
 	// Push current branch first
 	if !*jsonFlag {
-		fmt.Printf("Pushing %s to origin...\n", branch)
+		fmt.Printf("Pushing %s to origin...\n", ui.Branch(branch))
 	}
 	if err := gitpkg.Push(branch); err != nil {
 		if err := gitpkg.PushNew(branch); err != nil {
@@ -88,7 +89,7 @@ func RunPR(args []string) error {
 
 	// Create PR
 	if !*jsonFlag {
-		fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, base)
+		fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, ui.Branch(base))
 	}
 	url, err := ghpkg.PRCreate(prTitle, body, base, branch)
 	if err != nil {

@@ -1,17 +1,18 @@
 package cmd
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/huh"
+
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
-	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 func RunRegister(args []string) error {
@@ -100,25 +101,22 @@ func RunRegister(args []string) error {
 	// Let user pick
 	choice := 0
 	if len(discovered) == 1 {
-		choice = 0
-		fmt.Printf("Register this stack? [Y/n] ")
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer == "n" || answer == "no" {
+		if !ui.Confirm("Register this stack?") {
 			fmt.Println("Aborted.")
 			return nil
 		}
 	} else {
-		fmt.Printf("Which stack to register? [1-%d] ", len(discovered))
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(answer)
-		num, err := strconv.Atoi(answer)
-		if err != nil || num < 1 || num > len(discovered) {
-			return fmt.Errorf("invalid choice: %s", answer)
+		options := make([]huh.Option[string], len(discovered))
+		for i, ds := range discovered {
+			label := fmt.Sprintf("base: %s — %d branches", ds.Base, len(ds.Chains))
+			options[i] = huh.NewOption(label, fmt.Sprintf("%d", i))
 		}
-		choice = num - 1
+		picked := ui.Select("Which stack to register?", options)
+		if picked == "" {
+			fmt.Println("Aborted.")
+			return nil
+		}
+		fmt.Sscanf(picked, "%d", &choice)
 	}
 
 	selected := discovered[choice]
@@ -201,13 +199,13 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 	}
 
 
-	fmt.Printf("\nRegistered stack %q with %d branches (base: %s)\n\n", name, len(nodes), ds.Base)
+	fmt.Printf("\nRegistered stack %q with %d branches (base: %s)\n\n", name, len(nodes), ui.Branch(ds.Base))
 	for i, node := range nodes {
 		prefix := "├─"
 		if i == len(nodes)-1 {
 			prefix = "└─"
 		}
-		fmt.Printf("  %s %s  (PR #%d)\n", prefix, node.Branch, node.PR)
+		fmt.Printf("  %s %s  (PR %s)\n", prefix, ui.Branch(node.Branch), ui.PR(node.PR))
 	}
 	fmt.Println("\nNext: run `sdf status` to verify, then `sdf pr` on each branch to create PRs.")
 	return nil
