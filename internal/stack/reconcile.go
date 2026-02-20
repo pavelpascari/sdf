@@ -1,13 +1,27 @@
 package stack
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ReconcileChange describes a single difference between local and discovered state.
 type ReconcileChange struct {
-	Kind    string // "status", "pr-number", "append", "insert", "remove", "reorder", "base-change"
-	Branch  string
-	Detail  string // human-readable, e.g. "PR #21: open → merged"
-	Notable bool   // true = ⚠ (needs attention), false = ✓ (routine)
+	Kind      string // "status", "pr-number", "append", "insert", "remove", "reorder", "base-change", "base-mismatch", "pr-missing"
+	Branch    string
+	Detail    string // human-readable, e.g. "PR #21: open → merged"
+	Notable   bool   // true = ⚠ (needs attention), false = ✓ (routine)
+	NewStatus string // populated for "status" changes (used by ApplyRoutineChange)
+	NewPR     int    // populated for "pr-number" changes (used by ApplyRoutineChange)
+}
+
+// PRState mirrors gh.PRInfo fields needed for lightweight reconciliation.
+// Avoids importing the gh package from the stack package.
+type PRState struct {
+	Number      int
+	HeadRefName string
+	BaseRefName string
+	State       string // "OPEN", "MERGED", "CLOSED"
 }
 
 // Reconcile compares local stack state against a discovered PR chain from GitHub
@@ -158,4 +172,106 @@ func ApplyChanges(s *Stack, discovered DiscoveredStack, changes []ReconcileChang
 // from context. Returns empty string if no status can be determined.
 func prStateToNodeStatus(pr PRRecord) string {
 	return pr.Status
+}
+
+// ReconcileFromPRs compares local stack state against PR data from GitHub.
+// Unlike Reconcile(), this works from per-branch PR info (as returned by
+// ghpkg.PRList) without requiring a full DiscoverStacks call.
+//
+// It detects routine changes (status updates, PR number fills) and
+// structural drift (base mismatches, missing PRs). Structural changes
+// that require full reconciliation emit notable warnings.
+func ReconcileFromPRs(s *Stack, prs []PRState) []ReconcileChange {
+	var changes []ReconcileChange
+
+	// Build lookup: branch → PRState
+	prByBranch := make(map[string]PRState)
+	for _, pr := range prs {
+		prByBranch[pr.HeadRefName] = pr
+	}
+
+	for i := range s.Nodes {
+		node := &s.Nodes[i]
+
+		pr, found := prByBranch[node.Branch]
+		if !found {
+			// Node has a PR locally but GitHub didn't return it
+			if node.PR > 0 {
+				changes = append(changes, ReconcileChange{
+					Kind:    "pr-missing",
+					Branch:  node.Branch,
+					Detail:  fmt.Sprintf("PR #%d (%s) not found on GitHub", node.PR, node.Branch),
+					Notable: true,
+				})
+			}
+			continue
+		}
+
+		// Status change
+		newStatus := ghStateToNodeStatus(pr.State)
+		if newStatus != "" && node.Status != newStatus {
+			changes = append(changes, ReconcileChange{
+				Kind:      "status",
+				Branch:    node.Branch,
+				Detail:    fmt.Sprintf("PR #%d: %s → %s", pr.Number, node.Status, newStatus),
+				Notable:   false,
+				NewStatus: newStatus,
+			})
+		}
+
+		// PR number fill
+		if node.PR == 0 && pr.Number != 0 {
+			changes = append(changes, ReconcileChange{
+				Kind:   "pr-number",
+				Branch: node.Branch,
+				Detail: fmt.Sprintf("%s: PR #%d discovered", node.Branch, pr.Number),
+				NewPR:  pr.Number,
+			})
+		}
+
+		// Base mismatch: check if GitHub's baseRefName matches expected parent
+		expectedParent := s.ParentBranch(node.Branch)
+		if pr.BaseRefName != "" && pr.BaseRefName != expectedParent {
+			changes = append(changes, ReconcileChange{
+				Kind:    "base-mismatch",
+				Branch:  node.Branch,
+				Detail:  fmt.Sprintf("PR #%d (%s) base is %s, expected %s", pr.Number, node.Branch, pr.BaseRefName, expectedParent),
+				Notable: true,
+			})
+		}
+	}
+
+	return changes
+}
+
+// ApplyRoutineChange applies a single non-notable change to the stack.
+func ApplyRoutineChange(s *Stack, c ReconcileChange) {
+	node := s.FindNode(c.Branch)
+	if node == nil {
+		return
+	}
+	switch c.Kind {
+	case "status":
+		if c.NewStatus != "" {
+			node.Status = c.NewStatus
+		}
+	case "pr-number":
+		if c.NewPR != 0 {
+			node.PR = c.NewPR
+		}
+	}
+}
+
+// ghStateToNodeStatus converts a GitHub PR state string to a node status.
+func ghStateToNodeStatus(state string) string {
+	switch strings.ToUpper(state) {
+	case "MERGED":
+		return "merged"
+	case "CLOSED":
+		return "closed"
+	case "OPEN":
+		return "open"
+	default:
+		return ""
+	}
 }
