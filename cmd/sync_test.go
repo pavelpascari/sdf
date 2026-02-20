@@ -457,7 +457,7 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 
 func TestPrintSyncPlan_Output(t *testing.T) {
 	plan := []syncAction{
-		{kind: "skip-merged", branch: "feat/auth"},
+		{kind: "skip-merged", branch: "feat/auth", pr: 10},
 		{kind: "rebase", branch: "feat/api", onto: "main"},
 		{kind: "push", branch: "feat/api"},
 		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
@@ -484,11 +484,10 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		contains string
 	}{
 		{"header", "Sync plan:"},
-		{"merged", "feat/auth is merged"},
-		{"rebase", "rebase feat/api onto main"},
-		{"push", "force-push feat/api"},
-		{"pr-base", "update PR #42 base to main"},
-		{"content", "update PR #42 title + description"},
+		{"merged", "PR #10 (feat/auth) merged"},
+		{"rebase+push", "rebase feat/api onto main + push"},
+		{"pr-base", "update PR #42 base"},
+		{"content", "update PR #42 content"},
 	}
 
 	for _, c := range checks {
@@ -496,6 +495,11 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 			t.Errorf("printSyncPlan output missing %s: expected to contain %q\ngot:\n%s",
 				c.label, c.contains, output)
 		}
+	}
+
+	// Verify rebase+push are combined (no separate "push feat/api" line)
+	if strings.Contains(output, "push feat/api\n") {
+		t.Error("printSyncPlan should combine rebase+push, but found separate push line")
 	}
 }
 
