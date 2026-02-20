@@ -186,8 +186,22 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 
 	// Compute and show the sync plan
 	plan := computeSyncPlan(s, &opts)
-	if len(plan) == 0 {
+
+	// Check if there's any real work beyond acknowledging merged PRs
+	onlySkipMerged := true
+	for _, a := range plan {
+		if a.kind != "skip-merged" {
+			onlySkipMerged = false
+			break
+		}
+	}
+
+	if len(plan) == 0 || onlySkipMerged {
 		fmt.Println("\nEverything is in sync.")
+		// Save any state changes from reconciliation
+		if err := stack.Save(root, s); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not save stack: %v\n", err)
+		}
 		// Still update stack navigation (catches empty/stale nav hashes)
 		if err := updateStackNavForAllPRs(root, s); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
@@ -197,16 +211,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 
 	printSyncPlan(plan)
 
-	// Skip confirmation when all actions are just acknowledging merged PRs
-	onlySkipMerged := true
-	for _, a := range plan {
-		if a.kind != "skip-merged" {
-			onlySkipMerged = false
-			break
-		}
-	}
-
-	if !skipConfirm && !onlySkipMerged {
+	if !skipConfirm {
 		if !confirmSync() {
 			fmt.Println("Aborted.")
 			return nil
@@ -230,16 +235,31 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 	failed := make(map[string]error)
 	var prBasesUpdated int
 
+	// Check if there's any real work (rebases) beyond just merged PRs
+	hasRealWork := false
+	for i := 0; i < len(s.Nodes); i++ {
+		if s.Nodes[i].Status != "merged" {
+			parent := s.ParentBranch(s.Nodes[i].Branch)
+			tip, err := gitpkg.RevParse(parent)
+			if err == nil && s.Nodes[i].BaseTip != "" && tip != s.Nodes[i].BaseTip {
+				hasRealWork = true
+				break
+			}
+		}
+	}
+
 	for i := 0; i < len(s.Nodes); i++ {
 		node := &s.Nodes[i]
 
 		if node.Status == "merged" {
-			if node.PR > 0 {
-				fmt.Printf("  %s PR %s (%s) merged\n", ui.SymOK, ui.PR(node.PR), ui.Branch(node.Branch))
-			} else {
-				fmt.Printf("  %s %s merged\n", ui.SymOK, ui.Branch(node.Branch))
+			// Only print merged status when there's real sync work to show
+			if hasRealWork {
+				if node.PR > 0 {
+					fmt.Printf("  %s PR %s (%s) merged\n", ui.SymOK, ui.PR(node.PR), ui.Branch(node.Branch))
+				} else {
+					fmt.Printf("  %s %s merged\n", ui.SymOK, ui.Branch(node.Branch))
+				}
 			}
-			modified = true
 			continue
 		}
 
