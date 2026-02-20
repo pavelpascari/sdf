@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"strings"
+	"sync"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
@@ -379,13 +379,14 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 
 	updated := 0
 
-	for i := range s.Nodes {
-		node := &s.Nodes[i]
-		if node.PR == 0 || node.Status == "merged" {
-			continue
-		}
+	// Update titles sequentially (fast gh API calls)
+	if opts.updateTitles {
+		for i := range s.Nodes {
+			node := &s.Nodes[i]
+			if node.PR == 0 || node.Status == "merged" {
+				continue
+			}
 
-		if opts.updateTitles {
 			parent := s.ParentBranch(node.Branch)
 			subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
 			proposedTitle := cfgpkg.GeneratePRTitle(opts.cfg, s.StackID, node.Branch, subjects)
@@ -405,46 +406,90 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 				}
 			}
 		}
+	}
 
-		if opts.updateDescriptions && claudepkg.Available() {
+	// Generate descriptions in parallel (Claude CLI is the bottleneck)
+	if opts.updateDescriptions && claudepkg.Available() {
+		type descResult struct {
+			pr          int
+			branch      string
+			description string
+			err         error
+		}
+
+		// Collect eligible nodes and launch Claude concurrently
+		var results []descResult
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+
+		var eligible []stack.Node
+		for _, node := range s.Nodes {
+			if node.PR == 0 || node.Status == "merged" {
+				continue
+			}
 			parent := s.ParentBranch(node.Branch)
 			subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
-			diff, _ := gitpkg.DiffFull(parent, node.Branch)
-
 			if len(subjects) == 0 {
 				continue
 			}
+			eligible = append(eligible, node)
+		}
 
-			p := buildDescriptionPrompt(node.Branch, subjects, diff)
-			sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
+		if len(eligible) > 0 {
+			fmt.Printf("  ⋯ Generating descriptions for %d PR(s)...", len(eligible))
+		}
 
-			// Stream Claude output on a single updating line
-			fmt.Printf("  ⋯ PR #%d: generating description", node.PR)
-			sw := &streamWriter{w: os.Stdout}
-			description, err := claudepkg.RunPromptStreaming(sessionName, p, sw)
-			// Clear the streaming line and print the final status
+		for _, node := range eligible {
+			wg.Add(1)
+			go func(node stack.Node) {
+				defer wg.Done()
+				parent := s.ParentBranch(node.Branch)
+				subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
+				diff, _ := gitpkg.DiffFull(parent, node.Branch)
+
+				p := buildDescriptionPrompt(node.Branch, subjects, diff)
+				sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
+				description, err := claudepkg.RunPrompt(sessionName, p)
+
+				mu.Lock()
+				results = append(results, descResult{
+					pr: node.PR, branch: node.Branch,
+					description: description, err: err,
+				})
+				// Update progress counter
+				fmt.Printf("\r\033[K  ⋯ Generating descriptions (%d/%d)...", len(results), len(eligible))
+				mu.Unlock()
+			}(node)
+		}
+
+		wg.Wait()
+		if len(eligible) > 0 {
 			fmt.Printf("\r\033[K")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  ✗ PR #%d: Claude could not generate description: %v\n", node.PR, err)
+		}
+
+		// Apply results sequentially
+		for _, r := range results {
+			if r.err != nil {
+				fmt.Fprintf(os.Stderr, "  ✗ PR #%d: Claude could not generate description: %v\n", r.pr, r.err)
 				continue
 			}
 
-			currentBody, err := ghpkg.PRViewBody(node.PR)
+			currentBody, err := ghpkg.PRViewBody(r.pr)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  ✗ PR #%d: could not read body: %v\n", node.PR, err)
+				fmt.Fprintf(os.Stderr, "  ✗ PR #%d: could not read body: %v\n", r.pr, err)
 				continue
 			}
 
-			newBody := replaceDescription(currentBody, description)
+			newBody := replaceDescription(currentBody, r.description)
 			if newBody != currentBody {
-				if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
-					fmt.Fprintf(os.Stderr, "  ✗ PR #%d: could not update description: %v\n", node.PR, err)
+				if err := ghpkg.PREditBody(r.pr, newBody); err != nil {
+					fmt.Fprintf(os.Stderr, "  ✗ PR #%d: could not update description: %v\n", r.pr, err)
 				} else {
-					fmt.Printf("  ✓ PR #%d: description updated\n", node.PR)
+					fmt.Printf("  ✓ PR #%d: description updated\n", r.pr)
 					updated++
 				}
 			} else {
-				fmt.Printf("  ✓ PR #%d: description unchanged\n", node.PR)
+				fmt.Printf("  ✓ PR #%d: description unchanged\n", r.pr)
 			}
 		}
 	}
@@ -477,27 +522,6 @@ func buildDescriptionPrompt(branch string, subjects []string, diff string) strin
 	b.WriteString("\nWrite 2-5 sentences explaining what this change does and why. Focus on user impact and key changes.")
 
 	return b.String()
-}
-
-// streamWriter shows Claude streaming output as a single updating line.
-// It collects tokens and periodically rewrites the current terminal line
-// with a truncated preview of the generated text so far.
-type streamWriter struct {
-	w   io.Writer
-	buf []byte
-}
-
-func (sw *streamWriter) Write(p []byte) (int, error) {
-	sw.buf = append(sw.buf, p...)
-	// Build a single-line preview: collapse whitespace, truncate
-	text := strings.ReplaceAll(string(sw.buf), "\n", " ")
-	text = strings.Join(strings.Fields(text), " ")
-	const maxLen = 72
-	if len(text) > maxLen {
-		text = text[len(text)-maxLen:]
-	}
-	fmt.Fprintf(sw.w, "\r\033[K    %s", text)
-	return len(p), nil
 }
 
 // computeSyncPlan determines what operations sync will perform without
