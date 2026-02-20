@@ -2,7 +2,10 @@
 package claude
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -32,6 +35,22 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	output := strings.TrimSpace(string(out))
 	if err != nil {
 		return output, fmt.Errorf("claude %s: %s", sessionName, output)
+	}
+	return output, nil
+}
+
+// RunPromptStreaming sends a prompt to Claude and streams the output to display
+// while also capturing the full response. The streamed output is shown in real-time
+// so the user can watch the description being generated.
+func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
+	cmd := exec.Command("claude", "-p", prompt)
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(display, &buf)
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	output := strings.TrimSpace(buf.String())
+	if err != nil {
+		return output, fmt.Errorf("claude %s: %s", name, output)
 	}
 	return output, nil
 }

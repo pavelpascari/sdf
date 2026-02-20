@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -417,14 +419,14 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			p := buildDescriptionPrompt(node.Branch, subjects, diffStat)
 			sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
 
-			fmt.Printf("  → PR #%d: generating description...", node.PR)
-			description, err := claudepkg.RunPrompt(sessionName, p)
+			fmt.Printf("  → PR #%d: generating description...\n", node.PR)
+			iw := &indentWriter{w: os.Stdout, prefix: "    ", needIndent: true}
+			description, err := claudepkg.RunPromptStreaming(sessionName, p, iw)
 			if err != nil {
-				fmt.Println()
-				fmt.Fprintf(os.Stderr, "  warning: Claude could not generate description for PR #%d: %v\n", node.PR, err)
+				fmt.Fprintf(os.Stderr, "\n  warning: Claude could not generate description for PR #%d: %v\n", node.PR, err)
 				continue
 			}
-			fmt.Println(" done")
+			fmt.Println()
 
 			currentBody, err := ghpkg.PRViewBody(node.PR)
 			if err != nil {
@@ -471,6 +473,39 @@ func buildDescriptionPrompt(branch string, subjects []string, diffStat string) s
 	b.WriteString("Focus on user impact and key changes. Output only the description text, no markdown headers or formatting.")
 
 	return b.String()
+}
+
+// indentWriter wraps a writer and prepends each line with a prefix,
+// used to indent streamed Claude output under the PR action line.
+type indentWriter struct {
+	w          io.Writer
+	prefix     string
+	needIndent bool
+}
+
+func (iw *indentWriter) Write(p []byte) (int, error) {
+	written := 0
+	for len(p) > 0 {
+		if iw.needIndent {
+			if _, err := io.WriteString(iw.w, iw.prefix); err != nil {
+				return written, err
+			}
+			iw.needIndent = false
+		}
+		idx := bytes.IndexByte(p, '\n')
+		if idx < 0 {
+			n, err := iw.w.Write(p)
+			return written + n, err
+		}
+		n, err := iw.w.Write(p[:idx+1])
+		written += n
+		if err != nil {
+			return written, err
+		}
+		p = p[idx+1:]
+		iw.needIndent = true
+	}
+	return written, nil
 }
 
 // computeSyncPlan determines what operations sync will perform without
