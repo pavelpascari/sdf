@@ -35,6 +35,8 @@ func main() {
 		exitOnErr(cmd.RunPR(args))
 	case "move":
 		exitOnErr(cmd.RunMove(args))
+	case "fetch":
+		exitOnErr(cmd.RunFetch(args))
 	case "register":
 		exitOnErr(cmd.RunRegister(args))
 	case "switch":
@@ -75,7 +77,7 @@ Usage:
 
 Stack commands:
   init [--base <branch>] [--branch <name>] <stack>  Initialize a stack and create the first branch
-  register                           Discover and register existing PR stacks
+  fetch [--stack <name>] [--base <branch>]  Discover and sync PR stacks from GitHub
   branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [-y] [--continue] [--stack <name>]  Detect merged PRs, cascade rebase, push
