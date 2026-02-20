@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
 	"github.com/charmbracelet/huh"
+	"github.com/spf13/cobra"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
@@ -13,17 +13,38 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// RunFetch discovers PR stacks from GitHub and reconciles them with local state.
-// New stacks are registered; existing stacks are updated to match GitHub.
-//
-// Usage:
-//
-//	sdf fetch [--stack <name>] [--base <branch>]
+var fetchCmd = &cobra.Command{
+	Use:   "fetch",
+	Short: "Discover and sync PR stacks from GitHub",
+	Long: `Scans your open PRs, detects branch chains, and either registers
+a new stack or reconciles an existing one.`,
+	Example: `  sdf fetch                          # auto-detect base, scan all open PRs
+  sdf fetch --stack my-feature       # name the stack explicitly
+  sdf fetch --base develop           # specify base branch`,
+	Annotations: map[string]string{"category": "stack"},
+	RunE:        runFetchCmd,
+}
+
+func init() {
+	rootCmd.AddCommand(fetchCmd)
+	fetchCmd.Flags().String("stack", "", "name for the stack (default: auto-generated from branches)")
+	fetchCmd.Flags().String("base", "", "base branch (default: auto-detected)")
+}
+
+func runFetchCmd(cmd *cobra.Command, args []string) error {
+	stackName, _ := cmd.Flags().GetString("stack")
+	base, _ := cmd.Flags().GetString("base")
+
+	return runFetchLogic(stackName, base)
+}
+
+// RunFetch is a compatibility wrapper for callers that use the old interface.
 func RunFetch(args []string) error {
-	fs := flag.NewFlagSet("fetch", flag.ExitOnError)
-	stackName := fs.String("stack", "", "name for the stack (default: auto-generated from branches)")
-	base := fs.String("base", "", "base branch (default: auto-detected)")
-	fs.Parse(args)
+	rootCmd.SetArgs(append([]string{"fetch"}, args...))
+	return rootCmd.Execute()
+}
+
+func runFetchLogic(stackName, base string) error {
 
 	if !ghpkg.Available() {
 		return fmt.Errorf("gh CLI is required for stack discovery — install it from https://cli.github.com")
@@ -37,7 +58,7 @@ func RunFetch(args []string) error {
 	stack.MigrateIfNeeded(root)
 
 	// Detect default branch
-	defaultBranch := *base
+	defaultBranch := base
 	if defaultBranch == "" {
 		detected, err := gitpkg.DefaultBranch()
 		if err != nil {
@@ -152,7 +173,7 @@ func RunFetch(args []string) error {
 	}
 
 	// No match — first-time registration
-	name := *stackName
+	name := stackName
 	if name == "" {
 		name = inferStackName(selected.Chains)
 	}

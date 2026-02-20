@@ -1,9 +1,10 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
@@ -11,23 +12,45 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// RunMerge merges the head (bottom-most open) PR in the stack, then syncs
-// the remaining branches to cascade-rebase across the merge.
-//
-// Usage:
-//
-//	sdf merge [--stack <name>] [-y] [--method squash|merge|rebase]
-func RunMerge(args []string) error {
-	fs := flag.NewFlagSet("merge", flag.ExitOnError)
-	stackFlag := fs.String("stack", "", "stack to merge (default: auto-detect)")
-	yes := fs.Bool("y", false, "skip confirmation prompt")
-	method := fs.String("method", "squash", "merge method: squash, merge, or rebase")
-	fs.Parse(args)
+var mergeCmd = &cobra.Command{
+	Use:   "merge",
+	Short: "Merge head PR and sync remaining branches",
+	Long: `Merges the first open PR in the stack, retargets the next PR's base,
+then triggers a sync to cascade-rebase remaining branches.`,
+	Example: `  sdf merge                          # merge with squash (default)
+  sdf merge -y                       # skip confirmation
+  sdf merge --method merge           # use regular merge
+  sdf merge --stack my-feature       # target a specific stack`,
+	Annotations: map[string]string{"category": "stack"},
+	RunE:        runMergeCmd,
+}
 
-	switch *method {
+func init() {
+	rootCmd.AddCommand(mergeCmd)
+	mergeCmd.Flags().String("stack", "", "stack to merge (default: auto-detect)")
+	mergeCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
+	mergeCmd.Flags().String("method", "squash", "merge method: squash, merge, or rebase")
+}
+
+func runMergeCmd(cmd *cobra.Command, args []string) error {
+	stackFlag, _ := cmd.Flags().GetString("stack")
+	yes, _ := cmd.Flags().GetBool("yes")
+	method, _ := cmd.Flags().GetString("method")
+
+	return runMergeLogic(stackFlag, yes, method)
+}
+
+// RunMerge is a compatibility wrapper for callers that use the old interface.
+func RunMerge(args []string) error {
+	rootCmd.SetArgs(append([]string{"merge"}, args...))
+	return rootCmd.Execute()
+}
+
+func runMergeLogic(stackFlag string, yes bool, method string) error {
+	switch method {
 	case "squash", "merge", "rebase":
 	default:
-		return fmt.Errorf("unknown merge method %q — use squash, merge, or rebase", *method)
+		return fmt.Errorf("unknown merge method %q — use squash, merge, or rebase", method)
 	}
 
 	if !ghpkg.Available() {
@@ -47,7 +70,7 @@ func RunMerge(args []string) error {
 		return fmt.Errorf("working tree is not clean — commit or stash changes before merging")
 	}
 
-	s, err := resolveStack(root, *stackFlag)
+	s, err := resolveStack(root, stackFlag)
 	if err != nil {
 		return err
 	}
@@ -75,14 +98,14 @@ func RunMerge(args []string) error {
 	// Pre-merge info
 	remaining := countOpen(s) - 1
 	fmt.Printf("\nMerge PR %s (%s) into %s via %s\n",
-		ui.PR(node.PR), ui.Branch(node.Branch), ui.Branch(parent), ui.Bold.Render(*method))
+		ui.PR(node.PR), ui.Branch(node.Branch), ui.Branch(parent), ui.Bold.Render(method))
 	if remaining > 0 {
 		fmt.Printf("  %d open PR(s) remaining after merge\n", remaining)
 	} else {
 		fmt.Printf("  This is the last open PR in the stack\n")
 	}
 
-	if !*yes {
+	if !yes {
 		if !ui.Confirm("Proceed?") {
 			fmt.Println("Aborted.")
 			return nil
@@ -104,7 +127,7 @@ func RunMerge(args []string) error {
 
 	// Merge
 	fmt.Printf("  Merging PR %s...\n", ui.PR(node.PR))
-	if err := ghpkg.PRMerge(node.PR, *method); err != nil {
+	if err := ghpkg.PRMerge(node.PR, method); err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
 

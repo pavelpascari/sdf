@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
@@ -12,23 +14,33 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// RunMove moves commits from the current branch to its parent in the stack.
-//
-// Usage mirrors git cherry-pick:
-//
-//	sdf move <commit>...
-//
-// The listed commits are cherry-picked onto the parent branch, stripped from the
-// current branch, and all downstream branches are cascade-rebased to keep the
-// stack consistent.
-func RunMove(args []string) error {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: sdf move <commit>...")
-		fmt.Fprintln(os.Stderr, "       moves commits from current branch to its parent in the stack")
-		os.Exit(1)
-	}
+var moveCmd = &cobra.Command{
+	Use:   "move <commit>...",
+	Short: "Move commits from current branch to parent",
+	Long: `Cherry-picks listed commits onto the parent branch, strips them from the
+current branch via rebase, and cascade-rebases downstream branches.`,
+	Example: `  sdf move abc1234                   # move one commit
+  sdf move abc1234 def5678           # move multiple commits`,
+	Annotations: map[string]string{"category": "stack"},
+	Args:        cobra.MinimumNArgs(1),
+	RunE:        runMoveCmd,
+}
 
-	commits := args
+func init() {
+	rootCmd.AddCommand(moveCmd)
+}
+
+func runMoveCmd(cmd *cobra.Command, args []string) error {
+	return runMoveLogic(args)
+}
+
+// RunMove is a compatibility wrapper for callers that use the old interface.
+func RunMove(args []string) error {
+	rootCmd.SetArgs(append([]string{"move"}, args...))
+	return rootCmd.Execute()
+}
+
+func runMoveLogic(commits []string) error {
 
 	root, err := stack.FindRoot()
 	if err != nil {
