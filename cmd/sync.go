@@ -1,18 +1,20 @@
 package cmd
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/charmbracelet/huh"
+
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
-	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 // syncOptions holds optional behaviour flags for a sync run.
@@ -68,17 +70,17 @@ func runSyncContinue(root string) error {
 	progress := local.SyncProgress
 
 	if gitpkg.IsRebaseInProgress() {
-		fmt.Printf("  rebasing %s (continuing)...\n", progress.PausedAt)
+		fmt.Printf("  rebasing %s (continuing)...\n", ui.Branch(progress.PausedAt))
 		if err := gitpkg.RebaseContinue(); err != nil {
 			return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
 		}
 	} else if gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt) {
 		// No rebase in progress but the parent tip is an ancestor of the
 		// paused branch — the user completed the rebase manually.
-		fmt.Printf("  ✓ %s rebased (completed outside sdf)\n", progress.PausedAt)
+		fmt.Printf("  %s %s rebased (completed outside sdf)\n", ui.SymOK, ui.Branch(progress.PausedAt))
 	} else {
 		// The parent tip is NOT an ancestor — the rebase was aborted.
-		fmt.Printf("Rebase of %s was aborted. Starting a fresh sync.\n", progress.PausedAt)
+		fmt.Printf("Rebase of %s was aborted. Starting a fresh sync.\n", ui.Branch(progress.PausedAt))
 		local.SyncProgress = nil
 		stack.SaveLocal(root, local)
 		return runSyncFull(root, "", false, false)
@@ -94,17 +96,17 @@ func runSyncContinue(root string) error {
 		node.BaseTip = progress.ParentTip
 
 		if err := gitpkg.Push(node.Branch); err != nil {
-			fmt.Fprintf(os.Stderr, "  ✗ push failed for %s: %v\n", node.Branch, err)
+			fmt.Fprintf(os.Stderr, "  %s push failed for %s: %v\n", ui.SymFail, ui.Branch(node.Branch), err)
 		} else {
-			fmt.Printf("  ✓ %s rebased and pushed\n", node.Branch)
+			fmt.Printf("  %s %s rebased and pushed\n", ui.SymOK, ui.Branch(node.Branch))
 		}
 
 		parent := s.ParentBranch(node.Branch)
 		if node.PR > 0 && ghpkg.Available() {
 			if err := ghpkg.PREditBase(node.PR, parent); err != nil {
-				fmt.Fprintf(os.Stderr, "  ⚠ could not update PR #%d base: %v\n", node.PR, err)
+				fmt.Fprintf(os.Stderr, "  %s could not update PR %s base: %v\n", ui.SymWarn, ui.PR(node.PR), err)
 			} else {
-				fmt.Printf("  ✓ PR #%d base updated to %s\n", node.PR, parent)
+				fmt.Printf("  %s PR %s base updated to %s\n", ui.SymOK, ui.PR(node.PR), ui.Branch(parent))
 			}
 		}
 	}
@@ -155,7 +157,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 		return fmt.Errorf("working tree is not clean — commit or stash changes before syncing")
 	}
 
-	fmt.Printf("Syncing stack %q...\n", s.StackID)
+	fmt.Printf("Syncing stack %s...\n", ui.Bold.Render(s.StackID))
 	fmt.Println("Fetching from origin...")
 	if err := gitpkg.FetchAll(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: fetch failed: %v\n", err)
@@ -251,9 +253,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 
 		if node.Status == "merged" {
 			if node.PR > 0 {
-				fmt.Printf("  ✓ PR #%d (%s) merged\n", node.PR, node.Branch)
+				fmt.Printf("  %s PR %s (%s) merged\n", ui.SymOK, ui.PR(node.PR), ui.Branch(node.Branch))
 			} else {
-				fmt.Printf("  ✓ %s merged\n", node.Branch)
+				fmt.Printf("  %s %s merged\n", ui.SymOK, ui.Branch(node.Branch))
 			}
 			modified = true
 			continue
@@ -264,7 +266,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 		}
 
 		if isBlocked(s, i, failed) {
-			fmt.Printf("  ✗ skipping %s — depends on a branch that failed\n", node.Branch)
+			fmt.Printf("  %s skipping %s — depends on a branch that failed\n", ui.SymFail, ui.Branch(node.Branch))
 			continue
 		}
 
@@ -276,7 +278,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 		}
 
 		if node.BaseTip != "" && currentParentTip != node.BaseTip {
-			fmt.Printf("  rebasing %s onto %s...\n", node.Branch, parent)
+			fmt.Printf("  rebasing %s onto %s...\n", ui.Branch(node.Branch), ui.Branch(parent))
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
 				action, err := promptOnConflict(root, s, node.Branch, originalBranch, i, err)
@@ -297,9 +299,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 			modified = true
 
 			if err := gitpkg.Push(node.Branch); err != nil {
-				fmt.Fprintf(os.Stderr, "  ✗ push failed for %s: %v\n", node.Branch, err)
+				fmt.Fprintf(os.Stderr, "  %s push failed for %s: %v\n", ui.SymFail, ui.Branch(node.Branch), err)
 			} else {
-				fmt.Printf("  ✓ %s rebased and pushed\n", node.Branch)
+				fmt.Printf("  %s %s rebased and pushed\n", ui.SymOK, ui.Branch(node.Branch))
 			}
 
 			// Silently update PR base when the parent branch name changed
@@ -311,7 +313,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 				}
 				if parent != directParent {
 					if err := ghpkg.PREditBase(node.PR, parent); err != nil {
-						fmt.Fprintf(os.Stderr, "  ⚠ could not update PR #%d base: %v\n", node.PR, err)
+						fmt.Fprintf(os.Stderr, "  %s could not update PR %s base: %v\n", ui.SymWarn, ui.PR(node.PR), err)
 					} else {
 						prBasesUpdated++
 					}
@@ -321,7 +323,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 	}
 
 	if prBasesUpdated > 0 {
-		fmt.Printf("  ✓ %d PR base(s) updated on GitHub\n", prBasesUpdated)
+		fmt.Printf("  %s %d PR base(s) updated on GitHub\n", ui.SymOK, prBasesUpdated)
 	}
 
 	if modified {
@@ -347,7 +349,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 	if len(failed) > 0 {
 		fmt.Printf("\nSync partially complete. %d branch(es) failed:\n", len(failed))
 		for branch, err := range failed {
-			fmt.Printf("  ✗ %s: %v\n", branch, err)
+			fmt.Printf("  %s %s: %v\n", ui.SymFail, ui.Branch(branch), err)
 		}
 		fmt.Println("\nRun `sdf sync` again to retry.")
 		return fmt.Errorf("%d branch(es) could not be synced", len(failed))
@@ -403,12 +405,7 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
 		subjects, _ := gitpkg.LogSubjects(base, node.Branch)
 		prTitle := cfgpkg.GeneratePRTitle(cfg, s.StackID, node.Branch, subjects)
 
-		fmt.Printf("  %s has no PR. Create one? [Y/n] ", node.Branch)
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-
-		if answer != "" && answer != "y" && answer != "yes" {
+		if !ui.Confirm(fmt.Sprintf("%s has no PR. Create one?", ui.Branch(node.Branch))) {
 			continue
 		}
 
@@ -416,14 +413,14 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
 
 		if err := gitpkg.Push(node.Branch); err != nil {
 			if err := gitpkg.PushNew(node.Branch); err != nil {
-				fmt.Fprintf(os.Stderr, "  ✗ could not push %s: %v\n", node.Branch, err)
+				fmt.Fprintf(os.Stderr, "  %s could not push %s: %v\n", ui.SymFail, ui.Branch(node.Branch), err)
 				continue
 			}
 		}
 
 		url, err := ghpkg.PRCreate(prTitle, body, base, node.Branch)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  ✗ could not create PR: %v\n", err)
+			fmt.Fprintf(os.Stderr, "  %s could not create PR: %v\n", ui.SymFail, err)
 			continue
 		}
 
@@ -433,11 +430,11 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
 			node.Status = "open"
 		}
 
-		fmt.Printf("  ✓ PR created: %s\n", url)
+		fmt.Printf("  %s PR created: %s\n", ui.SymOK, url)
 	}
 
 	if err := stack.Save(root, s); err != nil {
-		fmt.Fprintf(os.Stderr, "  ⚠ could not save stack: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  %s could not save stack: %v\n", ui.SymWarn, err)
 	}
 }
 
@@ -549,9 +546,9 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			}
 
 			if len(parts) == 0 {
-				printer.set(j.index, fmt.Sprintf("  ✓ PR #%d unchanged", j.node.PR))
+				printer.set(j.index, fmt.Sprintf("  %s PR %s unchanged", ui.SymOK, ui.PR(j.node.PR)))
 			} else {
-				printer.set(j.index, fmt.Sprintf("  ✓ PR #%d updated (%s)", j.node.PR, strings.Join(parts, " + ")))
+				printer.set(j.index, fmt.Sprintf("  %s PR %s updated (%s)", ui.SymOK, ui.PR(j.node.PR), strings.Join(parts, " + ")))
 			}
 		}(j)
 	}
@@ -817,35 +814,31 @@ func printSyncPlan(plan []syncAction) {
 		switch a.kind {
 		case "skip-merged":
 			if a.pr > 0 {
-				fmt.Printf("  ✓ PR #%d (%s) merged\n", a.pr, a.branch)
+				fmt.Printf("  %s PR %s (%s) merged\n", ui.SymOK, ui.PR(a.pr), ui.Branch(a.branch))
 			} else {
-				fmt.Printf("  ✓ %s merged\n", a.branch)
+				fmt.Printf("  %s %s merged\n", ui.SymOK, ui.Branch(a.branch))
 			}
 		case "rebase":
 			// Combine with next push action for same branch
 			if i+1 < len(plan) && plan[i+1].kind == "push" && plan[i+1].branch == a.branch {
-				fmt.Printf("  → rebase %s onto %s + push\n", a.branch, a.onto)
+				fmt.Printf("  %s rebase %s onto %s + push\n", ui.SymPlan, ui.Branch(a.branch), ui.Branch(a.onto))
 				i++ // skip the push
 			} else {
-				fmt.Printf("  → rebase %s onto %s\n", a.branch, a.onto)
+				fmt.Printf("  %s rebase %s onto %s\n", ui.SymPlan, ui.Branch(a.branch), ui.Branch(a.onto))
 			}
 		case "push":
-			fmt.Printf("  → push %s\n", a.branch)
+			fmt.Printf("  %s push %s\n", ui.SymPlan, ui.Branch(a.branch))
 		case "update-pr-base":
-			fmt.Printf("  → update PR #%d base → %s\n", a.pr, a.onto)
+			fmt.Printf("  %s update PR %s base → %s\n", ui.SymPlan, ui.PR(a.pr), ui.Branch(a.onto))
 		case "update-content":
-			fmt.Printf("  → update PR #%d content\n", a.pr)
+			fmt.Printf("  %s update PR %s content\n", ui.SymPlan, ui.PR(a.pr))
 		}
 	}
 	fmt.Println()
 }
 
 func confirmSync() bool {
-	fmt.Printf("Proceed? [Y/n] ")
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	return answer == "" || answer == "y" || answer == "yes"
+	return ui.Confirm("Proceed?")
 }
 
 // conflictAction represents the developer's choice when conflicts occur.
@@ -865,42 +858,40 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 		return conflictFailed, rebaseErr
 	}
 
-	fmt.Printf("  ⚡ conflict in %s — %d file(s):\n", branch, len(conflicted))
+	fmt.Printf("  %s conflict in %s — %d file(s):\n", ui.SymConflict, ui.Branch(branch), len(conflicted))
 	for _, f := range conflicted {
 		fmt.Printf("    %s\n", f)
 	}
 	fmt.Println()
 
 	hasClaude := claudepkg.Available()
+
+	options := []huh.Option[string]{}
 	if hasClaude {
-		fmt.Println("  [c] Ask Claude to resolve")
+		options = append(options, huh.NewOption("Ask Claude to resolve", "claude"))
 	}
-	fmt.Println("  [m] I'll fix it myself (pauses sync)")
-	fmt.Println("  [s] Skip this branch")
-	fmt.Println("  [a] Abort sync")
-	fmt.Println()
+	options = append(options,
+		huh.NewOption("I'll fix it myself (pauses sync)", "manual"),
+		huh.NewOption("Skip this branch", "skip"),
+		huh.NewOption("Abort sync", "abort"),
+	)
 
-	choice := prompt("  > ")
+	choice := ui.Select("How would you like to resolve?", options)
 
-	switch strings.ToLower(strings.TrimSpace(choice)) {
-	case "c":
-		if !hasClaude {
-			fmt.Println("  Claude is not available. Pick another option.")
-			return promptOnConflict(root, s, branch, originalBranch, nodeIndex, rebaseErr)
-		}
+	switch choice {
+	case "claude":
 		return tryClaude(root, s, branch, originalBranch, nodeIndex, rebaseErr, conflicted)
-	case "m":
+	case "manual":
 		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex)
-	case "s":
+	case "skip":
 		gitpkg.RebaseAbort()
 		fmt.Printf("  Skipped %s.\n", branch)
 		return conflictFailed, fmt.Errorf("conflicts in %s (skipped by user)", branch)
-	case "a":
+	case "abort", "":
 		gitpkg.RebaseAbort()
 		return conflictAborted, fmt.Errorf("sync aborted by user at %s", branch)
 	default:
-		fmt.Println("  Please pick one of the options above.")
-		return promptOnConflict(root, s, branch, originalBranch, nodeIndex, rebaseErr)
+		return conflictAborted, fmt.Errorf("sync aborted by user at %s", branch)
 	}
 }
 
@@ -933,7 +924,7 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 		if err := applyResolutions(output, conflicted); err == nil {
 			if err := gitpkg.Add("."); err == nil {
 				if err := gitpkg.RebaseContinue(); err == nil {
-					fmt.Println("  ✓ conflict resolved by Claude")
+					fmt.Printf("  %s conflict resolved by Claude\n", ui.SymOK)
 					return conflictResolved, nil
 				}
 			}
@@ -942,24 +933,25 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 
 	fmt.Println("  Claude couldn't fully resolve the conflicts.")
 	fmt.Println()
-	fmt.Println("  [m] I'll fix the rest myself (pauses sync)")
-	fmt.Println("  [s] Skip this branch, continue with the rest")
-	fmt.Println("  [a] Abort sync entirely")
-	fmt.Println()
 
-	choice := prompt("  > ")
-	switch strings.ToLower(strings.TrimSpace(choice)) {
-	case "m":
+	choice := ui.Select("What next?", []huh.Option[string]{
+		huh.NewOption("I'll fix the rest myself (pauses sync)", "manual"),
+		huh.NewOption("Skip this branch, continue with the rest", "skip"),
+		huh.NewOption("Abort sync entirely", "abort"),
+	})
+
+	switch choice {
+	case "manual":
 		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex)
-	case "s":
+	case "skip":
 		gitpkg.RebaseAbort()
 		return conflictFailed, fmt.Errorf("conflicts in %s (Claude failed, skipped)", branch)
-	case "a":
+	case "abort", "":
 		gitpkg.RebaseAbort()
 		return conflictAborted, fmt.Errorf("sync aborted by user at %s", branch)
 	default:
-		fmt.Println("  Please pick one of the options above.")
-		return tryClaude(root, s, branch, originalBranch, nodeIndex, rebaseErr, conflicted)
+		gitpkg.RebaseAbort()
+		return conflictAborted, fmt.Errorf("sync aborted by user at %s", branch)
 	}
 }
 
@@ -978,7 +970,7 @@ func pauseForManualResolution(root string, s *stack.Stack, branch, originalBranc
 	}
 	stack.SaveLocal(root, local)
 
-	fmt.Printf("\n  Sync paused. Resolve conflicts in %s, then:\n", branch)
+	fmt.Printf("\n  Sync paused. Resolve conflicts in %s, then:\n", ui.Branch(branch))
 	fmt.Println()
 	fmt.Println("    1. Edit the conflicted files")
 	fmt.Println("    2. git add <resolved files>")
@@ -998,12 +990,6 @@ func isBlocked(s *stack.Stack, i int, failed map[string]error) bool {
 	return false
 }
 
-func prompt(msg string) string {
-	fmt.Print(msg)
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	return line
-}
 
 // buildConflictPrompt constructs the conflict resolution prompt for Claude,
 // using upstream changes and the PR description as context.

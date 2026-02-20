@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/gh"
+	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 func RunStatus(args []string) error {
@@ -68,12 +69,12 @@ func RunStatus(args []string) error {
 	}
 
 	// Print header
-	fmt.Printf("  %s  (base: %s)\n\n", s.StackID, s.Base)
+	fmt.Printf("  %s  (base: %s)\n\n", ui.Bold.Render(s.StackID), ui.Branch(s.Base))
 
 	// Print each node
 	needsSync := []string{}
 	for _, node := range s.Nodes {
-		icon := "●"
+		icon := ui.Gray.Render("●")
 		status := node.Status
 
 		// Update status from GitHub if available
@@ -82,10 +83,10 @@ func RunStatus(args []string) error {
 			switch strings.ToUpper(pr.State) {
 			case "MERGED":
 				status = "merged"
-				icon = "✓"
+				icon = ui.SymOK
 			case "CLOSED":
 				status = "closed"
-				icon = "✗"
+				icon = ui.SymFail
 			default:
 				status = "open"
 			}
@@ -100,10 +101,10 @@ func RunStatus(args []string) error {
 			if node.BaseTip != "" {
 				currentParentTip, err := gitpkg.RevParse(parent)
 				if err == nil && currentParentTip != node.BaseTip {
-					syncStatus = "needs sync"
+					syncStatus = ui.Yellow.Render("needs sync")
 					needsSync = append(needsSync, node.Branch)
 				} else {
-					syncStatus = "in sync"
+					syncStatus = ui.Green.Render("in sync")
 				}
 			}
 
@@ -117,12 +118,12 @@ func RunStatus(args []string) error {
 		// Format the line
 		marker := " "
 		if node.Branch == currentBranch {
-			marker = "→"
+			marker = ui.Cyan.Render("→")
 		}
 
 		prInfo := ""
 		if node.PR > 0 {
-			prInfo = fmt.Sprintf("PR #%-4d", node.PR)
+			prInfo = fmt.Sprintf("PR %-5s", ui.PR(node.PR))
 		} else {
 			prInfo = "        "
 		}
@@ -133,7 +134,7 @@ func RunStatus(args []string) error {
 			syncStr = "  " + syncStatus
 		}
 
-		fmt.Printf(" %s %s  %-30s %s %s%s\n", marker, icon, node.Branch, prInfo, statusStr, syncStr)
+		fmt.Printf(" %s %s  %-30s %s %s%s\n", marker, icon, ui.Branch(node.Branch), prInfo, statusStr, syncStr)
 	}
 
 	// Print sync suggestion

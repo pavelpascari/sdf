@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
-	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 // RunMove moves commits from the current branch to its parent in the stack.
@@ -126,7 +127,7 @@ func RunMove(args []string) error {
 		}
 	}
 
-	fmt.Printf("Moving %d commit(s) from %s to %s\n", len(resolvedCommits), branch, parent)
+	fmt.Printf("Moving %d commit(s) from %s to %s\n", len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
 	for _, c := range resolvedCommits {
 		fmt.Printf("  %s\n", short(c))
 	}
@@ -148,7 +149,7 @@ func RunMove(args []string) error {
 	if err != nil {
 		return fmt.Errorf("cannot resolve new tip of %s: %w", parent, err)
 	}
-	fmt.Printf("  ✓ %s tip is now %s\n", parent, short(newParentTip))
+	fmt.Printf("  %s %s tip is now %s\n", ui.SymOK, ui.Branch(parent), short(newParentTip))
 
 	// --- Phase 2: strip moved commits from current branch ---
 	fmt.Printf("→ rebasing %s onto updated %s...\n", branch, parent)
@@ -195,7 +196,7 @@ func RunMove(args []string) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	fmt.Printf("\n✓ Moved %d commit(s) from %s to %s\n", len(resolvedCommits), branch, parent)
+	fmt.Printf("\n%s Moved %d commit(s) from %s to %s\n", ui.SymOK, len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
 	return nil
 }
 
@@ -208,7 +209,7 @@ func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error) error {
 		return rebaseErr
 	}
 
-	fmt.Printf("  ⚠ Conflict in %s — %d file(s)\n", branch, len(conflicted))
+	fmt.Printf("  %s Conflict in %s — %d file(s)\n", ui.SymWarn, ui.Branch(branch), len(conflicted))
 
 	if claudepkg.Available() {
 		fmt.Println("  → invoking Claude for conflict resolution...")
@@ -238,7 +239,7 @@ func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error) error {
 			if err := applyResolutions(output, conflicted); err == nil {
 				if err := gitpkg.Add("."); err == nil {
 					if err := gitpkg.RebaseContinue(); err == nil {
-						fmt.Println("  ✓ Conflicts resolved by Claude")
+						fmt.Printf("  %s Conflicts resolved by Claude\n", ui.SymOK)
 						return nil
 					}
 				}
