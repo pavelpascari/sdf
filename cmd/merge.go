@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
@@ -62,7 +61,7 @@ func RunMerge(args []string) error {
 		fmt.Fprintf(os.Stderr, "warning: could not fast-forward %s: %v\n", s.Base, err)
 	}
 
-	refreshPRStates(s)
+	reconcileSyncPRStates(s)
 	stack.Save(root, s)
 
 	// Find head PR
@@ -149,33 +148,6 @@ func findHeadPR(s *stack.Stack) (*stack.Node, error) {
 		return node, nil
 	}
 	return nil, fmt.Errorf("all PRs in stack %q are merged", s.StackID)
-}
-
-// refreshPRStates fetches current PR states from GitHub and updates the stack.
-func refreshPRStates(s *stack.Stack) {
-	if !ghpkg.Available() {
-		return
-	}
-
-	branches := make([]string, len(s.Nodes))
-	for i, n := range s.Nodes {
-		branches[i] = n.Branch
-	}
-
-	prs, err := ghpkg.PRList(branches)
-	if err != nil {
-		return
-	}
-
-	for _, pr := range prs {
-		node := s.FindNode(pr.HeadRefName)
-		if node != nil {
-			node.PR = pr.Number
-			if strings.ToUpper(pr.State) == "MERGED" {
-				node.Status = "merged"
-			}
-		}
-	}
 }
 
 // findNextOpenNode returns the first open node after the given branch.

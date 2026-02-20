@@ -298,6 +298,164 @@ func TestApplyChanges_BaseChange(t *testing.T) {
 	}
 }
 
+// --- ReconcileFromPRs tests ---
+
+func TestReconcileFromPRs_NoChange(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+			{Branch: "branchB", PR: 11, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "OPEN"},
+		{Number: 11, HeadRefName: "branchB", BaseRefName: "branchA", State: "OPEN"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	if len(changes) != 0 {
+		t.Errorf("expected 0 changes, got %d: %v", len(changes), changes)
+	}
+}
+
+func TestReconcileFromPRs_StatusMerged(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "MERGED"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "status", "branchA", false)
+	if changes[0].NewStatus != "merged" {
+		t.Errorf("expected NewStatus=merged, got %s", changes[0].NewStatus)
+	}
+}
+
+func TestReconcileFromPRs_StatusClosed(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "CLOSED"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "status", "branchA", false)
+	if changes[0].NewStatus != "closed" {
+		t.Errorf("expected NewStatus=closed, got %s", changes[0].NewStatus)
+	}
+}
+
+func TestReconcileFromPRs_PRNumberFill(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 0, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "OPEN"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "pr-number", "branchA", false)
+	if changes[0].NewPR != 10 {
+		t.Errorf("expected NewPR=10, got %d", changes[0].NewPR)
+	}
+}
+
+func TestReconcileFromPRs_BaseMismatch(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+			{Branch: "branchB", PR: 11, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "OPEN"},
+		// branchB's base was retargeted to main on GitHub (expected: branchA)
+		{Number: 11, HeadRefName: "branchB", BaseRefName: "main", State: "OPEN"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "base-mismatch", "branchB", true)
+}
+
+func TestReconcileFromPRs_PRMissing(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+			{Branch: "branchB", PR: 11, Status: "open"},
+		},
+	}
+	// Only branchA returned — branchB's PR is missing
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "OPEN"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "pr-missing", "branchB", true)
+}
+
+func TestReconcileFromPRs_Mixed(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+			{Branch: "branchB", PR: 11, Status: "open"},
+			{Branch: "branchC", PR: 12, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "MERGED"},
+		// branchB retargeted to main (was branchA)
+		{Number: 11, HeadRefName: "branchB", BaseRefName: "main", State: "OPEN"},
+		{Number: 12, HeadRefName: "branchC", BaseRefName: "branchB", State: "OPEN"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "status", "branchA", false)      // merged
+	assertHasChange(t, changes, "base-mismatch", "branchB", true) // retargeted
+}
+
+func TestApplyRoutineChange_Status(t *testing.T) {
+	s := &Stack{
+		Nodes: []Node{{Branch: "branchA", PR: 10, Status: "open"}},
+	}
+	ApplyRoutineChange(s, ReconcileChange{Kind: "status", Branch: "branchA", NewStatus: "merged"})
+	if s.Nodes[0].Status != "merged" {
+		t.Errorf("expected merged, got %s", s.Nodes[0].Status)
+	}
+}
+
+func TestApplyRoutineChange_PRNumber(t *testing.T) {
+	s := &Stack{
+		Nodes: []Node{{Branch: "branchA", PR: 0, Status: "open"}},
+	}
+	ApplyRoutineChange(s, ReconcileChange{Kind: "pr-number", Branch: "branchA", NewPR: 42})
+	if s.Nodes[0].PR != 42 {
+		t.Errorf("expected PR 42, got %d", s.Nodes[0].PR)
+	}
+}
+
 // assertHasChange verifies that changes contains a change with the given kind, branch, and notable flag.
 func assertHasChange(t *testing.T, changes []ReconcileChange, kind, branch string, notable bool) {
 	t.Helper()

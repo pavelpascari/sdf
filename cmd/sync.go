@@ -169,25 +169,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 	}
 
 	if ghpkg.Available() {
-		branches := make([]string, len(s.Nodes))
-		for i, n := range s.Nodes {
-			branches[i] = n.Branch
-		}
-
-		prs, err := ghpkg.PRList(branches)
-		if err == nil {
-			for _, pr := range prs {
-				node := s.FindNode(pr.HeadRefName)
-				if node != nil {
-					node.PR = pr.Number
-					if strings.ToUpper(pr.State) == "MERGED" {
-						node.Status = "merged"
-					}
-				}
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "warning: could not poll PR states: %v\n", err)
-		}
+		reconcileSyncPRStates(s)
 	}
 
 	// Load config for PR update settings
@@ -739,6 +721,57 @@ func (p *orderedPrinter) finish() {
 		if r != "" {
 			fmt.Println(r)
 		}
+	}
+}
+
+// reconcileSyncPRStates polls GitHub for PR states and applies lightweight
+// reconciliation. Routine changes (status/PR fills) are applied directly;
+// structural drift (base mismatches, missing PRs) triggers warnings.
+func reconcileSyncPRStates(s *stack.Stack) {
+	branches := make([]string, len(s.Nodes))
+	for i, n := range s.Nodes {
+		branches[i] = n.Branch
+	}
+
+	prs, err := ghpkg.PRList(branches)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not poll PR states: %v\n", err)
+		return
+	}
+
+	// Convert gh.PRInfo → stack.PRState
+	states := make([]stack.PRState, len(prs))
+	for i, pr := range prs {
+		states[i] = stack.PRState{
+			Number:      pr.Number,
+			HeadRefName: pr.HeadRefName,
+			BaseRefName: pr.BaseRefName,
+			State:       pr.State,
+		}
+	}
+
+	changes := stack.ReconcileFromPRs(s, states)
+
+	// Apply routine changes
+	for _, c := range changes {
+		if !c.Notable {
+			stack.ApplyRoutineChange(s, c)
+		}
+	}
+
+	// Print notable warnings
+	hasNotable := false
+	for _, c := range changes {
+		if c.Notable {
+			if !hasNotable {
+				fmt.Println()
+				hasNotable = true
+			}
+			fmt.Fprintf(os.Stderr, "  %s %s\n", ui.SymWarn, c.Detail)
+		}
+	}
+	if hasNotable {
+		fmt.Fprintf(os.Stderr, "\n  Run `sdf fetch` to reconcile structural changes.\n\n")
 	}
 }
 
