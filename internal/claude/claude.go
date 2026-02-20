@@ -40,12 +40,18 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	return output, nil
 }
 
-// RunPromptStreaming sends a prompt to Claude using stream-json output format,
-// displaying text tokens in real-time via display writer while capturing the
-// full response. Each JSON event is flushed line-by-line so tokens appear
-// immediately rather than buffering until completion.
+// RunPromptStreaming sends a prompt to Claude using stream-json output format
+// with partial messages enabled, displaying text in real-time via display writer
+// while capturing the full response.
+//
+// The stream-json format emits JSON events line-by-line. With --include-partial-messages,
+// "assistant" events arrive incrementally with growing content. We display only the
+// new text since the last event. The "result" event carries the final complete text.
 func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
-	cmd := exec.Command("claude", "-p", "--verbose", "--output-format", "stream-json", prompt)
+	cmd := exec.Command("claude", "-p", "--verbose",
+		"--output-format", "stream-json",
+		"--include-partial-messages",
+		prompt)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", fmt.Errorf("claude %s: %w", name, err)
@@ -57,6 +63,7 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 	}
 
 	var result string
+	var displayedLen int
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -67,10 +74,12 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 		}
 
 		var event struct {
-			Type  string `json:"type"`
-			Delta struct {
-				Text string `json:"text"`
-			} `json:"delta"`
+			Type    string `json:"type"`
+			Message struct {
+				Content []struct {
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"message"`
 			Result string `json:"result"`
 		}
 
@@ -78,13 +87,17 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 			continue
 		}
 
-		// Display streaming text deltas as they arrive
-		if event.Delta.Text != "" {
-			display.Write([]byte(event.Delta.Text))
+		// Display incremental text from partial assistant messages
+		if event.Type == "assistant" && len(event.Message.Content) > 0 {
+			text := event.Message.Content[0].Text
+			if len(text) > displayedLen {
+				display.Write([]byte(text[displayedLen:]))
+				displayedLen = len(text)
+			}
 		}
 
 		// Capture the final result text
-		if event.Result != "" {
+		if event.Type == "result" && event.Result != "" {
 			result = event.Result
 		}
 	}
