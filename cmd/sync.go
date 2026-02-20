@@ -417,11 +417,14 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			p := buildDescriptionPrompt(node.Branch, subjects, diffStat)
 			sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
 
+			fmt.Printf("  → PR #%d: generating description...", node.PR)
 			description, err := claudepkg.RunPrompt(sessionName, p)
 			if err != nil {
+				fmt.Println()
 				fmt.Fprintf(os.Stderr, "  warning: Claude could not generate description for PR #%d: %v\n", node.PR, err)
 				continue
 			}
+			fmt.Println(" done")
 
 			currentBody, err := ghpkg.PRViewBody(node.PR)
 			if err != nil {
@@ -431,7 +434,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 
 			newBody := replaceDescription(currentBody, description)
 			if newBody != currentBody {
-				fmt.Printf("  → updating PR #%d description via Claude\n", node.PR)
+				fmt.Printf("  → PR #%d: updating description\n", node.PR)
 				if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
 					fmt.Fprintf(os.Stderr, "  warning: could not update PR #%d description: %v\n", node.PR, err)
 				} else {
