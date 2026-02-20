@@ -228,3 +228,220 @@ func TestReplaceStackNav_ReplacesExisting(t *testing.T) {
 		t.Error("original body lost")
 	}
 }
+
+// --- replaceDescription tests ---
+
+func TestReplaceDescription_InsertsWhenNoMarkers(t *testing.T) {
+	body := "Some existing content"
+	result := replaceDescription(body, "New description")
+
+	if !strings.Contains(result, descOpen) {
+		t.Error("missing opening marker")
+	}
+	if !strings.Contains(result, descClose) {
+		t.Error("missing closing marker")
+	}
+	if !strings.Contains(result, "New description") {
+		t.Error("missing new description")
+	}
+	// Original content should be preserved after the description
+	if !strings.Contains(result, "Some existing content") {
+		t.Error("original content lost")
+	}
+}
+
+func TestReplaceDescription_InsertsIntoEmptyBody(t *testing.T) {
+	result := replaceDescription("", "First description")
+
+	if !strings.HasPrefix(result, descOpen) {
+		t.Error("should start with opening marker")
+	}
+	if !strings.Contains(result, "First description") {
+		t.Error("missing description")
+	}
+}
+
+func TestReplaceDescription_ReplacesExisting(t *testing.T) {
+	body := descOpen + "\nOld description\n" + descClose + "\n\nUser notes here"
+	result := replaceDescription(body, "Updated description")
+
+	if !strings.Contains(result, "Updated description") {
+		t.Error("new description missing")
+	}
+	if strings.Contains(result, "Old description") {
+		t.Error("old description still present")
+	}
+	// Content after the close marker should be preserved
+	if !strings.Contains(result, "User notes here") {
+		t.Error("content after close marker lost")
+	}
+}
+
+func TestReplaceDescription_PreservesNavSection(t *testing.T) {
+	body := descOpen + "\nOld desc\n" + descClose + "\n\n" +
+		stackNavOpen + "\nStack nav\n" + stackNavClose
+
+	result := replaceDescription(body, "New desc")
+
+	if !strings.Contains(result, "New desc") {
+		t.Error("new description missing")
+	}
+	if !strings.Contains(result, stackNavOpen) {
+		t.Error("nav section lost")
+	}
+	if !strings.Contains(result, "Stack nav") {
+		t.Error("nav content lost")
+	}
+}
+
+// --- extractDescription tests ---
+
+func TestExtractDescription_WithMarkers(t *testing.T) {
+	body := "preamble\n" + descOpen + "\nThis is the description.\n" + descClose + "\nfooter"
+
+	result := extractDescription(body)
+	if result != "This is the description." {
+		t.Errorf("expected 'This is the description.', got %q", result)
+	}
+}
+
+func TestExtractDescription_NoMarkers(t *testing.T) {
+	body := "Just a plain body with no markers"
+	result := extractDescription(body)
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestExtractDescription_EmptyBetweenMarkers(t *testing.T) {
+	body := descOpen + "\n\n" + descClose
+	result := extractDescription(body)
+	if result != "" {
+		t.Errorf("expected empty string for whitespace-only content, got %q", result)
+	}
+}
+
+// --- Body with both description and nav sections ---
+
+func TestReplaceDescription_ThenNav_Roundtrip(t *testing.T) {
+	// Simulate the flow: start empty, add description, then add nav
+	body := ""
+	body = replaceDescription(body, "PR adds authentication")
+	nav := stackNavOpen + "\n---\nStack: test\n1. https://github.com/o/r/pull/1\n" + stackNavClose
+	body = replaceStackNav(body, nav)
+
+	// Both sections should be present
+	if !strings.Contains(body, "PR adds authentication") {
+		t.Error("description lost after adding nav")
+	}
+	if !strings.Contains(body, stackNavOpen) {
+		t.Error("nav not present")
+	}
+
+	// Now update the description — nav should survive
+	body = replaceDescription(body, "PR adds authentication and sessions")
+
+	if !strings.Contains(body, "PR adds authentication and sessions") {
+		t.Error("updated description missing")
+	}
+	if strings.Contains(body, "PR adds authentication\n") {
+		t.Error("old description still present")
+	}
+	if !strings.Contains(body, stackNavOpen) {
+		t.Error("nav lost after description update")
+	}
+
+	// Now update the nav — description should survive
+	nav2 := stackNavOpen + "\n---\nStack: test\n1. https://github.com/o/r/pull/1\n2. https://github.com/o/r/pull/2\n" + stackNavClose
+	body = replaceStackNav(body, nav2)
+
+	if !strings.Contains(body, "PR adds authentication and sessions") {
+		t.Error("description lost after nav update")
+	}
+	if !strings.Contains(body, "pull/2") {
+		t.Error("new nav content missing")
+	}
+}
+
+// --- similar (Jaccard) tests ---
+
+func TestSimilar_Identical(t *testing.T) {
+	if !similar("hello world", "hello world", 0.8) {
+		t.Error("identical strings should be similar")
+	}
+}
+
+func TestSimilar_BothEmpty(t *testing.T) {
+	if !similar("", "", 0.8) {
+		t.Error("two empty strings should be similar")
+	}
+}
+
+func TestSimilar_OneEmpty(t *testing.T) {
+	if similar("", "hello world", 0.8) {
+		t.Error("empty vs non-empty should not be similar")
+	}
+}
+
+func TestSimilar_HighOverlap(t *testing.T) {
+	a := "add user authentication to the API"
+	b := "add user authentication to the API endpoints"
+	if !similar(a, b, 0.7) {
+		t.Error("high overlap strings should be similar at 0.7 threshold")
+	}
+}
+
+func TestSimilar_LowOverlap(t *testing.T) {
+	a := "add user authentication"
+	b := "fix database connection pooling"
+	if similar(a, b, 0.5) {
+		t.Error("unrelated strings should not be similar")
+	}
+}
+
+func TestSimilar_CaseInsensitive(t *testing.T) {
+	if !similar("Hello World", "hello world", 0.8) {
+		t.Error("should be case insensitive")
+	}
+}
+
+func TestSimilar_IgnoresPunctuation(t *testing.T) {
+	if !similar("feat: add auth", "feat add auth", 0.8) {
+		t.Error("should ignore punctuation")
+	}
+}
+
+// --- buildStackNav: marker precision ---
+
+func TestBuildStackNav_MarkerOnlyOnCurrentBranch(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "test/a", PR: 1, Status: "open"},
+			{Branch: "test/b", PR: 2, Status: "open"},
+			{Branch: "test/c", PR: 3, Status: "open"},
+		},
+	}
+	prs := map[int]ghpkg.PRInfo{
+		1: {Number: 1, URL: "https://github.com/o/r/pull/1"},
+		2: {Number: 2, URL: "https://github.com/o/r/pull/2"},
+		3: {Number: 3, URL: "https://github.com/o/r/pull/3"},
+	}
+
+	nav := buildStackNav(s, prs, "test/b")
+
+	lines := strings.Split(nav, "\n")
+	markerCount := 0
+	for _, line := range lines {
+		if strings.Contains(line, "◀ this PR") {
+			markerCount++
+			if !strings.Contains(line, "pull/2") {
+				t.Errorf("marker on wrong line: %s", line)
+			}
+		}
+	}
+	if markerCount != 1 {
+		t.Errorf("expected exactly 1 marker, got %d", markerCount)
+	}
+}

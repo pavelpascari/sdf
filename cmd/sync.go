@@ -359,6 +359,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 		fmt.Println("\nEverything is in sync.")
 	}
 
+	// Offer to create PRs for branches that don't have one yet
+	promptCreateMissingPRs(root, s, opts)
+
 	// Update PR titles and descriptions if configured
 	updatePRContent(root, s, opts)
 
@@ -369,6 +372,73 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 	}
 
 	return nil
+}
+
+// promptCreateMissingPRs checks for open branches without PRs and offers
+// to create them. Runs after sync completes, before nav/content updates.
+func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
+	if !ghpkg.Available() {
+		return
+	}
+
+	var missing []int // indices of nodes without PRs
+	for i, node := range s.Nodes {
+		if node.Status != "merged" && node.PR == 0 {
+			missing = append(missing, i)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+
+	cfg := cfgpkg.Defaults()
+	if opts != nil {
+		cfg = opts.cfg
+	}
+
+	fmt.Println()
+	for _, idx := range missing {
+		node := &s.Nodes[idx]
+		base := s.ParentBranch(node.Branch)
+		subjects, _ := gitpkg.LogSubjects(base, node.Branch)
+		prTitle := cfgpkg.GeneratePRTitle(cfg, s.StackID, node.Branch, subjects)
+
+		fmt.Printf("  %s has no PR. Create one? [Y/n] ", node.Branch)
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+
+		if answer != "" && answer != "y" && answer != "yes" {
+			continue
+		}
+
+		body := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
+
+		if err := gitpkg.Push(node.Branch); err != nil {
+			if err := gitpkg.PushNew(node.Branch); err != nil {
+				fmt.Fprintf(os.Stderr, "  ✗ could not push %s: %v\n", node.Branch, err)
+				continue
+			}
+		}
+
+		url, err := ghpkg.PRCreate(prTitle, body, base, node.Branch)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ could not create PR: %v\n", err)
+			continue
+		}
+
+		pr, err := ghpkg.PRView(node.Branch)
+		if err == nil {
+			node.PR = pr.Number
+			node.Status = "open"
+		}
+
+		fmt.Printf("  ✓ PR created: %s\n", url)
+	}
+
+	if err := stack.Save(root, s); err != nil {
+		fmt.Fprintf(os.Stderr, "  ⚠ could not save stack: %v\n", err)
+	}
 }
 
 // updatePRContent updates PR titles and descriptions for open PRs in the stack.
