@@ -150,3 +150,27 @@ func PREditBody(prNumber int, body string) error {
 	_, err := run("pr", "edit", fmt.Sprintf("%d", prNumber), "--body", body)
 	return err
 }
+
+// PREditTitle updates the title of a PR.
+func PREditTitle(prNumber int, title string) error {
+	_, err := run("pr", "edit", fmt.Sprintf("%d", prNumber), "--title", title)
+	return err
+}
+
+// PRViewTitle returns the title of a PR by number.
+func PRViewTitle(prNumber int) (string, error) {
+	out, err := run("pr", "view", fmt.Sprintf("%d", prNumber),
+		"--json", "title",
+	)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		return "", fmt.Errorf("cannot parse gh pr view output: %w", err)
+	}
+	return result.Title, nil
+}

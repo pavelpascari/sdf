@@ -13,6 +13,9 @@ import (
 const (
 	stackNavOpen  = "<!-- sdf:stack-nav -->"
 	stackNavClose = "<!-- /sdf:stack-nav -->"
+
+	descOpen  = "<!-- sdf:description -->"
+	descClose = "<!-- /sdf:description -->"
 )
 
 // buildStackNav generates the stack navigation markdown section for a PR.
@@ -67,6 +70,28 @@ func replaceStackNav(body, nav string) string {
 
 	// Append at the bottom
 	return strings.TrimRight(body, "\n") + "\n\n" + nav
+}
+
+// replaceDescription replaces the content between sdf:description markers
+// in a PR body, or inserts markers at the top if none exist.
+// Content outside the markers (user-written content) is preserved.
+func replaceDescription(body, description string) string {
+	section := descOpen + "\n" + description + "\n" + descClose
+
+	openIdx := strings.Index(body, descOpen)
+	closeIdx := strings.Index(body, descClose)
+
+	if openIdx >= 0 && closeIdx >= 0 {
+		after := body[closeIdx+len(descClose):]
+		return body[:openIdx] + section + after
+	}
+
+	// No existing markers — insert at the top, before any existing content
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return section
+	}
+	return section + "\n\n" + body
 }
 
 // updateStackNavForAllPRs fetches PR info and updates the stack navigation

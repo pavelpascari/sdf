@@ -1,19 +1,28 @@
 package cmd
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
+	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
+// PRResult is the structured output of sdf pr when --json is used.
+type PRResult struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+	Title  string `json:"title"`
+}
+
 func RunPR(args []string) error {
 	fs := flag.NewFlagSet("pr", flag.ExitOnError)
-	title := fs.String("title", "", "PR title (default: branch name)")
+	title := fs.String("title", "", "PR title (default: auto-generated from branch name)")
+	jsonFlag := fs.Bool("json", false, "output result as JSON")
 	fs.Parse(args)
 
 	root, err := stack.FindRoot()
@@ -44,6 +53,12 @@ func RunPR(args []string) error {
 		return fmt.Errorf("gh CLI is required to create PRs — install it from https://cli.github.com")
 	}
 
+	// Load config for title generation
+	cfg, err := cfgpkg.Load(root)
+	if err != nil {
+		cfg = cfgpkg.Defaults()
+	}
+
 	// Determine base branch
 	base := s.ParentBranch(branch)
 
@@ -53,29 +68,34 @@ func RunPR(args []string) error {
 	// Determine title
 	prTitle := *title
 	if prTitle == "" {
-		// Use branch name, replacing slashes and dashes with spaces
-		prTitle = branch
-		prTitle = strings.ReplaceAll(prTitle, "/", ": ")
-		prTitle = strings.ReplaceAll(prTitle, "-", " ")
+		// Get commit subjects for conventional commit detection
+		var subjects []string
+		if cfg.ConventionalCommitsEnabled() {
+			subjects, _ = gitpkg.LogSubjects(base, branch)
+		}
+		prTitle = cfgpkg.GeneratePRTitle(cfg, s.StackID, branch, subjects)
 	}
 
 	// Push current branch first
-	fmt.Printf("Pushing %s to origin...\n", branch)
+	if !*jsonFlag {
+		fmt.Printf("Pushing %s to origin...\n", branch)
+	}
 	if err := gitpkg.Push(branch); err != nil {
-		// Try regular push if force-with-lease fails
 		if err := gitpkg.PushNew(branch); err != nil {
 			return fmt.Errorf("cannot push branch: %w", err)
 		}
 	}
 
 	// Create PR
-	fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, base)
+	if !*jsonFlag {
+		fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, base)
+	}
 	url, err := ghpkg.PRCreate(prTitle, body, base, branch)
 	if err != nil {
 		return fmt.Errorf("cannot create PR: %w", err)
 	}
 
-	// Try to extract PR number from gh output
+	// Get PR details
 	pr, err := ghpkg.PRView(branch)
 	if err == nil {
 		node.PR = pr.Number
@@ -83,15 +103,30 @@ func RunPR(args []string) error {
 	}
 
 	if err := stack.Save(root, s); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not update stack: %v\n", err)
+		if !*jsonFlag {
+			fmt.Fprintf(os.Stderr, "warning: could not update stack: %v\n", err)
+		}
 	}
 
-	fmt.Println(url)
+	if *jsonFlag {
+		result := PRResult{
+			Number: node.PR,
+			URL:    url,
+			Title:  prTitle,
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("cannot marshal result: %w", err)
+		}
+		fmt.Println(string(data))
+	} else {
+		fmt.Println(url)
 
-	// Update stack navigation in all PRs
-	fmt.Println("Updating stack navigation in PR descriptions...")
-	if err := updateStackNavForAllPRs(root, s); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+		// Update stack navigation in all PRs
+		fmt.Println("Updating stack navigation in PR descriptions...")
+		if err := updateStackNavForAllPRs(root, s); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+		}
 	}
 
 	return nil

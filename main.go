@@ -76,8 +76,9 @@ Stack commands:
   branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [-y] [--continue] [--stack <name>]  Detect merged PRs, cascade rebase, push
+       [--update-descriptions] [--update-titles]
 move <commit>...                   Move commits from current branch to parent
-  pr                                 Create a GitHub PR for the current branch
+  pr [--title "..."] [--json]        Create a GitHub PR for the current branch
 
 Navigation:
   switch [<branch>]                  Switch to a branch in the stack
@@ -117,9 +118,9 @@ func runDoctor() error {
 		fmt.Printf("  ✓ gh         %s (%s)\n", ver, path)
 	}
 
-	// claude (optional, needed for conflict resolution)
+	// claude (optional, needed for conflict resolution and PR description generation)
 	if path, err := exec.LookPath("claude"); err != nil {
-		fmt.Println("  ● claude     not found (needed for conflict resolution)")
+		fmt.Println("  ● claude     not found (needed for conflict resolution and PR descriptions)")
 	} else {
 		ver := getVersion("claude", "--version")
 		fmt.Printf("  ✓ claude     %s (%s)\n", ver, path)

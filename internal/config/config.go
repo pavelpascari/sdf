@@ -24,9 +24,22 @@ type BranchPrefix struct {
 	Separator string `json:"separator,omitempty"`  // empty = default "/"
 }
 
+// PRTitle holds PR title generation settings.
+type PRTitle struct {
+	ConventionalCommits *bool  `json:"conventional_commits,omitempty"` // nil = unset (defaults false)
+	TicketPattern       string `json:"ticket_pattern,omitempty"`       // regex to extract ticket ID from branch name
+}
+
+// SyncConfig holds sync-time PR update settings.
+type SyncConfig struct {
+	WithContent *bool `json:"with_content,omitempty"` // nil = unset (defaults false)
+}
+
 // Config represents the sdf configuration.
 type Config struct {
 	BranchPrefix BranchPrefix `json:"branch_prefix"`
+	PRTitle      PRTitle      `json:"pr_title,omitempty"`
+	Sync         SyncConfig   `json:"sync,omitempty"`
 }
 
 // ConfigFile is the filename for the configuration within .sdf/.
@@ -126,6 +139,24 @@ func (c Config) EffectiveSeparator() string {
 	return "/"
 }
 
+// ConventionalCommitsEnabled returns whether conventional commit PR titles are enabled.
+// Defaults to false if unset.
+func (c Config) ConventionalCommitsEnabled() bool {
+	if c.PRTitle.ConventionalCommits == nil {
+		return false
+	}
+	return *c.PRTitle.ConventionalCommits
+}
+
+// WithContentEnabled returns whether sync should update PR titles and descriptions.
+func (c Config) WithContentEnabled() bool {
+	if c.Sync.WithContent == nil {
+		return false
+	}
+	return *c.Sync.WithContent
+}
+
+
 // loadFile reads and unmarshals a config file.
 // Returns zero Config if the file doesn't exist (not an error).
 func loadFile(path string) (Config, error) {
@@ -159,6 +190,16 @@ func merge(global, repo Config) Config {
 		result.BranchPrefix.Separator = repo.BranchPrefix.Separator
 	}
 
+	if repo.PRTitle.ConventionalCommits != nil {
+		result.PRTitle.ConventionalCommits = repo.PRTitle.ConventionalCommits
+	}
+	if repo.PRTitle.TicketPattern != "" {
+		result.PRTitle.TicketPattern = repo.PRTitle.TicketPattern
+	}
+
+	if repo.Sync.WithContent != nil {
+		result.Sync.WithContent = repo.Sync.WithContent
+	}
 	return result
 }
 

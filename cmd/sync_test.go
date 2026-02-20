@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
@@ -134,7 +135,7 @@ func TestComputeSyncPlan_InSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	if len(plan) != 0 {
 		t.Errorf("expected empty plan when everything is in sync, got %d actions", len(plan))
@@ -155,7 +156,7 @@ func TestComputeSyncPlan_MergedHead(t *testing.T) {
 	// Mark branchA as merged
 	s.Nodes[0].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	// Should have: skip branchA (merged), rebase branchB onto main, push branchB
 	skips := filterActions(plan, "skip-merged")
@@ -194,7 +195,7 @@ func TestComputeSyncPlan_MergedWithPR(t *testing.T) {
 	s.Nodes[0].Status = "merged"
 	s.Nodes[1].PR = 42
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	// Check for update-pr-base action (only if gh is available)
 	prActions := filterActions(plan, "update-pr-base")
@@ -238,7 +239,7 @@ func TestComputeSyncPlan_StaleBaseTip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
@@ -270,7 +271,7 @@ func TestComputeSyncPlan_CascadeFromMerge(t *testing.T) {
 	// then branchC cascades because branchB was rebased
 	s.Nodes[0].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -329,7 +330,7 @@ func TestComputeSyncPlan_CascadeFromStaleParent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
@@ -370,7 +371,7 @@ func TestComputeSyncPlan_MergedTail(t *testing.T) {
 	// Mark the last node (branchC) as merged → just skip, no downstream to rebase
 	s.Nodes[2].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -397,7 +398,7 @@ func TestComputeSyncPlan_MultipleMerged(t *testing.T) {
 	s.Nodes[0].Status = "merged"
 	s.Nodes[1].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -433,7 +434,7 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 	// (ParentBranch skips merged branchB, lands on branchA)
 	s.Nodes[1].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -460,6 +461,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{kind: "rebase", branch: "feat/api", onto: "main"},
 		{kind: "push", branch: "feat/api"},
 		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
+		{kind: "update-content", branch: "feat/api", pr: 42},
 	}
 
 	// Capture stdout
@@ -486,6 +488,7 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{"rebase", "rebase feat/api onto main"},
 		{"push", "force-push feat/api"},
 		{"pr-base", "update PR #42 base to main"},
+		{"content", "update PR #42 title + description"},
 	}
 
 	for _, c := range checks {
@@ -493,6 +496,107 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 			t.Errorf("printSyncPlan output missing %s: expected to contain %q\ngot:\n%s",
 				c.label, c.contains, output)
 		}
+	}
+}
+
+// --- computeSyncPlan with update options ---
+
+func TestComputeSyncPlan_WithContent(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give branchA and branchB PRs
+	s.Nodes[0].PR = 10
+	s.Nodes[1].PR = 11
+
+	opts := &syncOptions{
+		withContent: true,
+		cfg:         cfgpkg.Defaults(),
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	contentActions := filterActions(plan, "update-content")
+
+	// Should have content updates for open PRs with PRs (branchA and branchB)
+	if len(contentActions) != 2 {
+		t.Errorf("expected 2 update-content actions, got %d", len(contentActions))
+	}
+}
+
+func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give all branches PRs, mark branchA as merged
+	s.Nodes[0].PR = 10
+	s.Nodes[0].Status = "merged"
+	s.Nodes[1].PR = 11
+	s.Nodes[2].PR = 12
+
+	opts := &syncOptions{
+		withContent: true,
+		cfg:         cfgpkg.Defaults(),
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	contentActions := filterActions(plan, "update-content")
+
+	// Should NOT have content update for merged branchA
+	for _, a := range contentActions {
+		if a.pr == 10 {
+			t.Error("should not update content for merged PR #10")
+		}
+	}
+
+	// Should have content updates for open PRs (branchB #11 and branchC #12)
+	if len(contentActions) != 2 {
+		t.Errorf("expected 2 update-content actions for open PRs, got %d", len(contentActions))
+	}
+}
+
+// --- buildDescriptionPrompt tests ---
+
+func TestBuildDescriptionPrompt(t *testing.T) {
+	subjects := []string{"feat: add user auth", "fix: handle edge case"}
+	diff := "diff --git a/auth.go b/auth.go\n+func Login() {}\n"
+
+	prompt := buildDescriptionPrompt("feat/auth", subjects, diff, "")
+
+	checks := []string{
+		"Branch: feat/auth",
+		"feat: add user auth",
+		"fix: handle edge case",
+		"auth.go",
+		"2-5 sentences",
+		"Diff:",
+	}
+
+	for _, c := range checks {
+		if !strings.Contains(prompt, c) {
+			t.Errorf("prompt missing %q\ngot:\n%s", c, prompt)
+		}
+	}
+}
+
+func TestBuildDescriptionPrompt_NoDiff(t *testing.T) {
+	subjects := []string{"initial commit"}
+	prompt := buildDescriptionPrompt("feat/init", subjects, "", "")
+
+	if strings.Contains(prompt, "Diff:") {
+		t.Error("prompt should not contain Diff section when diff is empty")
+	}
+	if !strings.Contains(prompt, "initial commit") {
+		t.Error("prompt should contain commit subject")
 	}
 }
 
