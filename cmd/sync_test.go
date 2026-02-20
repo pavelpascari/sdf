@@ -582,9 +582,9 @@ func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
 
 func TestBuildDescriptionPrompt(t *testing.T) {
 	subjects := []string{"feat: add user auth", "fix: handle edge case"}
-	diffStat := " auth.go | 50 +++++\n login.go | 20 +++\n"
+	diff := "diff --git a/auth.go b/auth.go\n+func Login() {}\n"
 
-	prompt := buildDescriptionPrompt("feat/auth", subjects, diffStat)
+	prompt := buildDescriptionPrompt("feat/auth", subjects, diff)
 
 	checks := []string{
 		"Branch: feat/auth",
@@ -592,6 +592,7 @@ func TestBuildDescriptionPrompt(t *testing.T) {
 		"fix: handle edge case",
 		"auth.go",
 		"2-5 sentences",
+		"Diff:",
 	}
 
 	for _, c := range checks {
@@ -605,8 +606,8 @@ func TestBuildDescriptionPrompt_NoDiff(t *testing.T) {
 	subjects := []string{"initial commit"}
 	prompt := buildDescriptionPrompt("feat/init", subjects, "")
 
-	if strings.Contains(prompt, "Change summary") {
-		t.Error("prompt should not contain Change summary when diffStat is empty")
+	if strings.Contains(prompt, "Diff:") {
+		t.Error("prompt should not contain Diff section when diff is empty")
 	}
 	if !strings.Contains(prompt, "initial commit") {
 		t.Error("prompt should contain commit subject")

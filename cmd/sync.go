@@ -409,13 +409,13 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		if opts.updateDescriptions && claudepkg.Available() {
 			parent := s.ParentBranch(node.Branch)
 			subjects, _ := gitpkg.LogSubjects(parent, node.Branch)
-			diffStat, _ := gitpkg.DiffSummary(parent, node.Branch)
+			diff, _ := gitpkg.DiffFull(parent, node.Branch)
 
 			if len(subjects) == 0 {
 				continue
 			}
 
-			p := buildDescriptionPrompt(node.Branch, subjects, diffStat)
+			p := buildDescriptionPrompt(node.Branch, subjects, diff)
 			sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
 
 			// Stream Claude output on a single updating line
@@ -455,8 +455,8 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 }
 
 // buildDescriptionPrompt creates a prompt for Claude to generate a PR description
-// from the branch's commits and change summary.
-func buildDescriptionPrompt(branch string, subjects []string, diffStat string) string {
+// from the branch's commits and diff.
+func buildDescriptionPrompt(branch string, subjects []string, diff string) string {
 	var b strings.Builder
 
 	b.WriteString("You are a PR description generator. Output ONLY the description text — nothing else.\n")
@@ -468,9 +468,9 @@ func buildDescriptionPrompt(branch string, subjects []string, diffStat string) s
 		fmt.Fprintf(&b, "  - %s\n", subj)
 	}
 
-	if diffStat != "" {
-		b.WriteString("\nChange summary:\n")
-		b.WriteString(diffStat)
+	if diff != "" {
+		b.WriteString("\nDiff:\n")
+		b.WriteString(diff)
 		b.WriteString("\n")
 	}
 
