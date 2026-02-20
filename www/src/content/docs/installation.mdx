@@ -6,7 +6,7 @@ order: 2
 
 # Installation
 
-SDF ships as a single static binary with no runtime dependencies. Pick the method that fits your workflow.
+SDF ships as a single static binary. Pick the method that fits your workflow.
 
 ---
 
@@ -38,21 +38,21 @@ Pre-built binaries are available for every platform on the [Releases page](https
 
 | Platform | Architecture | File |
 |---|---|---|
-| Linux | x86_64 | `sdf_linux_amd64.tar.gz` |
-| Linux | ARM64 | `sdf_linux_arm64.tar.gz` |
-| macOS | Intel | `sdf_darwin_amd64.tar.gz` |
-| macOS | Apple Silicon | `sdf_darwin_arm64.tar.gz` |
-| Windows | x86_64 | `sdf_windows_amd64.zip` |
-| Windows | ARM64 | `sdf_windows_arm64.zip` |
+| Linux | x86_64 | `sdf-linux-amd64.tar.gz` |
+| Linux | ARM64 | `sdf-linux-arm64.tar.gz` |
+| macOS | Intel | `sdf-darwin-amd64.tar.gz` |
+| macOS | Apple Silicon | `sdf-darwin-arm64.tar.gz` |
+| Windows | x86_64 | `sdf-windows-amd64.zip` |
+| Windows | ARM64 | `sdf-windows-arm64.zip` |
 
-Each archive contains the binary and a SHA256 checksum file. Verify before running:
+GoReleaser produces a single `checksums.txt` file covering all archives. Verify before running:
 
 ```bash
 # Download and verify (Linux x86_64 example)
-curl -LO https://github.com/pavelpascari/sdf/releases/latest/download/sdf_linux_amd64.tar.gz
-curl -LO https://github.com/pavelpascari/sdf/releases/latest/download/sdf_linux_amd64.tar.gz.sha256
-sha256sum -c sdf_linux_amd64.tar.gz.sha256
-tar xzf sdf_linux_amd64.tar.gz
+curl -LO https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-amd64.tar.gz
+curl -LO https://github.com/pavelpascari/sdf/releases/latest/download/checksums.txt
+sha256sum -c --ignore-missing checksums.txt
+tar xzf sdf-linux-amd64.tar.gz
 mv sdf /usr/local/bin/
 ```
 
@@ -87,21 +87,6 @@ Verify everything is in place:
 
 ```bash
 sdf doctor
-```
-
----
-
-## Shell completion
-
-```bash
-# bash
-sdf completion bash > /etc/bash_completion.d/sdf
-
-# zsh
-sdf completion zsh > "${fpath[1]}/_sdf"
-
-# fish
-sdf completion fish > ~/.config/fish/completions/sdf.fish
 ```
 
 ---

@@ -1,72 +1,91 @@
 ---
 title: AI Features
-description: How SDF uses Claude for conflict resolution and context management.
+description: How SDF uses Claude for conflict resolution and PR content generation.
 order: 6
 ---
 
 # AI Features
 
-SDF integrates with the [Claude CLI](https://claude.ai/code) to provide two AI-powered capabilities: **semantic conflict resolution** during syncs and **context document generation**.
+SDF integrates with the [Claude CLI](https://claude.ai/code) to provide two AI-powered capabilities: **semantic conflict resolution** during sync and move operations, and **PR title and description generation**.
 
-Both features are optional. Without the Claude CLI, SDF opens `$EDITOR` for conflicts and you write context documents manually.
+Both features are optional. Without the Claude CLI installed, SDF falls back to manual conflict resolution and local title generation from branch names and commit subjects.
 
 ---
 
 ## Semantic conflict resolution
 
-When `sdf sync` triggers a cascade rebase and encounters a conflict, SDF invokes Claude with:
+When `sdf sync` triggers a cascade rebase and encounters a conflict, SDF presents an interactive menu:
 
-1. **The full assembled stack context** — every ancestor branch's context document, in order from base to the current branch
-2. **A summary of what changed** in the upstream branch (the diff that caused the conflict)
-3. **The conflicted files** with standard conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+1. **Ask Claude to resolve** (only shown if the Claude CLI is installed)
+2. **I'll fix it myself (pauses sync)** — leaves the rebase in progress so you can resolve manually, then run `sdf sync --continue`
+3. **Skip this branch** — aborts the rebase for this branch and continues with the rest of the stack
+4. **Abort sync** — aborts the entire sync operation
 
-Claude resolves each conflict file and writes the resolution back to disk. SDF then runs `git rebase --continue`.
+If you choose Claude, SDF invokes it with:
 
-### Why this works well
+1. **An upstream change diff summary** — a summary of what changed in the parent branch since the current branch was last rebased
+2. **The current branch's PR description** — fetched from GitHub, used as context for what this branch is trying to do
+3. **The conflicted file contents** — the full files with standard conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
 
-Standard merge tools see only two versions of a file and a common ancestor. They have no knowledge of *intent*. Claude sees the complete context:
-
-- What the `db-schema` branch was trying to do
-- What constraints it declared for downstream branches
-- What `repository` intended to build on top of that
-- What actually changed in `db-schema` since `repository` was last rebased
-
-This produces resolutions that are semantically correct — not just textually non-conflicting.
+Claude resolves each conflict file and writes the resolution back to disk. SDF then stages the files and runs `git rebase --continue`.
 
 ### Fallback behavior
 
-If the Claude CLI is not installed, or if Claude's output cannot be parsed, SDF opens `$EDITOR` and lets you resolve the conflict manually. Sync continues normally after you close the editor.
+If Claude's resolution fails (output cannot be parsed, or the rebase still fails after applying the resolution), SDF presents a second menu:
+
+1. **I'll fix the rest myself (pauses sync)** — same as the manual resolution flow
+2. **Skip this branch, continue with the rest**
+3. **Abort sync entirely**
+
+If the Claude CLI is not installed, the "Ask Claude to resolve" option is simply not shown in the menu.
+
+### Conflict resolution during move
+
+The `sdf move` command also uses Claude for conflict resolution. When cherry-picking or rebasing during a commit move encounters conflicts, SDF automatically invokes Claude (if available) with the same prompt structure: upstream diff summary, PR description, and conflicted file contents. If Claude fails, the rebase is aborted and you are asked to resolve manually.
 
 ---
 
-## Context document generation
+## PR title and description generation
 
-`sdf context update` asks Claude to (re)write the context document for the current branch.
+The `sdf sync --with-content` flag (or the `sync.with_content` config option) uses Claude to generate PR titles and descriptions for all open PRs in the stack.
 
 ```bash
-sdf context update
+# One-time flag
+sdf sync --with-content
+
+# Or set permanently in config
+sdf config set sync.with_content true
 ```
 
-Claude analyzes:
+When enabled, after the rebase phase completes, SDF processes each open PR in parallel:
 
-- The diff of the current branch against its parent
-- The parent branch's context document (what constraints upstream declared)
-- Any existing content in the current context document
+### Title generation
 
-It rewrites the Intent, Constraints, and Decisions sections. Review the output before committing — Claude's draft is a starting point, not a final answer.
+Claude receives the branch name, commit subjects, and the full diff against the parent branch. It generates a short, descriptive title (under 60 characters, lowercase, no conventional commit prefix). SDF prepends the conventional commit prefix (e.g., `feat: `) if configured.
+
+If the current title is already accurate, Claude is instructed to keep it unchanged. SDF also compares the proposed title against the existing one using word-level similarity and skips the update if they are close enough.
+
+### Description generation
+
+Claude receives the same inputs (branch, commits, diff) plus any existing description. It generates 2-5 sentences explaining what the change does and why. Descriptions are placed between `<!-- sdf:description -->` markers in the PR body, preserving any other content (like stack navigation links).
+
+### Without Claude
+
+If the Claude CLI is not installed, `--with-content` still updates PR titles using a local algorithm based on branch names and commit subjects. Description generation requires Claude and is skipped without it.
 
 ---
 
 ## Claude CLI sessions
 
-SDF creates named Claude sessions for resumability:
+SDF creates session names for Claude invocations using a dash-separated format:
 
 ```
-sdf/sync/users-feature/repository
-sdf/context-update/users-feature/controller
+conflict-feature-branch-name
+pr-title-feature-branch-name
+pr-desc-feature-branch-name
 ```
 
-If a sync is interrupted, you can resume the Claude session by name. The session prefix is configurable via `claude_session_prefix` in your config.
+The prefix (`conflict`, `pr-title`, `pr-desc`) is determined by the call site. Branch names have slashes and spaces replaced with dashes. The session name is passed to `claude -p` for call-site clarity but is not currently used by the CLI for resumability.
 
 ---
 
@@ -92,9 +111,8 @@ sdf doctor
 
 When SDF invokes Claude, it sends:
 
-- Context document contents (text you wrote)
-- Git diffs of your branches
-- File contents with conflict markers
+- **For conflict resolution:** upstream diff summaries, PR descriptions from GitHub, and file contents with conflict markers
+- **For PR content generation:** branch diffs, commit subjects, and existing PR titles/descriptions
 
 SDF does not send credentials, tokens, or any data outside your repository. The Claude CLI uses your existing Claude account and applies your account's data handling settings.
 
@@ -102,10 +120,10 @@ SDF does not send credentials, tokens, or any data outside your repository. The 
 
 ## Tips for better AI results
 
-**Write specific intent.** Vague context documents produce vague resolutions. "Adds users table" is less useful than "Adds the `users` table with columns `id`, `email`, `created_at`; uses `pgx/v5` driver; AppError pattern for DB errors."
+**Write good PR descriptions.** During conflict resolution, Claude receives the PR description as its primary context for understanding what your branch is trying to do. A description like "Adds users table" is less useful than "Adds the `users` table with columns `id`, `email`, `created_at`; uses `pgx/v5` driver; AppError pattern for DB errors."
 
-**Document constraints explicitly.** If a downstream branch depends on a specific function signature or interface from upstream, document it. Claude will preserve it during conflict resolution.
+**Document constraints in PR descriptions.** If a downstream branch depends on a specific function signature or interface from upstream, mention it in the PR description. Claude will use this to preserve it during conflict resolution.
 
 **Review resolved files.** Claude's resolutions are good but not infallible. After a sync with AI-resolved conflicts, review the diff of each rebased branch before pushing.
 
-**Use `sdf context show` before a complex sync.** It prints exactly what Claude will see. If the assembled context looks thin, flesh out the context documents before running sync.
+**Review generated PR content.** Claude-generated titles and descriptions are a starting point. Review and edit them to ensure they accurately represent your changes.

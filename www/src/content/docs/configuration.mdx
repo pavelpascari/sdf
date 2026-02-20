@@ -17,77 +17,133 @@ SDF uses a two-tier configuration system that separates team-wide settings from 
 | `.sdf/config.json` | Repository | Yes — shared with the team |
 | `~/.config/sdf/config.json` | User (global) | No |
 
-When both files exist, repository config takes precedence. Run `sdf config show` to see the effective merged result.
+When both files exist, repository config takes precedence on a field-by-field basis. Missing files are not errors — SDF works without any config file, using built-in defaults.
+
+Run `sdf config show` to see the effective merged result.
 
 ---
 
 ## Available settings
 
-### `default_base`
-
-The default base branch for new stacks.
-
-```json
-{ "default_base": "main" }
-```
-
-Default: `main`
-
----
-
 ### `branch_prefix`
 
-When set, SDF auto-prepends this prefix to branch names created with `sdf branch`.
+Controls automatic branch name prefixing when creating branches with `sdf branch`. This is a nested object with three sub-fields.
+
+#### `branch_prefix.enabled`
+
+Whether branch prefix enforcement is active.
+
+- Type: `boolean`
+- Default: `true`
+
+#### `branch_prefix.prefix`
+
+The prefix text prepended to branch names. When empty, falls back to the stack ID.
+
+- Type: `string`
+- Default: `""` (uses stack ID)
+
+#### `branch_prefix.separator`
+
+The character placed between the prefix and the branch name.
+
+- Type: `string`
+- Default: `"/"`
 
 ```json
-{ "branch_prefix": "users-feature" }
+{
+  "branch_prefix": {
+    "enabled": true,
+    "prefix": "team-name",
+    "separator": "/"
+  }
+}
 ```
 
-With this set, `sdf branch repository` creates `users-feature/repository` instead of `repository`.
-
-Useful for enforcing consistent naming conventions across a team.
+With this config, `sdf branch add-logging` creates `team-name/add-logging` instead of `add-logging`.
 
 ---
 
-### `editor`
+### `pr_title`
 
-Override the editor used by `sdf context edit`.
+Controls how PR titles are generated. This is a nested object with two sub-fields.
+
+#### `pr_title.conventional_commits`
+
+When enabled, PR titles follow the [Conventional Commits](https://www.conventionalcommits.org/) style (e.g., `feat: add logging`).
+
+- Type: `boolean`
+- Default: `false`
+
+#### `pr_title.ticket_pattern`
+
+A regex pattern used to extract a ticket ID from the branch name and include it in the PR title.
+
+- Type: `string`
+- Default: `""` (disabled)
 
 ```json
-{ "editor": "nvim" }
+{
+  "pr_title": {
+    "conventional_commits": true,
+    "ticket_pattern": "[A-Z]+-[0-9]+"
+  }
+}
 ```
-
-Default: reads `$EDITOR`, then `$VISUAL`, then falls back to `vi`.
 
 ---
 
-### `claude_session_prefix`
+### `sync`
 
-Prefix for Claude CLI session names created during conflict resolution and context updates.
+Controls behavior during `sdf sync`. This is a nested object.
+
+#### `sync.with_content`
+
+When enabled, `sdf sync` also updates PR titles and descriptions using Claude CLI.
+
+- Type: `boolean`
+- Default: `false`
 
 ```json
-{ "claude_session_prefix": "sdf" }
+{
+  "sync": {
+    "with_content": true
+  }
+}
 ```
-
-Default: `sdf`
-
-Sessions are named `<prefix>/<operation>/<branch>` (e.g., `sdf/sync/users-feature/repository`), making them resumable and discoverable in Claude.
 
 ---
 
 ## Setting values
 
-```bash
-# Set in repo config
-sdf config set default_base develop
-sdf config set branch_prefix my-feature
+Use `sdf config set` to update individual keys. Valid keys are dot-separated paths into the config structure.
 
-# Set in global config
-sdf config set --global editor "code --wait"
-sdf config set --global claude_session_prefix "my-sdf"
+```bash
+# Set in repo config (.sdf/config.json)
+sdf config set branch_prefix.enabled true
+sdf config set branch_prefix.prefix team-name
+sdf config set branch_prefix.separator /
+sdf config set pr_title.conventional_commits true
+sdf config set pr_title.ticket_pattern "[A-Z]+-[0-9]+"
+sdf config set sync.with_content true
+
+# Set in global config (~/.config/sdf/config.json)
+sdf config set --global branch_prefix.prefix my-username
+sdf config set --global pr_title.conventional_commits false
 ```
 
-Or edit the JSON files directly — they're plain JSON with no schema enforcement beyond what SDF reads.
+Or edit the JSON files directly — they are plain JSON with no schema enforcement beyond what SDF reads.
+
+### Valid keys
+
+| Key | Type | Description |
+|---|---|---|
+| `branch_prefix.enabled` | `true` / `false` | Enable or disable prefix enforcement |
+| `branch_prefix.prefix` | string | Prefix text (empty = use stack ID) |
+| `branch_prefix.separator` | string | Separator character (default: `/`) |
+| `pr_title.conventional_commits` | `true` / `false` | Conventional commit-style PR titles |
+| `pr_title.ticket_pattern` | string | Regex to extract ticket ID from branch name |
+| `sync.with_content` | `true` / `false` | Update PR titles + descriptions during sync |
 
 ---
 
@@ -95,8 +151,14 @@ Or edit the JSON files directly — they're plain JSON with no schema enforcemen
 
 ```json
 {
-  "default_base": "main",
-  "branch_prefix": "team-name"
+  "branch_prefix": {
+    "enabled": true,
+    "prefix": "team-name",
+    "separator": "/"
+  },
+  "pr_title": {
+    "conventional_commits": true
+  }
 }
 ```
 
@@ -108,9 +170,13 @@ Commit this as `.sdf/config.json` to apply it across the whole team.
 
 ```json
 {
-  "editor": "zed --wait",
-  "claude_session_prefix": "sdf"
+  "branch_prefix": {
+    "prefix": "my-username"
+  },
+  "sync": {
+    "with_content": true
+  }
 }
 ```
 
-This lives in `~/.config/sdf/config.json` and applies to all repositories on your machine.
+This lives in `~/.config/sdf/config.json` and applies to all repositories on your machine. Repo-level values override these on a field-by-field basis.

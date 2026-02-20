@@ -1,12 +1,12 @@
 ---
 title: Core Concepts
-description: Stacks, nodes, context documents, and how SDF models your PR chains.
+description: Stacks, nodes, and how SDF models your PR chains.
 order: 3
 ---
 
 # Core Concepts
 
-Understanding SDF's model makes every command feel obvious. There are three things to know: **stacks**, **nodes**, and **context documents**.
+Understanding SDF's model makes every command feel obvious. There are two things to know: **stacks** and **nodes**.
 
 ---
 
@@ -21,7 +21,7 @@ main
          └─ users-feature/controller ← PR #144
 ```
 
-A repository can have **multiple independent stacks** — one for each feature being developed in parallel. Each stack has its own JSON file in `.sdf/stacks/<name>.json`, committed to the repository.
+A repository can have **multiple independent stacks** — one for each feature being developed in parallel. Each stack has its own JSON file in `.sdf/stacks/<name>.json`, stored locally on your machine.
 
 ### Stack JSON
 
@@ -30,14 +30,16 @@ A repository can have **multiple independent stacks** — one for each feature b
   "stack_id": "users-feature",
   "base": "main",
   "nodes": [
-    { "branch": "users-feature/db-schema",   "pr": 142, "status": "open", "base_tip": "abc123" },
-    { "branch": "users-feature/repository",  "pr": 143, "status": "open", "base_tip": "def456" },
-    { "branch": "users-feature/controller",  "pr": 144, "status": "open", "base_tip": "ghi789" }
+    { "branch": "users-feature/db-schema",   "pr": 142, "status": "open",   "base_tip": "abc123", "nav_hash": "e3b0c4..." },
+    { "branch": "users-feature/repository",  "pr": 143, "status": "open",   "base_tip": "def456" },
+    { "branch": "users-feature/controller",  "pr": 144, "status": "draft",  "base_tip": "ghi789" }
   ]
 }
 ```
 
 The `base_tip` records the commit hash at the tip of the parent branch at the time of the last sync. This allows SDF to detect when a parent has moved and a rebase is needed.
+
+The optional `nav_hash` is a SHA-256 hash of the PR stack navigation section. SDF uses it to avoid redundant API calls when updating PR descriptions — if the hash hasn't changed, the description update is skipped.
 
 ---
 
@@ -45,38 +47,22 @@ The `base_tip` records the commit hash at the tip of the parent branch at the ti
 
 A *node* is one branch (and its corresponding PR) within a stack. Nodes are ordered — the first node's parent is the stack base, and each subsequent node's parent is the node above it.
 
-When a node's PR merges, `sdf sync` removes it from the stack and rebases all downstream nodes onto the newly promoted base.
+### Node status
 
----
+Each node tracks its PR status. The possible values are:
 
-## Context documents
-
-Every branch in a stack has a Markdown context file at:
-
-```
-.sdf/context/<stack-id>/<branch-name>.md
-```
-
-This file is **committed to the repository**. It documents:
-
-| Section | Contents |
+| Status | Meaning |
 |---|---|
-| **Intent** | Why this layer exists. What problem it solves. What it adds. |
-| **Constraints** | What this layer expects from upstream and provides downstream. |
-| **Decisions** | Design choices made here and the reasoning behind them. |
-| **Open questions** | Unresolved issues for reviewers to weigh in on. |
+| `open` | The PR is open and under review. |
+| `draft` | The PR is a draft, not yet ready for review. |
+| `merged` | The PR has been merged into its base. |
+| `closed` | The PR was closed without merging. |
 
-### Why this matters
+### Merged nodes stay in the stack
 
-Context documents solve two problems:
+When a node's PR merges, `sdf sync` does **not** remove it from the stack. Instead, the node remains in the stack JSON with status `"merged"`. The `ParentBranch()` function skips over merged nodes when computing the effective parent for downstream branches — so downstream nodes rebase onto the stack base (or the nearest non-merged ancestor) automatically.
 
-1. **Code reviewers** see intent alongside the diff. The PR body comes from the Intent section automatically via `sdf pr`.
-
-2. **Claude** uses the assembled context of all ancestor branches when resolving rebase conflicts. A conflict in `controller` is resolved with knowledge of what `db-schema` and `repository` intended to do. This produces semantically correct resolutions, not just textual merges.
-
-### Assembled context
-
-`sdf context show` prints the full assembled context for the current branch — all ancestor context documents concatenated — exactly as Claude receives it. Use this to verify Claude will have the right information before a sync.
+This means merged PRs are shown as completed in the stack topology rather than silently disappearing.
 
 ---
 
@@ -84,39 +70,51 @@ Context documents solve two problems:
 
 SDF uses a two-tier configuration system:
 
-- **Repo config** — `.sdf/config.json`, committed, shared with the team
-- **Global config** — `~/.config/sdf/config.json`, user-specific
+- **Global config** — `~/.config/sdf/config.json`, user-specific defaults
+- **Repo config** — `.sdf/config.json`, per-repo overrides
 
-Repo config takes precedence. Run `sdf config show` to see the effective merged config.
+Repo config takes precedence over global config on a field-by-field basis. Run `sdf config show` to see the effective merged config.
 
 ```json
 {
-  "branch_prefix": "users-feature",
-  "default_base": "main"
+  "branch_prefix": {
+    "enabled": true,
+    "prefix": "users-feature",
+    "separator": "/"
+  },
+  "pr_title": {
+    "conventional_commits": false,
+    "ticket_pattern": ""
+  },
+  "sync": {
+    "with_content": false
+  }
 }
 ```
+
+| Field | Type | Description |
+|---|---|---|
+| `branch_prefix.enabled` | bool | Whether new branches are auto-prefixed with the stack ID (default `true`). |
+| `branch_prefix.prefix` | string | Custom prefix. If empty, falls back to the stack ID. |
+| `branch_prefix.separator` | string | Character between prefix and branch name (default `"/"`). |
+| `pr_title.conventional_commits` | bool | Generate PR titles from conventional commit messages (default `false`). |
+| `pr_title.ticket_pattern` | string | Regex to extract a ticket ID from the branch name for PR titles. |
+| `sync.with_content` | bool | Whether `sdf sync` updates PR titles and descriptions (default `false`). |
 
 ---
 
 ## Repository layout
 
 ```
-.sdf/
-  config.json                             ← repo config (committed)
+.sdf/                                       ← local-only (gitignored)
+  config.json                               ← repo config
   stacks/
-    users-feature.json                    ← stack topology (committed)
-    auth-feature.json                     ← another stack (committed)
-  context/
-    users-feature/
-      db-schema.md                        ← context doc (committed)
-      repository.md
-      controller.md
-    auth-feature/
-      ...
-  local.json                              ← ephemeral state (gitignored)
+    users-feature.json                      ← stack topology
+    auth-feature.json                       ← another stack
+  local.json                                ← ephemeral state (sync progress, etc.)
 ```
 
-All committed files travel with the repository — clones, CI runners, and code reviewers all have access to the full stack topology and context.
+The entire `.sdf/` directory is **local-only** — it is listed in `.gitignore` and is never pushed to the remote. Each developer's machine maintains its own copy of the stack metadata. PR descriptions on GitHub serve as the shared source of truth for stack structure and context.
 
 ---
 
@@ -126,6 +124,6 @@ SDF is built around three principles:
 
 **Shell out, don't reimplement.** SDF delegates to `git`, `gh`, and `claude` CLIs. It is pure orchestration — no custom git library, no custom GitHub API client. This means you get the behavior of the tools you already know and trust.
 
-**Context is first-class.** The context document model is not a nice-to-have. It's what makes AI conflict resolution work correctly, and it's what makes code review valuable for stacked PRs.
+**PR descriptions are the source of truth.** Since `.sdf/` is local-only, the authoritative record of stack structure and intent lives in the PR descriptions on GitHub. SDF can reconstruct stack topology from the PR graph via `sdf register`, making the workflow resilient to lost local state.
 
 **Fail loudly, recover clearly.** When something goes wrong, SDF leaves the repository in a known state and tells you exactly what to run to recover. It never silently swallows errors.

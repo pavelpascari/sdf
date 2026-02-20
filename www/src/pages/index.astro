@@ -37,9 +37,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       <!-- Subheadline -->
       <p class="text-lg sm:text-xl text-fg-muted max-w-2xl mx-auto leading-relaxed mb-10">
-        SDF automates cascade rebasing for GitHub PR stacks. When an upstream PR merges,
-        every downstream branch rebases automatically — with Claude resolving conflicts
-        using full context awareness.
+        SDF handles cascade rebasing for GitHub PR stacks.
+        Run <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf sync</code> after
+        a PR merges to rebase all downstream branches &mdash; with optional
+        Claude-powered conflict resolution.
       </p>
 
       <!-- CTAs -->
@@ -80,7 +81,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </svg>
         </button>
       </div>
-      <p class="text-xs text-fg-subtle mt-2">Also available via binary download &mdash; Linux, macOS, Windows</p>
+      <p class="text-xs text-fg-subtle mt-2">Also available via <code class="text-accent font-mono">go install</code> and binary download &mdash; Linux, macOS, Windows</p>
 
     </div>
   </section>
@@ -99,11 +100,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           },
           {
             pain: 'PR base drift on GitHub',
-            fix: 'PR base branches on GitHub are updated automatically to match the real topology.',
+            fix: 'PR base branches on GitHub are updated during sync to match the real topology.',
           },
           {
-            pain: 'Context lost across reviewers',
-            fix: 'Intent, constraints, and decisions live in versioned Markdown alongside the code.',
+            pain: 'Losing track of PR dependencies',
+            fix: 'Stack topology tracked locally in .sdf/ and PR relationships shown in descriptions with automatic stack navigation.',
           },
         ].map(({ pain, fix }) => (
           <div class="flex flex-col gap-3">
@@ -135,34 +136,34 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {[
           {
-            icon: '⟳',
+            icon: '\u27F3',
             title: 'Cascade rebase',
             desc: 'sdf sync detects merged PRs and rebases every downstream branch in order, then force-pushes with --force-with-lease.',
           },
           {
-            icon: '📄',
-            title: 'Context documents',
-            desc: 'Each branch carries a Markdown context file — intent, constraints, decisions — committed to the repo, visible in PR reviews.',
+            icon: '\u2726',
+            title: 'AI-powered PR content',
+            desc: 'Claude generates PR titles and descriptions from your diffs. During sync, it can resolve rebase conflicts semantically.',
           },
           {
-            icon: '✦',
-            title: 'AI conflict resolution',
-            desc: 'When conflicts arise during rebase, Claude is invoked with the full stack context and resolves conflicts semantically.',
+            icon: '\u2707',
+            title: 'Safe one-at-a-time merging',
+            desc: 'sdf merge squash-merges the head PR, retargets downstream PRs, then cascade-rebases the rest of the stack.',
           },
           {
-            icon: '⎇',
+            icon: '\u2387',
             title: 'Multiple stacks',
-            desc: 'Manage any number of independent stacks per repo. Each with its own base, branches, and context.',
+            desc: 'Manage any number of independent stacks per repo. Each with its own base branch, nodes, and PR metadata.',
           },
           {
-            icon: '◈',
+            icon: '\u25C8',
             title: 'GitHub-native',
             desc: 'Works entirely through gh CLI and git. No servers, no external services, no auth tokens beyond what you already have.',
           },
           {
-            icon: '⬡',
-            title: 'Committed metadata',
-            desc: 'Stack topology lives in .sdf/ in your repo — available on any clone, in CI, and in code review.',
+            icon: '\u2B21',
+            title: 'Stack reconciliation',
+            desc: 'sdf fetch discovers existing PR stacks from GitHub and reconciles them with local state. Join a stack on any machine.',
           },
         ].map(({ icon, title, desc }) => (
           <div class="group relative p-6 rounded-2xl border border-rim bg-surface hover:border-brand/40 hover:bg-panel transition-all">
@@ -209,8 +210,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             </div>
             <p class="text-fg-muted leading-relaxed text-sm">
               Create a named stack and its first branch in one command.
-              SDF registers the topology in <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">.sdf/</code>,
-              which is committed alongside your code.
+              SDF tracks the topology in <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">.sdf/</code>
+              locally. Add more branches with <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf branch</code>,
+              then open PRs with <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf pr</code>.
             </p>
           </div>
           <div class="rounded-xl border border-rim bg-panel overflow-hidden">
@@ -222,13 +224,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               </div>
               <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
             </div>
-            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf init users-feature --branch db-schema</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">Stack "users-feature" created</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">Branch "users-feature/db-schema" checked out</span>
-<span class="text-fg-subtle">  base: main → db-schema</span>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf init --branch db-schema users-feature</span>
+<span class="text-fg-muted">Initialized stack "users-feature" (base: main)</span>
+<span class="text-fg-muted">Created branch "users-feature/db-schema" (based on main)</span>
 
-<span class="text-fg-subtle">$ </span><span class="text-fg">sdf context edit</span>
-<span class="text-fg-muted">  opening .sdf/context/users-feature/db-schema.md ...</span></code></pre>
+<span class="text-fg-muted">Next steps:</span>
+<span class="text-fg-muted">  sdf pr               Create a pull request</span>
+<span class="text-fg-muted">  sdf branch &lt;name&gt;    Add another branch to the stack</span>
+<span class="text-fg-muted">  sdf status           View stack topology</span></code></pre>
           </div>
         </div>
 
@@ -240,10 +243,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <h3 class="font-display font-semibold text-lg text-fg" style="font-family: var(--font-display); font-weight: 600;">Layer your branches</h3>
             </div>
             <p class="text-fg-muted leading-relaxed text-sm">
-              Add more branches to the stack. Each gets its own context document.
+              Add more branches to the stack. Each branch builds on the previous one.
               <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf pr</code> creates
-              the GitHub PR with the Intent section as the PR body — reviewers see
-              the why alongside the diff.
+              the GitHub PR with the correct base branch and adds stack navigation links
+              to every PR description &mdash; reviewers see the full stack at a glance.
             </p>
           </div>
           <div class="lg:order-1 rounded-xl border border-rim bg-panel overflow-hidden">
@@ -256,15 +259,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
             </div>
             <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf branch repository && sdf pr</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">Branch "users-feature/repository" created</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">PR #143 opened (based on db-schema)</span>
+<span class="text-fg-muted">Created branch "users-feature/repository" in stack "users-feature"</span>
+<span class="text-fg-muted">https://github.com/.../pull/143</span>
 
 <span class="text-fg-subtle">$ </span><span class="text-fg">sdf status</span>
-<span class="text-fg-muted">  users-feature</span>
-<span class="text-accent">  main</span>
-<span class="text-fg-muted">   └─ </span><span class="text-fg">db-schema</span>     <span class="text-brand-light">#142</span> <span class="text-success">open</span>
-<span class="text-fg-muted">       └─ </span><span class="text-fg">repository</span>   <span class="text-brand-light">#143</span> <span class="text-success">open</span>
-<span class="text-fg-muted">           └─ </span><span class="text-fg">controller</span>  <span class="text-brand-light">#144</span> <span class="text-success">open</span></code></pre>
+<span class="text-fg-muted">  </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">  (base: main)</span>
+
+<span class="text-fg-muted">   </span><span class="text-success">&#10003;</span><span class="text-fg"> db-schema                PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
+<span class="text-fg-muted"> </span><span class="text-accent">&#8594;</span><span class="text-fg-muted"> </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> repository               PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
+<span class="text-fg-muted">   </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> controller               PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span></code></pre>
           </div>
         </div>
 
@@ -278,7 +281,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             <p class="text-fg-muted leading-relaxed text-sm">
               When an upstream PR merges, run <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf sync</code>.
               SDF detects the merged PR, rebases every downstream branch in order,
-              updates GitHub PR bases, and invokes Claude if conflicts arise.
+              updates GitHub PR bases, and offers Claude-powered resolution if conflicts arise.
             </p>
           </div>
           <div class="rounded-xl border border-rim bg-panel overflow-hidden">
@@ -291,13 +294,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
             </div>
             <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf sync</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">PR #142 (db-schema) merged — removing from stack</span>
-<span class="text-fg-muted">  rebasing repository onto main ...</span>
-<span class="text-warn">⚡</span> <span class="text-fg-muted">conflict in internal/model/user.go — invoking Claude</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">conflict resolved semantically</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">repository rebased and pushed</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">controller rebased and pushed</span>
-<span class="text-success">✓</span> <span class="text-fg-muted">PR bases updated on GitHub</span></code></pre>
+<span class="text-fg-muted">Syncing stack </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">...</span>
+<span class="text-fg-muted">Fetching from origin...</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted"> (db-schema) merged</span>
+<span class="text-fg-muted">  rebasing repository onto main...</span>
+<span class="text-warn">&#9889;</span> <span class="text-fg-muted">conflict in internal/model/user.go &#8212; 1 file(s)</span>
+<span class="text-fg-muted">  invoking Claude for conflict resolution...</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">conflict resolved by Claude</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">repository rebased and pushed</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">controller rebased and pushed</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
+
+<span class="text-fg-muted">Sync complete. Stack updated.</span></code></pre>
           </div>
         </div>
 

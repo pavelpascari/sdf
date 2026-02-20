@@ -6,85 +6,185 @@ order: 4
 
 # Commands
 
-All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf init`).
+All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf init` or `sdf fetch`).
 
 ---
 
 ## Stack management
 
-### `sdf init <name>`
+### `sdf init`
 
-Create a new stack and optionally check out its first branch.
+Create a new stack and its first branch.
 
 ```bash
-sdf init users-feature                         # create stack only
-sdf init users-feature --branch db-schema      # create stack + first branch
-sdf init users-feature --branch db-schema --base develop  # custom base
+sdf init my-feature                                # positional stack name
+sdf init --stack my-feature                        # explicit flag
+sdf init my-feature --branch db-schema             # custom first branch name
+sdf init my-feature --base develop                 # custom base branch
+sdf init my-feature --json                         # machine-readable output
 ```
+
+The stack name can be provided as a positional argument or via the `--stack` flag. If `--branch` is omitted, the first branch is named after the stack. The base branch is auto-detected from `origin HEAD` if not specified.
 
 Flags:
 
 | Flag | Default | Description |
 |---|---|---|
-| `--branch` | — | Name of the first branch to create |
-| `--base` | `main` | Base branch for the stack |
+| `--stack` | -- | Name for the stack (alternative to positional arg) |
+| `--branch` | stack name | Name of the first branch to create |
+| `--base` | auto-detected from `origin HEAD` | Base branch for the stack |
 | `--json` | false | Output machine-readable JSON (for AI agent integration) |
+
+---
+
+### `sdf fetch`
+
+Discover and sync PR stacks from GitHub. Scans your open PRs, detects branch chains, and either registers a new stack or reconciles an existing one.
+
+```bash
+sdf fetch                          # auto-detect base, scan all open PRs
+sdf fetch --stack my-feature       # name the stack explicitly
+sdf fetch --base develop           # specify base branch
+```
+
+When a matching local stack is found, `sdf fetch` reconciles it with the remote state. When no match exists, it registers a new stack.
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--stack` | auto-generated from branches | Name for the stack |
+| `--base` | auto-detected | Base branch to scan against |
 
 ---
 
 ### `sdf branch <name>`
 
-Add a new branch to the current stack, based on the current branch.
+Add a new branch to the current stack. The branch is inserted at the current checkout position in the stack, not always appended to the end.
 
 ```bash
-sdf branch repository        # adds users-feature/repository
+sdf branch repository              # inserts after current branch
+sdf branch --no-prefix api-layer   # skip configured branch prefix
 ```
 
-Must be run from a branch that is already in a stack. The new branch is based on the current branch and becomes the last node in the stack.
+Must be run from a branch that is already in a stack (or the base branch). If the current branch is part of the stack, the new branch is inserted after it. If downstream branches exist, their PR base is updated on GitHub automatically.
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--stack` | auto-detect | Stack to add the branch to |
+| `--no-prefix` | false | Create branch without applying the configured prefix |
 
 ---
 
-### `sdf sync [<stack>]`
+### `sdf sync`
 
 Detect merged PRs and cascade-rebase downstream branches.
 
 ```bash
-sdf sync                  # sync the stack of the current branch
-sdf sync users-feature    # sync a specific stack by name
+sdf sync                          # sync the stack of the current branch
+sdf sync my-feature               # sync a specific stack by name
+sdf sync --stack my-feature       # explicit flag form
+sdf sync -y                       # skip confirmation prompt
+sdf sync --continue               # resume after manual conflict resolution
+sdf sync --with-content           # also update PR titles and descriptions
 ```
 
 Steps performed:
 
-1. Query GitHub for the status of each PR in the stack
-2. Mark merged nodes and remove them
-3. For each downstream node, in order: rebase onto new parent, resolve conflicts (Claude if available, otherwise `$EDITOR`), push
-4. Update PR base branches on GitHub
+1. Fetch from origin and fast-forward the base branch
+2. Query GitHub for the status of each PR in the stack
+3. Reconcile PR states (mark merged nodes, fill in PR numbers)
+4. For each downstream node that needs rebasing: rebase onto new parent, push
+5. Update PR base branches on GitHub when a merged node is skipped
+6. Optionally update PR titles and descriptions (with `--with-content` or if configured)
+7. Update stack navigation links in all PR descriptions
+
+Merged nodes remain in the stack JSON and are displayed as completed. They are not removed. The `ParentBranch()` function skips merged nodes to find the effective parent for rebasing.
+
+**Conflict resolution:** When a rebase conflict occurs, an interactive menu is presented with these options:
+
+- **Ask Claude to resolve** (if `claude` CLI is available)
+- **I'll fix it myself** -- pauses sync; resume later with `sdf sync --continue`
+- **Skip this branch** -- aborts the rebase for this branch, continues with the rest
+- **Abort sync** -- stops the entire sync
+
+After choosing "I'll fix it myself", resolve the conflicts manually, stage the files with `git add`, then run `sdf sync --continue`.
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--stack` | auto-detect | Stack to sync |
+| `-y` | false | Skip confirmation prompt |
+| `--continue` | false | Resume a paused sync after manual conflict resolution |
+| `--with-content` | false | Update PR titles and descriptions (uses Claude if available) |
 
 ---
 
-### `sdf status [<stack>]`
+### `sdf merge`
+
+Merge the head (first open) PR in the stack, then sync the remaining branches.
+
+```bash
+sdf merge                          # merge with squash (default)
+sdf merge -y                       # skip confirmation
+sdf merge --method merge           # use regular merge
+sdf merge --method rebase          # use rebase merge
+sdf merge --stack my-feature       # target a specific stack
+```
+
+Before merging, the next open PR's base is retargeted to prevent GitHub from auto-closing it when the merged branch is deleted. After the merge, a sync is automatically triggered to cascade-rebase remaining branches.
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--stack` | auto-detect | Stack to merge |
+| `-y` | false | Skip confirmation prompt |
+| `--method` | `squash` | Merge method: `squash`, `merge`, or `rebase` |
+
+---
+
+### `sdf status`
 
 Show stack topology and sync state.
 
 ```bash
-sdf status               # status of the current branch's stack
-sdf status users-feature # status of a named stack
-sdf status --all         # all stacks in the repository
+sdf status                        # status of the current branch's stack
+sdf status my-feature             # status of a named stack
+sdf status --stack my-feature     # explicit flag form
 ```
+
+Fetches from origin and fast-forwards the base branch to ensure sync state is accurate. Shows each branch with its PR number, status (open/merged/closed), and whether it needs syncing. Also performs lightweight reconciliation against GitHub PR states and warns about structural drift.
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--stack` | auto-detect | Stack to show |
 
 ---
 
 ### `sdf pr`
 
-Create a GitHub PR for the current branch with context as the body.
+Create a GitHub PR for the current branch.
 
 ```bash
-sdf pr                         # uses Intent section of context doc as body
-sdf pr --title "Add users table"  # override title
-sdf pr --draft                 # create as draft PR
+sdf pr                             # auto-generated title and body
+sdf pr --title "Add users table"   # override title
+sdf pr --json                      # machine-readable output
 ```
 
-Delegates to `gh pr create`. The PR is automatically based on the parent branch in the stack.
+The PR is automatically based on the parent branch in the stack. The PR body is set to `Part of stack: **<stack>**\n\nBase: '<parent>'`. Stack navigation links are added to all PR descriptions after creation.
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--title` | auto-generated from branch name | PR title |
+| `--json` | false | Output result as JSON |
 
 ---
 
@@ -93,61 +193,11 @@ Delegates to `gh pr create`. The PR is automatically based on the parent branch 
 Move commits from the current branch to the parent branch.
 
 ```bash
-sdf move abc1234             # move one commit
-sdf move abc1234 def5678     # move multiple commits
+sdf move abc1234                   # move one commit
+sdf move abc1234 def5678           # move multiple commits
 ```
 
-Useful when you realize a commit belongs in an earlier layer of the stack.
-
----
-
-### `sdf register`
-
-Discover and register an existing PR stack from GitHub.
-
-```bash
-sdf register
-```
-
-SDF will inspect open PRs, detect branch chains, and write the topology to `.sdf/stacks/`. Use this when you've built stacks manually and want SDF to manage them going forward.
-
----
-
-## Context management
-
-### `sdf context show`
-
-Print the assembled context for the current branch — all ancestor context documents concatenated.
-
-```bash
-sdf context show
-```
-
-This is exactly what Claude receives when resolving conflicts.
-
----
-
-### `sdf context edit`
-
-Open the context document for the current branch in `$EDITOR`.
-
-```bash
-sdf context edit
-```
-
-The context document is created if it doesn't exist.
-
----
-
-### `sdf context update`
-
-Ask Claude to rewrite the context document based on the current diff and stack state.
-
-```bash
-sdf context update
-```
-
-Claude analyzes the current branch's changes against its parent and rewrites the Intent, Constraints, and Decisions sections. Review the result before committing.
+The listed commits must be a contiguous prefix of the current branch's commits above the parent. They are cherry-picked onto the parent branch, stripped from the current branch via rebase, and all downstream branches are cascade-rebased to keep the stack consistent. If conflicts occur, Claude is tried first (if available), then the operation is aborted with instructions for manual resolution.
 
 ---
 
@@ -155,12 +205,14 @@ Claude analyzes the current branch's changes against its parent and rewrites the
 
 ### `sdf switch [<branch>]`
 
-Switch to a branch within the current stack. Shows stack context on switch.
+Switch to a branch and report which stack it belongs to.
 
 ```bash
-sdf switch db-schema         # switch to users-feature/db-schema
-sdf switch                   # interactive picker (requires fzf)
+sdf switch db-schema              # switch to a specific branch
+sdf switch                        # list all branches from all stacks
 ```
+
+Without arguments, lists all branches across all stacks with the current branch highlighted. With a branch name, checks it out and shows its position in the stack (e.g., `layer 2/4`).
 
 Short alias: `sdf <branch>` (if no subcommand matches the name).
 
@@ -176,22 +228,47 @@ Display the effective merged configuration (global + repo).
 sdf config show
 ```
 
+Shows the JSON configuration after merging global (`~/.config/sdf/config.json`) and repo-level (`.sdf/config.json`) settings.
+
 ---
 
 ### `sdf config set <key> <value>`
 
-Set a configuration value in the repo config (`.sdf/config.json`).
+Set a configuration value.
 
 ```bash
-sdf config set branch_prefix users-feature
-sdf config set default_base develop
+sdf config set branch_prefix.enabled true
+sdf config set branch_prefix.prefix my-project
+sdf config set branch_prefix.separator -
+sdf config set pr_title.conventional_commits true
+sdf config set pr_title.ticket_pattern "PROJ-\\d+"
+sdf config set sync.with_content true
 ```
 
-Add `--global` to write to the global config instead:
+Add `--global` to write to the global config instead of the repo config:
 
 ```bash
-sdf config set --global default_base main
+sdf config set --global pr_title.conventional_commits true
 ```
+
+Valid keys:
+
+| Key | Type | Description |
+|---|---|---|
+| `branch_prefix.enabled` | bool | Enable/disable branch prefix |
+| `branch_prefix.prefix` | string | Prefix string (empty = use stack_id) |
+| `branch_prefix.separator` | string | Separator character (default: `/`) |
+| `pr_title.conventional_commits` | bool | Enable conventional commit prefixes in PR titles |
+| `pr_title.ticket_pattern` | string | Regex to extract ticket ID from branch name |
+| `sync.with_content` | bool | Auto-update PR titles and descriptions during sync |
+
+---
+
+## Deprecated commands
+
+### `sdf register`
+
+Deprecated. Delegates to `sdf fetch` with a deprecation notice. Use `sdf fetch` instead.
 
 ---
 
@@ -205,7 +282,7 @@ Check that all required dependencies are available and configured.
 sdf doctor
 ```
 
-Reports the status of `git`, `gh`, and `claude` CLIs.
+Reports the status of `git` (required), `gh` (needed for PR operations), and `claude` (needed for conflict resolution and PR descriptions).
 
 ---
 
@@ -215,4 +292,14 @@ Print the installed SDF version.
 
 ```bash
 sdf version
+```
+
+---
+
+### `sdf help`
+
+Show usage information and list all available commands.
+
+```bash
+sdf help
 ```
