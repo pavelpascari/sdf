@@ -788,6 +788,7 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 				}
 			}
 		}
+
 	}
 
 	// Append PR content update action for open PRs
