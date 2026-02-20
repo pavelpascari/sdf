@@ -174,3 +174,11 @@ func PREditTitle(prNumber int, title string) error {
 	_, err := run("pr", "edit", fmt.Sprintf("%d", prNumber), "--title", title)
 	return err
 }
+
+// PRMerge merges a PR using the specified method ("squash", "merge", or "rebase").
+// Also deletes the remote branch after merging.
+func PRMerge(prNumber int, method string) error {
+	_, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
+		"--"+method, "--delete-branch")
+	return err
+}

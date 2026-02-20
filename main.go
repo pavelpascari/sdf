@@ -41,7 +41,9 @@ func main() {
 		exitOnErr(cmd.RunSwitch(args))
 	case "config":
 		exitOnErr(cmd.RunConfig(args))
-case "version", "--version", "-v":
+	case "merge":
+		exitOnErr(cmd.RunMerge(args))
+	case "version", "--version", "-v":
 		fmt.Printf("sdf %s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
@@ -77,8 +79,9 @@ Stack commands:
   branch [--no-prefix] <name>        Create a new branch in the stack
   status [--stack <name>]            Show stack topology and sync state
   sync [-y] [--continue] [--stack <name>]  Detect merged PRs, cascade rebase, push
-       [--update-descriptions] [--update-titles]
-move <commit>...                   Move commits from current branch to parent
+       [--with-content]
+  merge [--stack <name>] [-y]        Merge head PR and sync remaining branches
+  move <commit>...                   Move commits from current branch to parent
   pr [--title "..."] [--json]        Create a GitHub PR for the current branch
 
 Navigation:
