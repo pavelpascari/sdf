@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 
@@ -11,6 +10,7 @@ import (
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // PRResult is the structured output of sdf pr when --json is used.
@@ -20,11 +20,28 @@ type PRResult struct {
 	Title  string `json:"title"`
 }
 
+var prCmd = &cobra.Command{
+	Use:         "pr",
+	Short:       "Create a GitHub PR for the current branch",
+	Annotations: map[string]string{"category": "stack"},
+	RunE:        runPR,
+}
+
+func init() {
+	rootCmd.AddCommand(prCmd)
+	prCmd.Flags().String("title", "", "PR title (default: auto-generated from branch name)")
+	prCmd.Flags().Bool("json", false, "output result as JSON")
+}
+
+// RunPR is a compatibility wrapper for callers that use the old interface.
 func RunPR(args []string) error {
-	fs := flag.NewFlagSet("pr", flag.ExitOnError)
-	title := fs.String("title", "", "PR title (default: auto-generated from branch name)")
-	jsonFlag := fs.Bool("json", false, "output result as JSON")
-	fs.Parse(args)
+	rootCmd.SetArgs(append([]string{"pr"}, args...))
+	return rootCmd.Execute()
+}
+
+func runPR(cmd *cobra.Command, args []string) error {
+	title, _ := cmd.Flags().GetString("title")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	root, err := stack.FindRoot()
 	if err != nil {
@@ -67,7 +84,7 @@ func RunPR(args []string) error {
 	body := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
 
 	// Determine title
-	prTitle := *title
+	prTitle := title
 	if prTitle == "" {
 		// Get commit subjects for conventional commit detection
 		var subjects []string
@@ -78,7 +95,7 @@ func RunPR(args []string) error {
 	}
 
 	// Push current branch first
-	if !*jsonFlag {
+	if !jsonFlag {
 		fmt.Printf("Pushing %s to origin...\n", ui.Branch(branch))
 	}
 	if err := gitpkg.Push(branch); err != nil {
@@ -88,7 +105,7 @@ func RunPR(args []string) error {
 	}
 
 	// Create PR
-	if !*jsonFlag {
+	if !jsonFlag {
 		fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, ui.Branch(base))
 	}
 	url, err := ghpkg.PRCreate(prTitle, body, base, branch)
@@ -104,12 +121,12 @@ func RunPR(args []string) error {
 	}
 
 	if err := stack.Save(root, s); err != nil {
-		if !*jsonFlag {
+		if !jsonFlag {
 			fmt.Fprintf(os.Stderr, "warning: could not update stack: %v\n", err)
 		}
 	}
 
-	if *jsonFlag {
+	if jsonFlag {
 		result := PRResult{
 			Number: node.PR,
 			URL:    url,
