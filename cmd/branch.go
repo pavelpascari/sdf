@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
+	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
@@ -43,15 +45,40 @@ func RunBranch(args []string) error {
 		branchName = cfgpkg.ApplyPrefix(cfg, s.StackID, branchName)
 	}
 
-	// Check if branch already exists in the stack
+	// Check if branch already exists in this stack
 	if s.FindNode(branchName) != nil {
 		return fmt.Errorf("branch %q already exists in stack %q", branchName, s.StackID)
 	}
 
-	// Determine parent: the last node in the stack, or the base
-	parent := s.Base
-	if len(s.Nodes) > 0 {
+	// Check cross-stack uniqueness
+	if err := stack.ValidateBranchUniqueness(root, branchName); err != nil {
+		return err
+	}
+
+	// Detect insertion point from current branch
+	currentBranch, _ := gitpkg.CurrentBranch()
+	insertAfterIdx := s.NodeIndex(currentBranch)
+
+	// Determine parent based on insertion point
+	var parent string
+	if insertAfterIdx >= 0 {
+		// User is on a stack branch — insert after it
+		parent = s.Nodes[insertAfterIdx].Branch
+	} else if len(s.Nodes) > 0 {
+		// User is on base or unrelated branch — append to end
 		parent = s.Nodes[len(s.Nodes)-1].Branch
+		insertAfterIdx = len(s.Nodes) - 1
+	} else {
+		// Empty stack — first branch
+		parent = s.Base
+		insertAfterIdx = -1
+	}
+
+	// Ensure we're on the parent before creating the branch
+	if currentBranch != parent {
+		if err := gitpkg.Checkout(parent); err != nil {
+			return fmt.Errorf("cannot checkout parent %s: %w", parent, err)
+		}
 	}
 
 	// Get the current tip of the parent for tracking
@@ -65,12 +92,14 @@ func RunBranch(args []string) error {
 		return fmt.Errorf("cannot create branch: %w", err)
 	}
 
-	// Add node to stack
-	s.Nodes = append(s.Nodes, stack.Node{
+	// Insert node at the correct position
+	insertAt := insertAfterIdx + 1
+	newNode := stack.Node{
 		Branch:  branchName,
 		Status:  "open",
 		BaseTip: parentTip,
-	})
+	}
+	s.Nodes = slices.Insert(s.Nodes, insertAt, newNode)
 
 	if err := stack.Save(root, s); err != nil {
 		return err
@@ -80,6 +109,18 @@ func RunBranch(args []string) error {
 	if err := gitpkg.PushNew(branchName); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not push to origin: %v\n", err)
 		fmt.Fprintln(os.Stderr, "  You can push later with: git push -u origin", branchName)
+	}
+
+	// If there's a downstream node, update its PR base on GitHub
+	if insertAt < len(s.Nodes)-1 {
+		downstream := &s.Nodes[insertAt+1]
+		if downstream.PR > 0 && ghpkg.Available() {
+			if err := ghpkg.PREditBase(downstream.PR, branchName); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update PR #%d base: %v\n", downstream.PR, err)
+			} else {
+				fmt.Printf("  Updated PR #%d base → %s\n", downstream.PR, branchName)
+			}
+		}
 	}
 
 	fmt.Printf("Created branch %q in stack %q (based on %s)\n", branchName, s.StackID, parent)
