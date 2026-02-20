@@ -24,14 +24,14 @@ func Version() (string, error) {
 	return output, nil
 }
 
-// RunPrompt sends a prompt to Claude with a deterministic session name
-// and returns the response.
+// RunPrompt sends a prompt to Claude in print mode and returns the response.
+// The sessionName is unused by the current CLI but kept for call-site clarity.
 func RunPrompt(sessionName, prompt string) (string, error) {
-	cmd := exec.Command("claude", "--session", sessionName, "-p", prompt)
+	cmd := exec.Command("claude", "-p", prompt)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	if err != nil {
-		return output, fmt.Errorf("claude session %s: %s", sessionName, output)
+		return output, fmt.Errorf("claude %s: %s", sessionName, output)
 	}
 	return output, nil
 }
