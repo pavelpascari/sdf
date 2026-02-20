@@ -591,7 +591,7 @@ func TestBuildDescriptionPrompt(t *testing.T) {
 		"feat: add user auth",
 		"fix: handle edge case",
 		"auth.go",
-		"concise description",
+		"2-5 sentences",
 	}
 
 	for _, c := range checks {

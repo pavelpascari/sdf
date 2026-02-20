@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -398,7 +397,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			}
 
 			if currentTitle != proposedTitle {
-				fmt.Printf("  → updating PR #%d title: %q\n", node.PR, proposedTitle)
+				fmt.Printf("  → PR #%d title: %q\n", node.PR, proposedTitle)
 				if err := ghpkg.PREditTitle(node.PR, proposedTitle); err != nil {
 					fmt.Fprintf(os.Stderr, "  warning: could not update PR #%d title: %v\n", node.PR, err)
 				} else {
@@ -419,29 +418,33 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			p := buildDescriptionPrompt(node.Branch, subjects, diffStat)
 			sessionName := claudepkg.SanitizeSessionName("pr-desc", node.Branch)
 
-			fmt.Printf("  → PR #%d: generating description...\n", node.PR)
-			iw := &indentWriter{w: os.Stdout, prefix: "    ", needIndent: true}
-			description, err := claudepkg.RunPromptStreaming(sessionName, p, iw)
+			// Stream Claude output on a single updating line
+			fmt.Printf("  ⋯ PR #%d: generating description", node.PR)
+			sw := &streamWriter{w: os.Stdout}
+			description, err := claudepkg.RunPromptStreaming(sessionName, p, sw)
+			// Clear the streaming line and print the final status
+			fmt.Printf("\r\033[K")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "\n  warning: Claude could not generate description for PR #%d: %v\n", node.PR, err)
+				fmt.Fprintf(os.Stderr, "  ✗ PR #%d: Claude could not generate description: %v\n", node.PR, err)
 				continue
 			}
-			fmt.Println()
 
 			currentBody, err := ghpkg.PRViewBody(node.PR)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  warning: could not read PR #%d body: %v\n", node.PR, err)
+				fmt.Fprintf(os.Stderr, "  ✗ PR #%d: could not read body: %v\n", node.PR, err)
 				continue
 			}
 
 			newBody := replaceDescription(currentBody, description)
 			if newBody != currentBody {
-				fmt.Printf("  → PR #%d: updating description\n", node.PR)
 				if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
-					fmt.Fprintf(os.Stderr, "  warning: could not update PR #%d description: %v\n", node.PR, err)
+					fmt.Fprintf(os.Stderr, "  ✗ PR #%d: could not update description: %v\n", node.PR, err)
 				} else {
+					fmt.Printf("  ✓ PR #%d: description updated\n", node.PR)
 					updated++
 				}
+			} else {
+				fmt.Printf("  ✓ PR #%d: description unchanged\n", node.PR)
 			}
 		}
 	}
@@ -456,7 +459,9 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 func buildDescriptionPrompt(branch string, subjects []string, diffStat string) string {
 	var b strings.Builder
 
-	b.WriteString("Generate a concise PR description for the following code change.\n\n")
+	b.WriteString("You are a PR description generator. Output ONLY the description text — nothing else.\n")
+	b.WriteString("No preamble, no thinking, no commentary, no markdown headers, no formatting.\n")
+	b.WriteString("Start directly with the first sentence of the description.\n\n")
 	fmt.Fprintf(&b, "Branch: %s\n\n", branch)
 	b.WriteString("Commits:\n")
 	for _, subj := range subjects {
@@ -469,43 +474,30 @@ func buildDescriptionPrompt(branch string, subjects []string, diffStat string) s
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\nWrite a concise description (2-5 sentences) explaining what this change does and why. ")
-	b.WriteString("Focus on user impact and key changes. Output only the description text, no markdown headers or formatting.")
+	b.WriteString("\nWrite 2-5 sentences explaining what this change does and why. Focus on user impact and key changes.")
 
 	return b.String()
 }
 
-// indentWriter wraps a writer and prepends each line with a prefix,
-// used to indent streamed Claude output under the PR action line.
-type indentWriter struct {
-	w          io.Writer
-	prefix     string
-	needIndent bool
+// streamWriter shows Claude streaming output as a single updating line.
+// It collects tokens and periodically rewrites the current terminal line
+// with a truncated preview of the generated text so far.
+type streamWriter struct {
+	w   io.Writer
+	buf []byte
 }
 
-func (iw *indentWriter) Write(p []byte) (int, error) {
-	written := 0
-	for len(p) > 0 {
-		if iw.needIndent {
-			if _, err := io.WriteString(iw.w, iw.prefix); err != nil {
-				return written, err
-			}
-			iw.needIndent = false
-		}
-		idx := bytes.IndexByte(p, '\n')
-		if idx < 0 {
-			n, err := iw.w.Write(p)
-			return written + n, err
-		}
-		n, err := iw.w.Write(p[:idx+1])
-		written += n
-		if err != nil {
-			return written, err
-		}
-		p = p[idx+1:]
-		iw.needIndent = true
+func (sw *streamWriter) Write(p []byte) (int, error) {
+	sw.buf = append(sw.buf, p...)
+	// Build a single-line preview: collapse whitespace, truncate
+	text := strings.ReplaceAll(string(sw.buf), "\n", " ")
+	text = strings.Join(strings.Fields(text), " ")
+	const maxLen = 72
+	if len(text) > maxLen {
+		text = text[len(text)-maxLen:]
 	}
-	return written, nil
+	fmt.Fprintf(sw.w, "\r\033[K    %s", text)
+	return len(p), nil
 }
 
 // computeSyncPlan determines what operations sync will perform without
