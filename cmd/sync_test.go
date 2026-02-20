@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
@@ -134,7 +135,7 @@ func TestComputeSyncPlan_InSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	if len(plan) != 0 {
 		t.Errorf("expected empty plan when everything is in sync, got %d actions", len(plan))
@@ -155,7 +156,7 @@ func TestComputeSyncPlan_MergedHead(t *testing.T) {
 	// Mark branchA as merged
 	s.Nodes[0].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	// Should have: skip branchA (merged), rebase branchB onto main, push branchB
 	skips := filterActions(plan, "skip-merged")
@@ -194,7 +195,7 @@ func TestComputeSyncPlan_MergedWithPR(t *testing.T) {
 	s.Nodes[0].Status = "merged"
 	s.Nodes[1].PR = 42
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	// Check for update-pr-base action (only if gh is available)
 	prActions := filterActions(plan, "update-pr-base")
@@ -238,7 +239,7 @@ func TestComputeSyncPlan_StaleBaseTip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
@@ -270,7 +271,7 @@ func TestComputeSyncPlan_CascadeFromMerge(t *testing.T) {
 	// then branchC cascades because branchB was rebased
 	s.Nodes[0].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -329,7 +330,7 @@ func TestComputeSyncPlan_CascadeFromStaleParent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	rebases := filterActions(plan, "rebase")
 	pushes := filterActions(plan, "push")
@@ -370,7 +371,7 @@ func TestComputeSyncPlan_MergedTail(t *testing.T) {
 	// Mark the last node (branchC) as merged → just skip, no downstream to rebase
 	s.Nodes[2].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -397,7 +398,7 @@ func TestComputeSyncPlan_MultipleMerged(t *testing.T) {
 	s.Nodes[0].Status = "merged"
 	s.Nodes[1].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -433,7 +434,7 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 	// (ParentBranch skips merged branchB, lands on branchA)
 	s.Nodes[1].Status = "merged"
 
-	plan := computeSyncPlan(s)
+	plan := computeSyncPlan(s, nil)
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
@@ -460,6 +461,8 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{kind: "rebase", branch: "feat/api", onto: "main"},
 		{kind: "push", branch: "feat/api"},
 		{kind: "update-pr-base", branch: "feat/api", pr: 42, onto: "main"},
+		{kind: "update-title", branch: "feat/api", pr: 42, title: "feat: add API"},
+		{kind: "update-description", branch: "feat/api", pr: 42},
 	}
 
 	// Capture stdout
@@ -486,6 +489,8 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{"rebase", "rebase feat/api onto main"},
 		{"push", "force-push feat/api"},
 		{"pr-base", "update PR #42 base to main"},
+		{"title", `update PR #42 title: "feat: add API"`},
+		{"description", "update PR #42 description via Claude"},
 	}
 
 	for _, c := range checks {
@@ -493,6 +498,118 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 			t.Errorf("printSyncPlan output missing %s: expected to contain %q\ngot:\n%s",
 				c.label, c.contains, output)
 		}
+	}
+}
+
+// --- computeSyncPlan with update options ---
+
+func TestComputeSyncPlan_WithUpdateTitles(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give branchA and branchB PRs
+	s.Nodes[0].PR = 10
+	s.Nodes[1].PR = 11
+
+	opts := &syncOptions{
+		updateTitles:       true,
+		updateDescriptions: false,
+		cfg:                cfgpkg.Defaults(),
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	titleActions := filterActions(plan, "update-title")
+	descActions := filterActions(plan, "update-description")
+
+	// Should have title updates for open PRs (branchA and branchB have PRs)
+	if len(titleActions) < 2 {
+		t.Errorf("expected at least 2 update-title actions, got %d", len(titleActions))
+	}
+	for _, a := range titleActions {
+		if a.title == "" {
+			t.Errorf("update-title action for PR #%d has empty title", a.pr)
+		}
+	}
+
+	// Should have no description updates (not enabled)
+	if len(descActions) != 0 {
+		t.Errorf("expected 0 update-description actions, got %d", len(descActions))
+	}
+}
+
+func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give all branches PRs, mark branchA as merged
+	s.Nodes[0].PR = 10
+	s.Nodes[0].Status = "merged"
+	s.Nodes[1].PR = 11
+	s.Nodes[2].PR = 12
+
+	opts := &syncOptions{
+		updateTitles: true,
+		cfg:          cfgpkg.Defaults(),
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	titleActions := filterActions(plan, "update-title")
+
+	// Should NOT have title update for merged branchA
+	for _, a := range titleActions {
+		if a.pr == 10 {
+			t.Error("should not update title for merged PR #10")
+		}
+	}
+
+	// Should have title updates for open PRs (branchB #11 and branchC #12)
+	if len(titleActions) < 2 {
+		t.Errorf("expected at least 2 update-title actions for open PRs, got %d", len(titleActions))
+	}
+}
+
+// --- buildDescriptionPrompt tests ---
+
+func TestBuildDescriptionPrompt(t *testing.T) {
+	subjects := []string{"feat: add user auth", "fix: handle edge case"}
+	diffStat := " auth.go | 50 +++++\n login.go | 20 +++\n"
+
+	prompt := buildDescriptionPrompt("feat/auth", subjects, diffStat)
+
+	checks := []string{
+		"Branch: feat/auth",
+		"feat: add user auth",
+		"fix: handle edge case",
+		"auth.go",
+		"concise description",
+	}
+
+	for _, c := range checks {
+		if !strings.Contains(prompt, c) {
+			t.Errorf("prompt missing %q\ngot:\n%s", c, prompt)
+		}
+	}
+}
+
+func TestBuildDescriptionPrompt_NoDiff(t *testing.T) {
+	subjects := []string{"initial commit"}
+	prompt := buildDescriptionPrompt("feat/init", subjects, "")
+
+	if strings.Contains(prompt, "Change summary") {
+		t.Error("prompt should not contain Change summary when diffStat is empty")
+	}
+	if !strings.Contains(prompt, "initial commit") {
+		t.Error("prompt should contain commit subject")
 	}
 }
 
