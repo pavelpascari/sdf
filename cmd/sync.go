@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/charmbracelet/huh"
+	"github.com/spf13/cobra"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
@@ -31,18 +31,40 @@ type syncAction struct {
 	pr     int    // PR number (for update-pr-base, update-content)
 }
 
-func RunSync(args []string) error {
-	fs := flag.NewFlagSet("sync", flag.ExitOnError)
-	yes := fs.Bool("y", false, "skip confirmation prompt")
-	cont := fs.Bool("continue", false, "resume a paused sync after manual conflict resolution")
-	stackFlag := fs.String("stack", "", "stack to sync (default: auto-detect)")
-	withContent := fs.Bool("with-content", false, "update PR titles and descriptions")
-	fs.Parse(args)
+var syncCmd = &cobra.Command{
+	Use:   "sync [stack-name]",
+	Short: "Detect merged PRs and cascade-rebase downstream branches",
+	Long: `Fetches from origin, queries GitHub for PR status, reconciles PR states,
+cascade-rebases downstream branches, pushes, and updates PR navigation links.
 
-	// Accept positional arg as stack name: sdf sync <stack-name>
-	stackName := *stackFlag
-	if stackName == "" && fs.NArg() > 0 {
-		stackName = fs.Arg(0)
+When a rebase conflict occurs, an interactive menu offers Claude resolution,
+manual resolution (pausing sync), skip, or abort.`,
+	Example: `  sdf sync                          # sync the stack of the current branch
+  sdf sync my-feature               # sync a specific stack by name
+  sdf sync -y                       # skip confirmation prompt
+  sdf sync --continue               # resume after manual conflict resolution
+  sdf sync --with-content           # also update PR titles and descriptions`,
+	Annotations: map[string]string{"category": "stack"},
+	RunE:        runSyncCmd,
+}
+
+func init() {
+	rootCmd.AddCommand(syncCmd)
+	syncCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
+	syncCmd.Flags().Bool("continue", false, "resume after manual conflict resolution")
+	syncCmd.Flags().String("stack", "", "stack to sync (default: auto-detect)")
+	syncCmd.Flags().Bool("with-content", false, "update PR titles and descriptions")
+}
+
+func runSyncCmd(cmd *cobra.Command, args []string) error {
+	yes, _ := cmd.Flags().GetBool("yes")
+	cont, _ := cmd.Flags().GetBool("continue")
+	stackFlag, _ := cmd.Flags().GetString("stack")
+	withContent, _ := cmd.Flags().GetBool("with-content")
+
+	stackName := stackFlag
+	if stackName == "" && len(args) > 0 {
+		stackName = args[0]
 	}
 
 	root, err := stack.FindRoot()
@@ -50,11 +72,17 @@ func RunSync(args []string) error {
 		return err
 	}
 
-	if *cont {
+	if cont {
 		return runSyncContinue(root)
 	}
 
-	return runSyncFull(root, stackName, *yes, *withContent)
+	return runSyncFull(root, stackName, yes, withContent)
+}
+
+// RunSync is a compatibility wrapper for callers that use the old interface.
+func RunSync(args []string) error {
+	rootCmd.SetArgs(append([]string{"sync"}, args...))
+	return rootCmd.Execute()
 }
 
 // runSyncContinue resumes a sync that was paused for manual conflict resolution.
