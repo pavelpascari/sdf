@@ -11,15 +11,19 @@ import (
 	"strings"
 )
 
+// Binary is the name (or path) of the claude executable.
+// Tests can override this to point at a fake binary.
+var Binary = "claude"
+
 // Available returns true if the claude CLI is installed and accessible.
 func Available() bool {
-	_, err := exec.LookPath("claude")
+	_, err := exec.LookPath(Binary)
 	return err == nil
 }
 
 // Version returns the claude CLI version string.
 func Version() (string, error) {
-	cmd := exec.Command("claude", "--version")
+	cmd := exec.Command(Binary, "--version")
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	if err != nil {
@@ -31,7 +35,7 @@ func Version() (string, error) {
 // RunPrompt sends a prompt to Claude in print mode and returns the response.
 // The sessionName is unused by the current CLI but kept for call-site clarity.
 func RunPrompt(sessionName, prompt string) (string, error) {
-	cmd := exec.Command("claude", "-p", prompt)
+	cmd := exec.Command(Binary, "-p", prompt)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	if err != nil {
@@ -48,7 +52,7 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 // "assistant" events arrive incrementally with growing content. We display only the
 // new text since the last event. The "result" event carries the final complete text.
 func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
-	cmd := exec.Command("claude", "-p", "--verbose",
+	cmd := exec.Command(Binary, "-p", "--verbose",
 		"--output-format", "stream-json",
 		"--include-partial-messages",
 		prompt)

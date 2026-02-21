@@ -9,9 +9,13 @@ import (
 	"strings"
 )
 
+// Binary is the name (or path) of the git executable.
+// Tests can override this to point at a fake binary.
+var Binary = "git"
+
 // run executes a git command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(Binary, args...)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	if err != nil {
