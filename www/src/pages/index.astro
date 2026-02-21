@@ -296,7 +296,7 @@ const jsonLd = [
 <span class="text-fg-subtle">$ </span><span class="text-fg">sdf status</span>
 <span class="text-fg-muted">  </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">  (base: main)</span>
 
-<span class="text-fg-muted">   </span><span class="text-success">&#10003;</span><span class="text-fg"> db-schema                PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
+<span class="text-fg-muted">   </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> db-schema                PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
 <span class="text-fg-muted"> </span><span class="text-accent">&#8594;</span><span class="text-fg-muted"> </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> repository               PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
 <span class="text-fg-muted">   </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> controller               PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span></code></pre>
           </div>
@@ -327,14 +327,15 @@ const jsonLd = [
             <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf sync</span>
 <span class="text-fg-muted">Syncing stack </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">...</span>
 <span class="text-fg-muted">Fetching from origin...</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted"> (db-schema) merged</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted"> (db-schema) merged</span>
 <span class="text-fg-muted">  rebasing repository onto main...</span>
-<span class="text-warn">&#9889;</span> <span class="text-fg-muted">conflict in internal/model/user.go &#8212; 1 file(s)</span>
+  <span class="text-warn">&#9889;</span> <span class="text-fg-muted">conflict in repository &#8212; 1 file(s):</span>
+<span class="text-fg-muted">    internal/model/user.go</span>
 <span class="text-fg-muted">  invoking Claude for conflict resolution...</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">conflict resolved by Claude</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">repository rebased and pushed</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">controller rebased and pushed</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">conflict resolved by Claude</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">repository rebased and pushed</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">controller rebased and pushed</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
 
 <span class="text-fg-muted">Sync complete. Stack updated.</span></code></pre>
           </div>
