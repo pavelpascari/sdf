@@ -4,7 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import BlogCard from '../../components/BlogCard.astro';
 
 const allPosts = await getCollection('blog', ({ data }) => data.published);
-const sorted = allPosts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+const sorted = allPosts.sort((a, b) => b.data.datePublished.getTime() - a.data.datePublished.getTime());
 ---
 
 <BaseLayout title="Blog — SDF" description="Release notes, case studies, and tutorials for SDF.">
@@ -27,7 +27,7 @@ const sorted = allPosts.sort((a, b) => b.data.date.getTime() - a.data.date.getTi
         <BlogCard
           title={post.data.title}
           description={post.data.description}
-          date={post.data.date}
+          date={post.data.datePublished}
           tags={post.data.tags}
           slug={post.slug}
         />

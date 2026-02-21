@@ -12,7 +12,7 @@ export async function getStaticPaths() {
       tag,
       posts: posts
         .filter((p) => p.data.tags.includes(tag))
-        .sort((a, b) => b.data.date.getTime() - a.data.date.getTime()),
+        .sort((a, b) => b.data.datePublished.getTime() - a.data.datePublished.getTime()),
     },
   }));
 }
@@ -53,7 +53,7 @@ const tagLabels: Record<string, string> = {
         <BlogCard
           title={post.data.title}
           description={post.data.description}
-          date={post.data.date}
+          date={post.data.datePublished}
           tags={post.data.tags}
           slug={post.slug}
         />

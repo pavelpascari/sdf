@@ -2,14 +2,14 @@
 interface Props {
   title: string;
   description: string;
-  date: Date;
+  datePublished: Date;
   tags: string[];
   slug: string;
 }
 
-const { title, description, date, tags, slug } = Astro.props;
+const { title, description, datePublished, tags, slug } = Astro.props;
 
-const formattedDate = date.toLocaleDateString('en-US', {
+const formattedDate = datePublished.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'short',
   day: 'numeric',
@@ -27,7 +27,7 @@ const formattedDate = date.toLocaleDateString('en-US', {
       </span>
     ))}
     <span class="text-xs text-fg-subtle ml-auto">
-      <time datetime={date.toISOString()}>{formattedDate}</time>
+      <time datetime={datePublished.toISOString()}>{formattedDate}</time>
     </span>
   </div>
   <h3
