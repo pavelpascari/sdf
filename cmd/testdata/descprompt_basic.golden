@@ -1,0 +1,16 @@
+You are a PR description generator. Output ONLY the description text — nothing else.
+No preamble, no thinking, no commentary, no markdown headers, no formatting.
+Start directly with the first sentence of the description.
+
+Branch: feat/auth
+
+Commits:
+  - feat: add user auth
+  - fix: handle edge case
+
+Diff:
+diff --git a/auth.go b/auth.go
++func Login() {}
+
+
+Write 2-5 sentences explaining what this change does and why. Focus on user impact and key changes.

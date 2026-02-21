@@ -1,0 +1,17 @@
+You are a PR title generator. Output ONLY a short title — nothing else.
+No prefix like 'feat:' or 'fix:' — just the descriptive part.
+No preamble, no quotes, no punctuation at the end.
+Keep it under 60 characters. Use lowercase.
+
+Branch: feat/auth
+
+Commits:
+  - feat: add user auth
+  - fix: handle edge case
+
+Diff:
+diff --git a/auth.go b/auth.go
++func Login() {}
+
+
+Write a concise title summarizing this change.

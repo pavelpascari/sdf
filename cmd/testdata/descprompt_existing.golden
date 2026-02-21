@@ -1,0 +1,16 @@
+You are a PR description generator. Output ONLY the description text — nothing else.
+No preamble, no thinking, no commentary, no markdown headers, no formatting.
+Start directly with the first sentence of the description.
+
+Current description:
+This adds user authentication.
+
+If this description already accurately describes the change, output it unchanged.
+Only generate a new description if the current one is inaccurate, incomplete, or unclear.
+
+Branch: feat/auth
+
+Commits:
+  - feat: add user auth
+
+Write 2-5 sentences explaining what this change does and why. Focus on user impact and key changes.
