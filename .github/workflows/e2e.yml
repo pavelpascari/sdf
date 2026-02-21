@@ -1,0 +1,71 @@
+name: E2E Tests
+
+on:
+  # Manual trigger — the primary way to run E2E tests
+  workflow_dispatch:
+    inputs:
+      with_claude:
+        description: 'Include Claude API tests'
+        required: false
+        default: 'false'
+        type: boolean
+
+  # Weekly regression check (Monday 6am UTC)
+  schedule:
+    - cron: '0 6 * * 1'
+
+  # PRs with the 'run-e2e' label
+  pull_request:
+    types: [labeled]
+
+jobs:
+  e2e:
+    # Only run for labeled PRs if the label matches
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.SDF_E2E_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build sdf
+        run: make build
+
+      - name: Check E2E prerequisites
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::SDF_E2E_TOKEN secret is not set. E2E tests require a GitHub PAT with repo scope."
+            echo "See e2e/README.md for setup instructions."
+            exit 1
+          fi
+          echo "GH_TOKEN is set"
+          gh auth status
+
+      - name: Clone test sandbox
+        run: |
+          SANDBOX_REPO="${SDF_E2E_SANDBOX:-pavelpascari/sdf-test-sandbox}"
+          gh repo clone "$SANDBOX_REPO" /tmp/e2e-sandbox
+          cd /tmp/e2e-sandbox
+          git config user.email "sdf-e2e@test.com"
+          git config user.name "sdf E2E"
+          git config commit.gpgsign false
+
+      - name: Run E2E tests
+        env:
+          SDF_E2E_REPO: /tmp/e2e-sandbox
+          SDF_BIN: ${{ github.workspace }}/bin/sdf
+          PATH: ${{ github.workspace }}/bin:$PATH
+        run: |
+          ARGS="-tags e2e -v -count=1 -timeout 10m"
+          if [ "${{ inputs.with_claude }}" = "true" ]; then
+            ARGS="$ARGS -args -with-claude"
+          fi
+          go test $ARGS ./e2e/...
