@@ -27,6 +27,13 @@ else
   VERSION="${TAG#v}"
 fi
 
+# ── Skip patch releases (e.g. 1.2.3 where patch > 0) ─────────────────
+PATCH=$(echo "$VERSION" | cut -d. -f3 | cut -d- -f1)
+if [[ -n "$PATCH" && "$PATCH" -gt 0 ]]; then
+  echo "SKIP — v${VERSION} is a patch release; blog post not required."
+  exit 0
+fi
+
 echo "Checking release blog post for v${VERSION} ..."
 
 # ── Find a release blog post matching this version ──────────────────
