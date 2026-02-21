@@ -9,4 +9,16 @@ const docs = defineCollection({
   }),
 });
 
-export const collections = { docs };
+const blog = defineCollection({
+  type: 'content',
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    date: z.coerce.date(),
+    tags: z.array(z.enum(['release', 'case-study', 'show-and-tell', 'tutorial'])),
+    version: z.string().optional(),
+    author: z.string().default('SDF Team'),
+  }),
+});
+
+export const collections = { docs, blog };

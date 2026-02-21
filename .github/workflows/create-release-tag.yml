@@ -32,6 +32,9 @@ jobs:
             exit 1
           fi
 
+      - name: Release checklist
+        run: scripts/release-checklist.sh "${{ inputs.version }}"
+
       - name: Create and push tag
         run: |
           git tag "v${{ inputs.version }}"

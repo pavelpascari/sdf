@@ -1,0 +1,94 @@
+---
+title: "Case Study: Shipping a Users Feature in Four Stacked PRs"
+description: "How a team used SDF to decompose a large feature into reviewable layers — and kept everything in sync as reviews and merges happened out of order."
+date: 2025-02-20
+tags: [case-study, show-and-tell]
+author: "SDF Team"
+---
+
+# Case Study: Shipping a Users Feature in Four Stacked PRs
+
+Large features are hard to review as monolithic PRs. Stacked PRs solve this by splitting work into focused, reviewable layers. But managing the dependency chain — rebasing, updating bases, resolving conflicts — is tedious enough that most teams avoid the approach entirely.
+
+This case study walks through how a team used SDF to ship a user management feature across four stacked PRs without manual rebasing.
+
+## The stack
+
+The feature broke down into four layers:
+
+1. **db-schema** — migration to create the `users` table
+2. **repository** — `UserRepository` with CRUD operations
+3. **controller** — HTTP endpoints for user management
+4. **frontend** — React components for the user settings page
+
+```bash
+sdf init --branch db-schema users-feature
+# commit migration work...
+sdf pr
+
+sdf branch repository
+# commit repository code...
+sdf pr
+
+sdf branch controller
+# commit endpoint code...
+sdf pr
+
+sdf branch frontend
+# commit UI components...
+sdf pr
+```
+
+After running `sdf status`, the stack looked like this:
+
+```
+  users-feature  (base: main)
+
+   ● db-schema      PR #142  open  in sync
+   ● repository     PR #143  open  in sync
+   ● controller     PR #144  open  in sync
+   ● frontend       PR #145  open  in sync
+```
+
+Each PR's description on GitHub included navigation links to the full stack, making it easy for reviewers to understand the dependency chain.
+
+## Review and merge flow
+
+The team reviewed PRs top-down. Once `db-schema` (#142) was approved and merged, a single command brought everything back in sync:
+
+```bash
+sdf sync
+```
+
+SDF detected the merge, rebased `repository` onto `main`, then `controller` onto `repository`, then `frontend` onto `controller`. All three branches were force-pushed with `--force-with-lease`, and their GitHub PR bases were updated automatically.
+
+## Handling a conflict
+
+When `repository` was merged next, `controller` had a conflict in `internal/handler/user.go` — the merged code restructured a function signature that `controller` depended on.
+
+```bash
+sdf sync
+```
+
+SDF detected the conflict and offered options:
+
+- **Ask Claude to resolve** — Claude read the upstream changes, the PR diff, and the conflict markers, then produced a clean resolution
+- **Fix manually** — pause the sync for manual resolution
+- **Skip** — skip the branch and continue
+
+The team chose Claude, which resolved the conflict correctly. The sync continued and finished without further issues.
+
+## Results
+
+- **4 PRs** merged over 3 days
+- **0 manual rebases** — SDF handled all cascade rebasing
+- **1 conflict** resolved automatically by Claude
+- Every reviewer saw focused, single-concern diffs instead of a 2,000-line monolith
+
+## Key takeaways
+
+- **Small PRs get faster reviews.** Each layer was under 300 lines, and reviewers could focus on one concern at a time.
+- **Stacking doesn't have to be painful.** The main deterrent to stacked PRs is the maintenance burden. SDF eliminates it.
+- **AI conflict resolution works well for mechanical changes.** Signature changes, import updates, and structural refactors are exactly the kind of conflicts Claude handles reliably.
+
+Ready to try it? Start with the [Getting Started guide](/docs/getting-started).

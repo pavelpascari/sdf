@@ -1,0 +1,37 @@
+---
+title: "Introducing SDF: Stacked Diffs That Stay in Sync"
+description: "SDF v0.1.0 is here — a CLI tool that automates cascade rebasing for GitHub PR stacks, with optional AI-powered conflict resolution."
+date: 2025-02-21
+tags: [release]
+version: "0.1.0"
+author: "Pavel Pascari"
+---
+
+# Introducing SDF v0.1.0
+
+Stacked pull requests are a powerful workflow, but keeping them in sync is painful. Every time an upstream PR merges, you're stuck manually rebasing downstream branches, updating PR bases on GitHub, and resolving conflicts that creep in at every layer.
+
+**SDF fixes that.** One command — `sdf sync` — detects merged PRs, rebases every downstream branch in topological order, updates GitHub PR bases, and optionally invokes Claude to resolve conflicts with full context awareness.
+
+## What's in v0.1.0
+
+- **Stack management** — `sdf init`, `sdf branch`, and `sdf status` to create and inspect stacks
+- **PR creation** — `sdf pr` opens GitHub PRs with correct base branches and injects stack navigation links into descriptions
+- **Cascade sync** — `sdf sync` handles the entire rebase chain after an upstream merge
+- **AI conflict resolution** — opt-in Claude integration resolves rebase conflicts semantically
+- **Stack reconciliation** — `sdf fetch` discovers existing PR stacks from GitHub and rebuilds local state
+- **Safe merging** — `sdf merge` squash-merges the head PR and cascade-rebases the rest
+
+## Getting started
+
+```bash
+brew install pavelpascari/tap/sdf
+sdf doctor          # verify git, gh, and optional Claude CLI
+sdf init --branch db-schema my-feature
+```
+
+Read the full [Getting Started guide](/docs/getting-started) for a walkthrough.
+
+## What's next
+
+We're working on multi-repo stack support, `sdf reorder` for rearranging branches within a stack, and deeper CI integration. Follow the [GitHub repo](https://github.com/pavelpascari/sdf) for updates.

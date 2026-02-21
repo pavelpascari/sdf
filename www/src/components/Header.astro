@@ -1,6 +1,7 @@
 ---
 const navLinks = [
   { label: 'Docs', href: '/docs' },
+  { label: 'Blog', href: '/blog' },
   { label: 'GitHub', href: 'https://github.com/pavelpascari/sdf', external: true },
 ];
 
@@ -36,7 +37,8 @@ const currentPath = Astro.url.pathname;
             rel={external ? 'noopener noreferrer' : undefined}
             class:list={[
               'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              currentPath.startsWith('/docs') && href === '/docs'
+              (currentPath.startsWith('/docs') && href === '/docs')
+                || (currentPath.startsWith('/blog') && href === '/blog')
                 ? 'text-brand-light bg-brand/10'
                 : 'text-fg-muted hover:text-fg hover:bg-panel',
             ]}
