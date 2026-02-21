@@ -1,0 +1,33 @@
+---
+interface Props {
+  keys: Array<{
+    key: string;
+    type: string;
+    default: string;
+    description: string;
+  }>;
+}
+
+const { keys } = Astro.props;
+---
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {keys.map(k => (
+      <tr>
+        <td><code>{k.key}</code></td>
+        <td><code>{k.type}</code></td>
+        <td>{k.default === '' ? '—' : <code>{k.default}</code>}</td>
+        <td>{k.description}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
