@@ -27,7 +27,7 @@ const sorted = allPosts.sort((a, b) => b.data.datePublished.getTime() - a.data.d
         <BlogCard
           title={post.data.title}
           description={post.data.description}
-          date={post.data.datePublished}
+          datePublished={post.data.datePublished}
           tags={post.data.tags}
           slug={post.slug}
         />
