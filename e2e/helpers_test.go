@@ -86,6 +86,15 @@ func runSdfMayFail(t *testing.T, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+// runGitMayFail executes a git command and returns output + error (does not fail the test).
+func runGitMayFail(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
 // runGit executes a git command in the given directory.
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
