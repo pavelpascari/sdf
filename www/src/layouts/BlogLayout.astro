@@ -17,7 +17,7 @@ const formattedDate = date.toLocaleDateString('en-US', {
   day: 'numeric',
 });
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf.dev');
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf-tool.com');
 
 const jsonLd = {
   '@context': 'https://schema.org',
