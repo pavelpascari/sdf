@@ -1,8 +1,33 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+const siteUrl = Astro.site?.href ?? 'https://sdf.dev';
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'SDF',
+    url: siteUrl,
+    description: 'Automated cascade rebasing for GitHub PR stacks.',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'SDF',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Linux, macOS, Windows',
+    url: siteUrl,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    description: 'A CLI tool that automates cascade rebasing for GitHub PR stacks, with optional AI-powered conflict resolution.',
+  },
+];
 ---
 
 <BaseLayout title="SDF — Stacked Diffs That Stay in Sync">
+  {jsonLd.map((item) => (
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(item)} />
+  ))}
 
   <!-- ── Hero ─────────────────────────────────────────── -->
   <section class="relative overflow-hidden">
