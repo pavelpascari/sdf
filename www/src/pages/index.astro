@@ -92,24 +92,30 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <p class="text-center text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-12">
         The pain of stacked PRs — solved
       </p>
-      <div class="grid sm:grid-cols-3 gap-8">
+      <div class="grid sm:grid-cols-3 gap-5">
         {[
           {
             pain: 'Manual cascade rebasing',
-            fix: 'One command to rebase every downstream branch after an upstream PR merges.',
+            fix: 'One command rebases every downstream branch after an upstream PR merges.',
           },
           {
             pain: 'PR base drift on GitHub',
-            fix: 'PR base branches on GitHub are updated during sync to match the real topology.',
+            fix: 'PR bases are updated during sync to match the real topology.',
           },
           {
-            pain: 'Losing track of PR dependencies',
-            fix: 'Stack topology tracked locally in .sdf/ and PR relationships shown in descriptions with automatic stack navigation.',
+            pain: 'Losing track of dependencies',
+            fix: 'Stack topology tracked in .sdf/ with automatic navigation links in every PR description.',
           },
         ].map(({ pain, fix }) => (
-          <div class="flex flex-col gap-3">
-            <p class="text-fg-subtle text-sm line-through">{pain}</p>
-            <p class="text-fg text-sm leading-relaxed">{fix}</p>
+          <div class="rounded-xl border border-rim bg-panel p-5 flex flex-col gap-4">
+            <p class="flex items-start gap-2 text-sm text-fg-subtle">
+              <span class="text-red-400 shrink-0 mt-0.5">&times;</span>
+              <span class="line-through">{pain}</span>
+            </p>
+            <p class="flex items-start gap-2 text-sm text-fg leading-relaxed">
+              <span class="text-success shrink-0 mt-0.5">&#10003;</span>
+              <span>{fix}</span>
+            </p>
           </div>
         ))}
       </div>
