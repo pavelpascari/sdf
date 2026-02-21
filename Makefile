@@ -39,7 +39,7 @@ test-golden:
 # Regenerate golden files after intentional output changes
 .PHONY: test-golden-update
 test-golden-update:
-	go test -count=1 -run 'Golden|TestBuildStackNav|TestReplaceStackNav|TestReplaceDescription' ./cmd/... -update
+	go test -count=1 -run 'Golden|TestBuildStackNav|TestReplaceStackNav|TestReplaceDescription' ./cmd -args -update
 
 # E2E tests against a real GitHub repo (requires SDF_E2E_REPO and GH_TOKEN)
 .PHONY: test-e2e
