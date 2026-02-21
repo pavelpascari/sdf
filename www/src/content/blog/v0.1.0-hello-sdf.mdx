@@ -37,6 +37,16 @@ The commands map to how you already think about stacked work:
 
 The key insight is that `sdf sync` and `sdf pr` don't just move branches around — they keep PR descriptions and metadata in sync too. Before you ask for a review, before you hit merge, the stack navigation and context are already accurate. That's the overhead that scripts and aliases never fully solved.
 
+## Just install it and go
+
+One thing that mattered to me from day one: an engineer should be able to try SDF without filing a procurement request.
+
+There are good stacked-diff tools out there, but most of them are platforms. They need org-wide adoption, admin setup, management buy-in. That's a real barrier. If you're an individual contributor who wants to improve your own workflow, you shouldn't have to convince your VP of Engineering first.
+
+SDF is a CLI you install locally. You try it on your next feature branch. If it works for you, you tell a teammate. If it works for your team, great — but that adoption happens bottom-up, one engineer at a time.
+
+This also shaped the security and architecture decisions. SDF is fully open source. It doesn't implement its own GitHub API client — it delegates to `gh`, the official GitHub CLI you already have installed and authenticated. It doesn't try to replace GitHub or wrap it in a proprietary layer. It builds *on top* of the tools you already trust: `git` for version control, `gh` for GitHub operations. What SDF adds is the orchestration layer — PR navigation, stack metadata, cascade rebasing, description maintenance — the glue that makes stacked workflows actually sustainable.
+
 ## AI-powered conflict resolution
 
 Rebases will sometimes produce conflicts — that's unavoidable. What's new is how SDF can handle them.
