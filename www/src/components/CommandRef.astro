@@ -1,0 +1,62 @@
+---
+import FlagTable from './FlagTable.astro';
+
+interface Props {
+  command: {
+    name: string;
+    use: string;
+    short: string;
+    long?: string;
+    example?: string;
+    deprecated?: string;
+    flags?: Array<any>;
+    subcommands?: Array<any>;
+  };
+  level?: number;
+}
+
+const { command, level = 3 } = Astro.props;
+const HeadingTag = `h${level}` as any;
+---
+
+<HeadingTag id={`sdf-${command.name}`}>
+  <code>sdf {command.use}</code>
+</HeadingTag>
+
+{command.deprecated && (
+  <p><strong>Deprecated:</strong> {command.deprecated}</p>
+)}
+
+<p>{command.short}</p>
+
+{command.long && (
+  <p set:html={command.long.replace(/\n/g, '<br/>')} />
+)}
+
+{command.example && (
+  <pre><code class="language-bash">{command.example}</code></pre>
+)}
+
+{command.flags && command.flags.length > 0 && (
+  <>
+    <p>Flags:</p>
+    <FlagTable flags={command.flags} />
+  </>
+)}
+
+{command.subcommands && command.subcommands.length > 0 && (
+  command.subcommands.map(sub => (
+    <div>
+      <h4 id={`sdf-${command.name}-${sub.name}`}>
+        <code>sdf {command.name} {sub.use}</code>
+      </h4>
+      <p>{sub.short}</p>
+      {sub.example && (
+        <pre><code class="language-bash">{sub.example}</code></pre>
+      )}
+      {sub.flags && sub.flags.length > 0 && <FlagTable flags={sub.flags} />}
+    </div>
+  ))
+)}
+
+<hr />

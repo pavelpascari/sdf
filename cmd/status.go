@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
 	"strings"
 
@@ -9,17 +8,34 @@ import (
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
+	"github.com/spf13/cobra"
 )
 
+var statusCmd = &cobra.Command{
+	Use:         "status [stack-name]",
+	Short:       "Show stack topology and sync state",
+	Annotations: map[string]string{"category": "stack"},
+	RunE:        runStatus,
+}
+
+func init() {
+	rootCmd.AddCommand(statusCmd)
+	statusCmd.Flags().String("stack", "", "stack to show (default: auto-detect)")
+}
+
+// RunStatus is a compatibility wrapper for callers that use the old interface.
 func RunStatus(args []string) error {
-	fs := flag.NewFlagSet("status", flag.ExitOnError)
-	stackFlag := fs.String("stack", "", "stack to show (default: auto-detect)")
-	fs.Parse(args)
+	rootCmd.SetArgs(append([]string{"status"}, args...))
+	return rootCmd.Execute()
+}
+
+func runStatus(cmd *cobra.Command, args []string) error {
+	stackFlag, _ := cmd.Flags().GetString("stack")
 
 	// Accept positional arg as stack name: sdf status <stack-name>
-	stackName := *stackFlag
-	if stackName == "" && fs.NArg() > 0 {
-		stackName = fs.Arg(0)
+	stackName := stackFlag
+	if stackName == "" && len(args) > 0 {
+		stackName = args[0]
 	}
 
 	root, err := stack.FindRoot()

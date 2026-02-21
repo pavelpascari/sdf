@@ -1,0 +1,420 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="SDF — Stacked Diffs That Stay in Sync">
+
+  <!-- ── Hero ─────────────────────────────────────────── -->
+  <section class="relative overflow-hidden">
+    <!-- Ambient glow -->
+    <div
+      class="pointer-events-none absolute inset-0 -top-32"
+      aria-hidden="true"
+      style="background: radial-gradient(ellipse 70% 50% at 50% 0%, color-mix(in srgb, var(--color-brand) 12%, transparent), transparent);"
+    ></div>
+
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-20 text-center">
+
+      <!-- Badge -->
+      <a
+        href="https://github.com/pavelpascari/sdf/releases"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-rim-bright bg-panel text-xs text-fg-muted hover:text-fg hover:border-brand/50 transition-colors mb-8"
+      >
+        <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
+        Open source &middot; MIT License &middot; Written in Go
+      </a>
+
+      <!-- Headline -->
+      <h1
+        class="font-display text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] mb-6"
+        style="font-family: var(--font-display); font-weight: 700;"
+      >
+        Stacked diffs<br />
+        <span class="gradient-text">that stay in sync.</span>
+      </h1>
+
+      <!-- Subheadline -->
+      <p class="text-lg sm:text-xl text-fg-muted max-w-2xl mx-auto leading-relaxed mb-10">
+        SDF handles cascade rebasing for GitHub PR stacks.
+        Run <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf sync</code> after
+        a PR merges to rebase all downstream branches &mdash; with optional
+        Claude-powered conflict resolution.
+      </p>
+
+      <!-- CTAs -->
+      <div class="flex flex-wrap justify-center gap-4 mb-16">
+        <a
+          href="/docs/getting-started"
+          class="px-6 py-3 rounded-xl font-semibold text-white bg-brand hover:bg-brand-dim transition-colors text-sm"
+          style="font-weight: 600;"
+        >
+          Get started
+        </a>
+        <a
+          href="https://github.com/pavelpascari/sdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="px-6 py-3 rounded-xl font-semibold text-fg bg-panel border border-rim hover:border-rim-bright hover:bg-rim/20 transition-colors text-sm"
+          style="font-weight: 600;"
+        >
+          View on GitHub
+        </a>
+      </div>
+
+      <!-- Install snippet -->
+      <div
+        class="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-panel border border-rim text-left"
+      >
+        <span class="text-fg-subtle text-sm select-none font-mono">$</span>
+        <code class="font-mono text-sm text-fg">brew install pavelpascari/tap/sdf</code>
+        <button
+          id="copy-brew"
+          title="Copy"
+          class="ml-2 text-fg-subtle hover:text-fg transition-colors cursor-pointer"
+          aria-label="Copy install command"
+        >
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+            <path d="M5 2H3.5A1.5 1.5 0 0 0 2 3.5v8A1.5 1.5 0 0 0 3.5 13h5A1.5 1.5 0 0 0 10 11.5V11h1.5A1.5 1.5 0 0 0 13 9.5v-6A1.5 1.5 0 0 0 11.5 2H7A1.5 1.5 0 0 0 5.5 3.5V4H5V2z" stroke="currentColor" stroke-width="1.2"/>
+            <rect x="5" y="4" width="7" height="9" rx="1" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+        </button>
+      </div>
+      <p class="text-xs text-fg-subtle mt-2">Also available via <code class="text-accent font-mono">go install</code> and binary download &mdash; Linux, macOS, Windows</p>
+
+    </div>
+  </section>
+
+  <!-- ── Problem ────────────────────────────────────────── -->
+  <section class="border-y border-rim bg-surface/50 py-20">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <p class="text-center text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-12">
+        The pain of stacked PRs — solved
+      </p>
+      <div class="grid sm:grid-cols-3 gap-8">
+        {[
+          {
+            pain: 'Manual cascade rebasing',
+            fix: 'One command to rebase every downstream branch after an upstream PR merges.',
+          },
+          {
+            pain: 'PR base drift on GitHub',
+            fix: 'PR base branches on GitHub are updated during sync to match the real topology.',
+          },
+          {
+            pain: 'Losing track of PR dependencies',
+            fix: 'Stack topology tracked locally in .sdf/ and PR relationships shown in descriptions with automatic stack navigation.',
+          },
+        ].map(({ pain, fix }) => (
+          <div class="flex flex-col gap-3">
+            <p class="text-fg-subtle text-sm line-through">{pain}</p>
+            <p class="text-fg text-sm leading-relaxed">{fix}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ───────────────────────────────────────── -->
+  <section class="py-24">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      <div class="text-center mb-16">
+        <h2
+          class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
+          style="font-family: var(--font-display); font-weight: 700;"
+        >
+          Everything stacked diffs need
+        </h2>
+        <p class="text-fg-muted max-w-xl mx-auto">
+          Not a Git wrapper. Not a GitHub replacement. A thin orchestration layer that
+          coordinates the tools you already use.
+        </p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {[
+          {
+            icon: '\u27F3',
+            title: 'Cascade rebase',
+            desc: 'sdf sync detects merged PRs and rebases every downstream branch in order, then force-pushes with --force-with-lease.',
+          },
+          {
+            icon: '\u2726',
+            title: 'AI-powered PR content',
+            desc: 'Claude generates PR titles and descriptions from your diffs. During sync, it can resolve rebase conflicts semantically.',
+          },
+          {
+            icon: '\u2707',
+            title: 'Safe one-at-a-time merging',
+            desc: 'sdf merge squash-merges the head PR, retargets downstream PRs, then cascade-rebases the rest of the stack.',
+          },
+          {
+            icon: '\u2387',
+            title: 'Multiple stacks',
+            desc: 'Manage any number of independent stacks per repo. Each with its own base branch, nodes, and PR metadata.',
+          },
+          {
+            icon: '\u25C8',
+            title: 'GitHub-native',
+            desc: 'Works entirely through gh CLI and git. No servers, no external services, no auth tokens beyond what you already have.',
+          },
+          {
+            icon: '\u2B21',
+            title: 'Stack reconciliation',
+            desc: 'sdf fetch discovers existing PR stacks from GitHub and reconciles them with local state. Join a stack on any machine.',
+          },
+        ].map(({ icon, title, desc }) => (
+          <div class="group relative p-6 rounded-2xl border border-rim bg-surface hover:border-brand/40 hover:bg-panel transition-all">
+            <div class="text-2xl mb-4 opacity-80">{icon}</div>
+            <h3
+              class="font-display font-semibold text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              {title}
+            </h3>
+            <p class="text-fg-muted text-sm leading-relaxed">{desc}</p>
+          </div>
+        ))}
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── How It Works ───────────────────────────────────── -->
+  <section class="py-24 border-t border-rim">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      <div class="text-center mb-16">
+        <h2
+          class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
+          style="font-family: var(--font-display); font-weight: 700;"
+        >
+          From init to sync in three steps
+        </h2>
+        <p class="text-fg-muted max-w-xl mx-auto">
+          Split a large feature into reviewable layers. Let SDF handle the rebasing
+          when anything upstream changes.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-12">
+
+        <!-- Step 1 -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <span class="w-7 h-7 rounded-full bg-brand text-white text-xs font-bold flex items-center justify-center" style="font-weight: 700;">1</span>
+              <h3 class="font-display font-semibold text-lg text-fg" style="font-family: var(--font-display); font-weight: 600;">Init a stack</h3>
+            </div>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              Create a named stack and its first branch in one command.
+              SDF tracks the topology in <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">.sdf/</code>
+              locally. Add more branches with <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf branch</code>,
+              then open PRs with <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf pr</code>.
+            </p>
+          </div>
+          <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf init --branch db-schema users-feature</span>
+<span class="text-fg-muted">Initialized stack "users-feature" (base: main)</span>
+<span class="text-fg-muted">Created branch "users-feature/db-schema" (based on main)</span>
+
+<span class="text-fg-muted">Next steps:</span>
+<span class="text-fg-muted">  sdf pr               Create a pull request</span>
+<span class="text-fg-muted">  sdf branch &lt;name&gt;    Add another branch to the stack</span>
+<span class="text-fg-muted">  sdf status           View stack topology</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div class="lg:order-2">
+            <div class="flex items-center gap-3 mb-4">
+              <span class="w-7 h-7 rounded-full bg-brand text-white text-xs font-bold flex items-center justify-center" style="font-weight: 700;">2</span>
+              <h3 class="font-display font-semibold text-lg text-fg" style="font-family: var(--font-display); font-weight: 600;">Layer your branches</h3>
+            </div>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              Add more branches to the stack. Each branch builds on the previous one.
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf pr</code> creates
+              the GitHub PR with the correct base branch and adds stack navigation links
+              to every PR description &mdash; reviewers see the full stack at a glance.
+            </p>
+          </div>
+          <div class="lg:order-1 rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf branch repository && sdf pr</span>
+<span class="text-fg-muted">Created branch "users-feature/repository" in stack "users-feature"</span>
+<span class="text-fg-muted">https://github.com/.../pull/143</span>
+
+<span class="text-fg-subtle">$ </span><span class="text-fg">sdf status</span>
+<span class="text-fg-muted">  </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">  (base: main)</span>
+
+<span class="text-fg-muted">   </span><span class="text-success">&#10003;</span><span class="text-fg"> db-schema                PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
+<span class="text-fg-muted"> </span><span class="text-accent">&#8594;</span><span class="text-fg-muted"> </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> repository               PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
+<span class="text-fg-muted">   </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> controller               PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <span class="w-7 h-7 rounded-full bg-brand text-white text-xs font-bold flex items-center justify-center" style="font-weight: 700;">3</span>
+              <h3 class="font-display font-semibold text-lg text-fg" style="font-family: var(--font-display); font-weight: 600;">Sync when PRs merge</h3>
+            </div>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              When an upstream PR merges, run <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf sync</code>.
+              SDF detects the merged PR, rebases every downstream branch in order,
+              updates GitHub PR bases, and offers Claude-powered resolution if conflicts arise.
+            </p>
+          </div>
+          <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf sync</span>
+<span class="text-fg-muted">Syncing stack </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">...</span>
+<span class="text-fg-muted">Fetching from origin...</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted"> (db-schema) merged</span>
+<span class="text-fg-muted">  rebasing repository onto main...</span>
+<span class="text-warn">&#9889;</span> <span class="text-fg-muted">conflict in internal/model/user.go &#8212; 1 file(s)</span>
+<span class="text-fg-muted">  invoking Claude for conflict resolution...</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">conflict resolved by Claude</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">repository rebased and pushed</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">controller rebased and pushed</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
+
+<span class="text-fg-muted">Sync complete. Stack updated.</span></code></pre>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Install ────────────────────────────────────────── -->
+  <section class="py-24 border-t border-rim bg-surface/50">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+
+      <h2
+        class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
+        style="font-family: var(--font-display); font-weight: 700;"
+      >
+        Up and running in seconds
+      </h2>
+      <p class="text-fg-muted mb-12">
+        Requires git. GitHub CLI (<code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">gh</code>) for PR operations.
+        Claude CLI for AI features (optional).
+      </p>
+
+      <div class="grid sm:grid-cols-3 gap-4 text-left mb-12">
+        {[
+          {
+            label: 'Homebrew',
+            sublabel: 'macOS and Linux',
+            code: 'brew install pavelpascari/tap/sdf',
+          },
+          {
+            label: 'Go install',
+            sublabel: 'Go 1.24+ required',
+            code: 'go install github.com/pavelpascari/sdf@latest',
+          },
+          {
+            label: 'Binary download',
+            sublabel: 'All platforms',
+            code: 'github.com/pavelpascari/sdf/releases',
+          },
+        ].map(({ label, sublabel, code }) => (
+          <div class="rounded-xl border border-rim bg-panel p-5">
+            <p class="font-semibold text-fg text-sm mb-0.5" style="font-weight: 600;">{label}</p>
+            <p class="text-fg-subtle text-xs mb-3">{sublabel}</p>
+            <code class="font-mono text-xs text-accent break-all">{code}</code>
+          </div>
+        ))}
+      </div>
+
+      <a
+        href="/docs/installation"
+        class="inline-flex items-center gap-2 text-sm text-fg-muted hover:text-fg transition-colors"
+      >
+        Full installation guide &rarr;
+      </a>
+
+    </div>
+  </section>
+
+  <!-- ── CTA ────────────────────────────────────────────── -->
+  <section class="py-24 relative overflow-hidden">
+    <div
+      class="pointer-events-none absolute inset-0"
+      aria-hidden="true"
+      style="background: radial-gradient(ellipse 60% 60% at 50% 50%, color-mix(in srgb, var(--color-brand) 8%, transparent), transparent);"
+    ></div>
+    <div class="relative max-w-2xl mx-auto px-4 sm:px-6 text-center">
+      <h2
+        class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
+        style="font-family: var(--font-display); font-weight: 700;"
+      >
+        Stop rebasing by hand.
+      </h2>
+      <p class="text-fg-muted mb-8">
+        SDF is free, open source, and takes five minutes to set up.
+        Run <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf doctor</code> to
+        verify your dependencies and start stacking.
+      </p>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a
+          href="/docs/getting-started"
+          class="px-6 py-3 rounded-xl font-semibold text-white bg-brand hover:bg-brand-dim transition-colors text-sm"
+          style="font-weight: 600;"
+        >
+          Read the docs
+        </a>
+        <a
+          href="https://github.com/pavelpascari/sdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="px-6 py-3 rounded-xl font-semibold text-fg bg-panel border border-rim hover:border-rim-bright transition-colors text-sm"
+          style="font-weight: 600;"
+        >
+          Star on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<script>
+  const btn = document.getElementById('copy-brew');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('brew install pavelpascari/tap/sdf');
+        btn.setAttribute('aria-label', 'Copied!');
+        setTimeout(() => btn.setAttribute('aria-label', 'Copy install command'), 2000);
+      } catch {}
+    });
+  }
+</script>

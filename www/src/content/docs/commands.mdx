@@ -1,0 +1,93 @@
+---
+title: Commands
+description: Full reference for every sdf command.
+order: 4
+---
+
+import CommandRef from '../../components/CommandRef.astro';
+import cliRef from '../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# Commands
+
+All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf init` or `sdf fetch`).
+
+---
+
+## Stack management
+
+<CommandRef command={cmd('init')} />
+
+<CommandRef command={cmd('fetch')} />
+
+<CommandRef command={cmd('branch')} />
+
+<CommandRef command={cmd('sync')} />
+
+Steps performed:
+
+1. Fetch from origin and fast-forward the base branch
+2. Query GitHub for the status of each PR in the stack
+3. Reconcile PR states (mark merged nodes, fill in PR numbers)
+4. For each downstream node that needs rebasing: rebase onto new parent, push
+5. Update PR base branches on GitHub when a merged node is skipped
+6. Optionally update PR titles and descriptions (with `--with-content` or if configured)
+7. Update stack navigation links in all PR descriptions
+
+Merged nodes remain in the stack JSON and are displayed as completed. They are not removed. The `ParentBranch()` function skips merged nodes to find the effective parent for rebasing.
+
+**Conflict resolution:** When a rebase conflict occurs, an interactive menu is presented with these options:
+
+- **Ask Claude to resolve** (if `claude` CLI is available)
+- **I'll fix it myself** -- pauses sync; resume later with `sdf sync --continue`
+- **Skip this branch** -- aborts the rebase for this branch, continues with the rest
+- **Abort sync** -- stops the entire sync
+
+After choosing "I'll fix it myself", resolve the conflicts manually, stage the files with `git add`, then run `sdf sync --continue`.
+
+<CommandRef command={cmd('merge')} />
+
+<CommandRef command={cmd('status')} />
+
+Fetches from origin and fast-forwards the base branch to ensure sync state is accurate. Shows each branch with its PR number, status (open/merged/closed), and whether it needs syncing. Also performs lightweight reconciliation against GitHub PR states and warns about structural drift.
+
+<CommandRef command={cmd('pr')} />
+
+<CommandRef command={cmd('move')} />
+
+---
+
+## Navigation
+
+<CommandRef command={cmd('switch')} />
+
+Short alias: `sdf <branch>` (if no subcommand matches the name).
+
+---
+
+## Configuration
+
+<CommandRef command={cmd('config')} />
+
+---
+
+## Deprecated commands
+
+<CommandRef command={cmd('register')} />
+
+---
+
+## Utilities
+
+<CommandRef command={cmd('doctor')} />
+
+<CommandRef command={cmd('version')} />
+
+### `sdf help`
+
+Show usage information and list all available commands.
+
+```bash
+sdf help
+```

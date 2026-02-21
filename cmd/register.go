@@ -5,17 +5,32 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// RunRegister is a deprecation wrapper that delegates to RunFetch.
+var registerCmd = &cobra.Command{
+	Use:         "register",
+	Short:       "Discover and sync PR stacks from GitHub",
+	Deprecated:  "use `sdf fetch` instead",
+	Annotations: map[string]string{"category": "stack"},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runFetchCmd(fetchCmd, args)
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(registerCmd)
+}
+
+// RunRegister is a compatibility wrapper for callers that use the old interface.
 func RunRegister(args []string) error {
-	fmt.Println("Note: `sdf register` has been renamed to `sdf fetch`.")
-	fmt.Println()
-	return RunFetch(args)
+	rootCmd.SetArgs(append([]string{"register"}, args...))
+	return rootCmd.Execute()
 }
 
 // RegisterStack performs the core registration: creates .sdf/stacks/<name>.json

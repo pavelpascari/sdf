@@ -156,6 +156,25 @@ func (c Config) WithContentEnabled() bool {
 	return *c.Sync.WithContent
 }
 
+// ConfigKeyMeta describes a single configuration key for documentation.
+type ConfigKeyMeta struct {
+	Key         string `json:"key"`
+	Type        string `json:"type"`
+	Default     string `json:"default"`
+	Description string `json:"description"`
+}
+
+// ConfigKeys returns metadata for all configuration keys.
+func ConfigKeys() []ConfigKeyMeta {
+	return []ConfigKeyMeta{
+		{"branch_prefix.enabled", "bool", "true", "Enable/disable branch prefix enforcement"},
+		{"branch_prefix.prefix", "string", "", "Prefix string prepended to branch names (empty = use stack ID)"},
+		{"branch_prefix.separator", "string", "/", "Separator character between prefix and branch name"},
+		{"pr_title.conventional_commits", "bool", "false", "Enable conventional commit prefixes in PR titles"},
+		{"pr_title.ticket_pattern", "string", "", "Regex to extract ticket ID from branch name for PR titles"},
+		{"sync.with_content", "bool", "false", "Auto-update PR titles and descriptions during sync"},
+	}
+}
 
 // loadFile reads and unmarshals a config file.
 // Returns zero Config if the file doesn't exist (not an error).

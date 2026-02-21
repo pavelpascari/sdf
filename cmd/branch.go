@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"slices"
@@ -10,27 +9,41 @@ import (
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/spf13/cobra"
 )
 
+var branchCmd = &cobra.Command{
+	Use:         "branch <name>",
+	Short:       "Add a new branch to the current stack",
+	Annotations: map[string]string{"category": "stack"},
+	Args:        cobra.ExactArgs(1),
+	RunE:        runBranch,
+}
+
+func init() {
+	rootCmd.AddCommand(branchCmd)
+	branchCmd.Flags().String("stack", "", "stack to add the branch to (default: auto-detect)")
+	branchCmd.Flags().Bool("no-prefix", false, "create branch without applying the configured prefix")
+}
+
+// RunBranch is a compatibility wrapper for tests.
 func RunBranch(args []string) error {
-	fs := flag.NewFlagSet("branch", flag.ExitOnError)
-	stackFlag := fs.String("stack", "", "stack to add the branch to (default: auto-detect)")
-	noPrefix := fs.Bool("no-prefix", false, "create branch without applying the configured prefix")
-	fs.Parse(args)
+	rootCmd.SetArgs(append([]string{"branch"}, args...))
+	return rootCmd.Execute()
+}
 
-	if fs.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: sdf branch [--stack <name>] [--no-prefix] <branch>")
-		os.Exit(1)
-	}
+func runBranch(cmd *cobra.Command, args []string) error {
+	stackFlag, _ := cmd.Flags().GetString("stack")
+	noPrefix, _ := cmd.Flags().GetBool("no-prefix")
 
-	branchName := fs.Arg(0)
+	branchName := args[0]
 
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
 	}
 
-	s, err := resolveStack(root, *stackFlag)
+	s, err := resolveStack(root, stackFlag)
 	if err != nil {
 		return err
 	}
@@ -41,7 +54,7 @@ func RunBranch(args []string) error {
 		return fmt.Errorf("cannot load config: %w", err)
 	}
 
-	if !*noPrefix {
+	if !noPrefix {
 		branchName = cfgpkg.ApplyPrefix(cfg, s.StackID, branchName)
 	}
 

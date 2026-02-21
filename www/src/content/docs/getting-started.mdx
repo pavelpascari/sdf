@@ -1,0 +1,136 @@
+---
+title: Getting Started
+description: Build and sync your first stacked PR chain in under five minutes.
+order: 1
+---
+
+# Getting Started
+
+SDF turns the painful work of managing stacked pull requests into a single command. This guide walks you through creating your first stack, adding layers, and syncing after a PR merges.
+
+## Prerequisites
+
+- **git** — any recent version
+- **gh** (GitHub CLI) — authenticated with `gh auth login`
+- **sdf** — see [Installation](/docs/installation)
+
+Run the health check first:
+
+```bash
+sdf doctor
+```
+
+All green? Let's go.
+
+---
+
+## 1. Create a stack
+
+A *stack* is a named chain of branches. Each branch becomes a PR that depends on the one above it.
+
+```bash
+# Creates the stack and checks out the first branch in one step
+sdf init --branch db-schema users-feature
+```
+
+This creates:
+
+- A stack named `users-feature` with `main` as the base
+- A branch `users-feature/db-schema` checked out and ready (prefixed with the stack name by default)
+- `.sdf/stacks/users-feature.json` to track topology
+
+Output:
+
+```
+Initialized stack "users-feature" (base: main)
+Created branch "users-feature/db-schema" (based on main)
+
+Next steps:
+  sdf pr               Create a pull request
+  sdf branch <name>    Add another branch to the stack
+  sdf status           View stack topology
+```
+
+## 2. Write code and create the PR
+
+Do your work on the branch, commit as usual, then create a pull request:
+
+```bash
+# ... implement schema migration ...
+git add -A && git commit -m "add users table migration"
+
+sdf pr
+```
+
+This pushes the branch and runs `gh pr create` with a body that identifies the stack:
+
+```
+Part of stack: **users-feature**
+
+Base: `main`
+```
+
+SDF also updates all PR descriptions in the stack with navigation links so reviewers can jump between related PRs.
+
+## 3. Add more layers
+
+```bash
+sdf branch repository
+# ... implement UserRepository ...
+sdf pr
+
+sdf branch controller
+# ... implement endpoints ...
+sdf pr
+```
+
+Each `sdf branch` creates a new branch prefixed with the stack name (e.g. `users-feature/repository`, `users-feature/controller`) and positions it after your current branch in the stack.
+
+Check the stack at any time:
+
+```bash
+sdf status
+```
+
+```
+  users-feature  (base: main)
+
+ → ● users-feature/db-schema      PR #142  open      in sync
+   ● users-feature/repository     PR #143  open      in sync
+   ● users-feature/controller     PR #144  open      in sync
+```
+
+The `→` marker shows which branch you currently have checked out. Each line shows the branch name, PR number, status, and sync state.
+
+## 4. Sync after a merge
+
+When PR #142 (db-schema) is approved and merged:
+
+```bash
+sdf sync
+```
+
+SDF will:
+
+1. Fetch from origin and fast-forward the base branch
+2. Query GitHub for merged PRs and update their status in the stack
+3. Rebase each downstream branch onto its new parent (skipping merged nodes)
+4. Push updated branches with `git push --force-with-lease`
+5. Update PR base branches on GitHub so diffs render correctly
+
+If conflicts occur, SDF presents an interactive menu:
+
+- **Ask Claude to resolve** (if Claude CLI is installed) — Claude reads the upstream changes and the PR description to attempt automatic resolution
+- **Fix it yourself** — pauses the sync so you can resolve manually, then resume with `sdf sync --continue`
+- **Skip this branch** — aborts the rebase for that branch and continues with the rest
+- **Abort sync** — stops everything
+
+Merged nodes stay in the stack as completed entries rather than being removed, so you can see the full history with `sdf status`.
+
+---
+
+## What's next
+
+- [Core Concepts](/docs/core-concepts) — understand stacks, nodes, and how branches are organized
+- [Commands](/docs/commands) — full command reference
+- [AI Features](/docs/ai-features) — how Claude integrates for conflict resolution

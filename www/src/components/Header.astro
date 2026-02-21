@@ -1,0 +1,63 @@
+---
+const navLinks = [
+  { label: 'Docs', href: '/docs' },
+  { label: 'GitHub', href: 'https://github.com/pavelpascari/sdf', external: true },
+];
+
+const currentPath = Astro.url.pathname;
+---
+
+<header class="sticky top-0 z-50 border-b border-rim bg-canvas/80 backdrop-blur-xl">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+
+      <!-- Logo -->
+      <a href="/" class="flex items-center gap-2.5 group" aria-label="SDF home">
+        <div class="relative w-8 h-8">
+          <!-- Stack icon: three offset layers -->
+          <span class="absolute inset-x-0 bottom-0 h-2 rounded-sm bg-brand-dim"></span>
+          <span class="absolute inset-x-1 bottom-2.5 h-2 rounded-sm bg-brand"></span>
+          <span class="absolute inset-x-2 bottom-5 h-2 rounded-sm bg-brand-light group-hover:translate-y-[-2px] transition-transform"></span>
+        </div>
+        <span
+          class="font-display font-700 text-xl text-fg tracking-tight"
+          style="font-weight: 700;"
+        >
+          sdf
+        </span>
+      </a>
+
+      <!-- Nav -->
+      <nav class="flex items-center gap-1">
+        {navLinks.map(({ label, href, external }) => (
+          <a
+            href={href}
+            target={external ? '_blank' : undefined}
+            rel={external ? 'noopener noreferrer' : undefined}
+            class:list={[
+              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              currentPath.startsWith('/docs') && href === '/docs'
+                ? 'text-brand-light bg-brand/10'
+                : 'text-fg-muted hover:text-fg hover:bg-panel',
+            ]}
+          >
+            {label}
+            {external && (
+              <span class="ml-0.5 opacity-50 text-xs">↗</span>
+            )}
+          </a>
+        ))}
+
+        <!-- Install CTA -->
+        <a
+          href="/docs/installation"
+          class="ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-brand hover:bg-brand-dim text-white transition-colors"
+          style="font-weight: 600;"
+        >
+          Install
+        </a>
+      </nav>
+
+    </div>
+  </div>
+</header>

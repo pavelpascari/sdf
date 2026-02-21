@@ -83,3 +83,24 @@ help:
 	@echo "  make vet        Run go vet"
 	@echo "  make fmt        Format code"
 	@echo "  make clean      Remove build artifacts"
+	@echo "  make docs       Generate CLI reference JSON"
+	@echo "  make docs-check Check docs freshness and validate references"
+
+# ── Documentation ─────────────────────────────────────────────────
+
+# Generate CLI reference JSON from Cobra command tree
+.PHONY: docs
+docs:
+	go run ./cmd/docgen > www/src/data/cli-reference.json
+
+# Check that generated docs are fresh and narrative references are valid
+.PHONY: docs-check
+docs-check:
+	@echo "Checking CLI reference freshness..."
+	@go run ./cmd/docgen --no-timestamp | jq '.' > /tmp/sdf-cli-ref-check.json
+	@jq 'del(.generated)' www/src/data/cli-reference.json > /tmp/sdf-cli-ref-current.json 2>/dev/null || cp www/src/data/cli-reference.json /tmp/sdf-cli-ref-current.json
+	@diff -q /tmp/sdf-cli-ref-check.json /tmp/sdf-cli-ref-current.json > /dev/null 2>&1 \
+		|| (echo "ERROR: CLI reference is stale. Run 'make docs' and commit." && exit 1)
+	@echo "CLI reference is up to date."
+	@echo "Validating narrative references..."
+	@go test ./cmd/docgen/... -count=1

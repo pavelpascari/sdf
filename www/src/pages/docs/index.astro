@@ -1,0 +1,45 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DocsSidebar from '../../components/DocsSidebar.astro';
+
+const allDocs = await getCollection('docs');
+const sorted = allDocs.sort((a, b) => (a.data.order ?? 99) - (b.data.order ?? 99));
+const first = sorted[0];
+---
+
+<BaseLayout title="SDF Documentation">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="flex gap-12">
+      <aside class="hidden lg:block w-56 shrink-0">
+        <div class="sticky top-8">
+          <DocsSidebar docs={sorted} currentSlug="" />
+        </div>
+      </aside>
+      <article class="min-w-0 flex-1">
+        <div class="prose">
+          <h1>SDF Documentation</h1>
+          <p>
+            SDF (Stacked Diffs Flow) is a CLI tool for managing stacked pull requests in GitHub
+            repositories. It automates cascade rebasing, keeps PR bases in sync, and provides
+            context-aware AI conflict resolution through Claude.
+          </p>
+          <h2>Quick links</h2>
+          <ul>
+            {sorted.map((doc) => (
+              <li>
+                <a href={`/docs/${doc.slug}`}>{doc.data.title}</a>
+                {doc.data.description && <span> — {doc.data.description}</span>}
+              </li>
+            ))}
+          </ul>
+          {first && (
+            <p>
+              New here? Start with <a href={`/docs/${first.slug}`}>{first.data.title}</a>.
+            </p>
+          )}
+        </div>
+      </article>
+    </div>
+  </div>
+</BaseLayout>

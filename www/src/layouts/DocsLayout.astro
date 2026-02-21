@@ -1,0 +1,54 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import DocsSidebar from '../components/DocsSidebar.astro';
+import { getCollection } from 'astro:content';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+
+const allDocs = await getCollection('docs');
+const sorted = allDocs.sort((a, b) => (a.data.order ?? 99) - (b.data.order ?? 99));
+
+const currentSlug = Astro.url.pathname.replace(/^\/docs\/?/, '').replace(/\/$/, '') || 'index';
+---
+
+<BaseLayout title={`${title} — SDF Docs`} description={description}>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="flex gap-12">
+      <!-- Sidebar -->
+      <aside class="hidden lg:block w-56 shrink-0">
+        <div class="sticky top-8">
+          <DocsSidebar docs={sorted} currentSlug={currentSlug} />
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <article class="min-w-0 flex-1">
+        <div class="prose">
+          <slot />
+        </div>
+
+        <!-- Mobile nav -->
+        <nav class="lg:hidden mt-12 pt-6 border-t border-rim flex flex-col gap-2">
+          {sorted.map((doc) => (
+            <a
+              href={`/docs/${doc.slug}`}
+              class:list={[
+                'text-sm px-3 py-2 rounded-lg transition-colors',
+                doc.slug === currentSlug
+                  ? 'bg-brand/10 text-brand-light font-medium'
+                  : 'text-fg-muted hover:text-fg hover:bg-panel',
+              ]}
+            >
+              {doc.data.title}
+            </a>
+          ))}
+        </nav>
+      </article>
+    </div>
+  </div>
+</BaseLayout>

@@ -1,0 +1,281 @@
+{
+  "generated": "2026-02-21T00:02:46Z",
+  "commands": [
+    {
+      "name": "branch",
+      "category": "stack",
+      "use": "branch \u003cname\u003e",
+      "short": "Add a new branch to the current stack",
+      "flags": [
+        {
+          "name": "no-prefix",
+          "type": "bool",
+          "default": "false",
+          "description": "create branch without applying the configured prefix"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "stack to add the branch to (default: auto-detect)"
+        }
+      ]
+    },
+    {
+      "name": "config",
+      "category": "config",
+      "use": "config",
+      "short": "Manage sdf configuration",
+      "subcommands": [
+        {
+          "name": "set",
+          "use": "set \u003ckey\u003e \u003cvalue\u003e",
+          "short": "Set a configuration value",
+          "example": "  sdf config set branch_prefix.enabled true\n  sdf config set --global pr_title.conventional_commits true",
+          "flags": [
+            {
+              "name": "global",
+              "type": "bool",
+              "default": "false",
+              "description": "set value in global config (~/.config/sdf/config.json)"
+            }
+          ]
+        },
+        {
+          "name": "show",
+          "use": "show",
+          "short": "Display effective merged configuration"
+        }
+      ]
+    },
+    {
+      "name": "doctor",
+      "category": "utility",
+      "use": "doctor",
+      "short": "Check that dependencies are available",
+      "long": "Reports the status of git (required), gh (needed for PR operations), and claude (needed for conflict resolution and PR descriptions).",
+      "example": "  sdf doctor"
+    },
+    {
+      "name": "fetch",
+      "category": "stack",
+      "use": "fetch",
+      "short": "Discover and sync PR stacks from GitHub",
+      "long": "Scans your open PRs, detects branch chains, and either registers\na new stack or reconciles an existing one.",
+      "example": "  sdf fetch                          # auto-detect base, scan all open PRs\n  sdf fetch --stack my-feature       # name the stack explicitly\n  sdf fetch --base develop           # specify base branch",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string",
+          "default": "",
+          "description": "base branch (default: auto-detected)"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "name for the stack (default: auto-generated from branches)"
+        }
+      ]
+    },
+    {
+      "name": "init",
+      "category": "stack",
+      "use": "init [stack-name]",
+      "short": "Create a new stack and its first branch",
+      "long": "The stack name can be provided as a positional argument or via the --stack flag.\nIf --branch is omitted, the first branch is named after the stack. The base branch\nis auto-detected from origin HEAD if not specified.",
+      "example": "  sdf init my-feature                                # positional stack name\n  sdf init --stack my-feature                        # explicit flag\n  sdf init my-feature --branch db-schema             # custom first branch name\n  sdf init my-feature --base develop                 # custom base branch\n  sdf init my-feature --json                         # machine-readable output",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string",
+          "default": "",
+          "description": "base branch (default: auto-detected from origin HEAD)"
+        },
+        {
+          "name": "branch",
+          "type": "string",
+          "default": "",
+          "description": "name for the first branch (default: stack name)"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output machine-readable JSON"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "name for the stack (alternative to positional arg)"
+        }
+      ]
+    },
+    {
+      "name": "merge",
+      "category": "stack",
+      "use": "merge",
+      "short": "Merge head PR and sync remaining branches",
+      "long": "Merges the first open PR in the stack, retargets the next PR's base,\nthen triggers a sync to cascade-rebase remaining branches.",
+      "example": "  sdf merge                          # merge with squash (default)\n  sdf merge -y                       # skip confirmation\n  sdf merge --method merge           # use regular merge\n  sdf merge --stack my-feature       # target a specific stack",
+      "flags": [
+        {
+          "name": "method",
+          "type": "string",
+          "default": "squash",
+          "description": "merge method: squash, merge, or rebase"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "stack to merge (default: auto-detect)"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "description": "skip confirmation prompt"
+        }
+      ]
+    },
+    {
+      "name": "move",
+      "category": "stack",
+      "use": "move \u003ccommit\u003e...",
+      "short": "Move commits from current branch to parent",
+      "long": "Cherry-picks listed commits onto the parent branch, strips them from the\ncurrent branch via rebase, and cascade-rebases downstream branches.",
+      "example": "  sdf move abc1234                   # move one commit\n  sdf move abc1234 def5678           # move multiple commits"
+    },
+    {
+      "name": "pr",
+      "category": "stack",
+      "use": "pr",
+      "short": "Create a GitHub PR for the current branch",
+      "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "default": "",
+          "description": "PR title (default: auto-generated from branch name)"
+        }
+      ]
+    },
+    {
+      "name": "register",
+      "category": "stack",
+      "use": "register",
+      "short": "Discover and sync PR stacks from GitHub",
+      "deprecated": "use `sdf fetch` instead"
+    },
+    {
+      "name": "status",
+      "category": "stack",
+      "use": "status [stack-name]",
+      "short": "Show stack topology and sync state",
+      "flags": [
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "stack to show (default: auto-detect)"
+        }
+      ]
+    },
+    {
+      "name": "switch",
+      "category": "navigation",
+      "use": "switch [branch]",
+      "short": "Switch to a branch and report its stack",
+      "long": "Without arguments, lists all branches across all stacks.\nWith a branch name, checks it out and shows its stack position.",
+      "example": "  sdf switch db-schema              # switch to a specific branch\n  sdf switch                        # list all branches from all stacks"
+    },
+    {
+      "name": "sync",
+      "category": "stack",
+      "use": "sync [stack-name]",
+      "short": "Detect merged PRs and cascade-rebase downstream branches",
+      "long": "Fetches from origin, queries GitHub for PR status, reconciles PR states,\ncascade-rebases downstream branches, pushes, and updates PR navigation links.\n\nWhen a rebase conflict occurs, an interactive menu offers Claude resolution,\nmanual resolution (pausing sync), skip, or abort.",
+      "example": "  sdf sync                          # sync the stack of the current branch\n  sdf sync my-feature               # sync a specific stack by name\n  sdf sync -y                       # skip confirmation prompt\n  sdf sync --continue               # resume after manual conflict resolution\n  sdf sync --with-content           # also update PR titles and descriptions",
+      "flags": [
+        {
+          "name": "continue",
+          "type": "bool",
+          "default": "false",
+          "description": "resume after manual conflict resolution"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "stack to sync (default: auto-detect)"
+        },
+        {
+          "name": "with-content",
+          "type": "bool",
+          "default": "false",
+          "description": "update PR titles and descriptions"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "description": "skip confirmation prompt"
+        }
+      ]
+    },
+    {
+      "name": "version",
+      "category": "utility",
+      "use": "version",
+      "short": "Print version"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "branch_prefix.enabled",
+      "type": "bool",
+      "default": "true",
+      "description": "Enable/disable branch prefix enforcement"
+    },
+    {
+      "key": "branch_prefix.prefix",
+      "type": "string",
+      "default": "",
+      "description": "Prefix string prepended to branch names (empty = use stack ID)"
+    },
+    {
+      "key": "branch_prefix.separator",
+      "type": "string",
+      "default": "/",
+      "description": "Separator character between prefix and branch name"
+    },
+    {
+      "key": "pr_title.conventional_commits",
+      "type": "bool",
+      "default": "false",
+      "description": "Enable conventional commit prefixes in PR titles"
+    },
+    {
+      "key": "pr_title.ticket_pattern",
+      "type": "string",
+      "default": "",
+      "description": "Regex to extract ticket ID from branch name for PR titles"
+    },
+    {
+      "key": "sync.with_content",
+      "type": "bool",
+      "default": "false",
+      "description": "Auto-update PR titles and descriptions during sync"
+    }
+  ]
+}
