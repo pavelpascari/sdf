@@ -26,15 +26,15 @@ SDF finds the head PR in the stack, retargets the downstream PR's base before me
 
 ## `sdf fetch` — import stacks from GitHub
 
-If you already have a chain of PRs on GitHub — whether you created them manually or you're picking up a colleague's work — `sdf fetch` turns them into a managed stack:
+Say a colleague has a stack of PRs up for review and you need to pick up their work — or you want to start managing an existing chain of PRs with SDF without recreating anything. `sdf fetch` turns PR chains already on GitHub into a managed stack:
 
 ```bash
 sdf fetch
 ```
 
-It scans your open PRs, detects branch chains (A → main, B → A, C → B), presents them for confirmation, checks out any missing branches locally, and builds the stack metadata. If you already have a local stack that overlaps, it reconciles — adding new branches, updating PR numbers, flagging anything that looks like drift.
+It scans open PRs, detects branch chains (A → main, B → A, C → B), presents them for confirmation, checks out any missing branches locally, and builds the stack metadata. If you already have a local stack that overlaps, it reconciles — adding new branches, updating PR numbers, flagging anything that looks like drift.
 
-This means a teammate can clone the repo, run `sdf fetch`, and have the full stack topology locally without anyone explaining what goes where. No setup, no shared tooling prerequisite.
+No manual setup, no reconstructing state — clone the repo, run `sdf fetch`, and the full stack topology is there.
 
 ## Drift detection
 
