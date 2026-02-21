@@ -4,6 +4,9 @@ description: Two-tier configuration for repos and individual users.
 order: 5
 ---
 
+import ConfigRef from '../../components/ConfigRef.astro';
+import cliRef from '../../data/cli-reference.json';
+
 # Configuration
 
 SDF uses a two-tier configuration system that separates team-wide settings from personal preferences.
@@ -136,14 +139,7 @@ Or edit the JSON files directly — they are plain JSON with no schema enforceme
 
 ### Valid keys
 
-| Key | Type | Description |
-|---|---|---|
-| `branch_prefix.enabled` | `true` / `false` | Enable or disable prefix enforcement |
-| `branch_prefix.prefix` | string | Prefix text (empty = use stack ID) |
-| `branch_prefix.separator` | string | Separator character (default: `/`) |
-| `pr_title.conventional_commits` | `true` / `false` | Conventional commit-style PR titles |
-| `pr_title.ticket_pattern` | string | Regex to extract ticket ID from branch name |
-| `sync.with_content` | `true` / `false` | Update PR titles + descriptions during sync |
+<ConfigRef keys={cliRef.config_keys} />
 
 ---
 
