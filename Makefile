@@ -83,8 +83,10 @@ help:
 	@echo "  make vet        Run go vet"
 	@echo "  make fmt        Format code"
 	@echo "  make clean      Remove build artifacts"
-	@echo "  make docs       Generate CLI reference JSON"
-	@echo "  make docs-check Check docs freshness and validate references"
+	@echo "  make blog-check        Verify dateModified on changed blog posts"
+	@echo "  make docs              Generate CLI reference JSON"
+	@echo "  make docs-check        Check docs freshness and validate references"
+	@echo "  make release-checklist Verify blog content exists for the release"
 
 # ── Documentation ─────────────────────────────────────────────────
 
@@ -104,3 +106,17 @@ docs-check:
 	@echo "CLI reference is up to date."
 	@echo "Validating narrative references..."
 	@go test ./cmd/docgen/... -count=1
+
+# ── Blog content checks ──────────────────────────────────────────
+
+# Verify modified blog posts have dateModified set
+.PHONY: blog-check
+blog-check:
+	@scripts/check-blog-updated-at.sh
+
+# ── Release checklist ────────────────────────────────────────────
+
+# Verify blog content exists for the current release version
+.PHONY: release-checklist
+release-checklist:
+	@scripts/release-checklist.sh $(RELEASE_VERSION)

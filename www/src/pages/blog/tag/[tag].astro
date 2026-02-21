@@ -1,0 +1,64 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import BlogCard from '../../../components/BlogCard.astro';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => data.published);
+  const tags = [...new Set(posts.flatMap((p) => p.data.tags))];
+  return tags.map((tag) => ({
+    params: { tag },
+    props: {
+      tag,
+      posts: posts
+        .filter((p) => p.data.tags.includes(tag))
+        .sort((a, b) => b.data.datePublished.getTime() - a.data.datePublished.getTime()),
+    },
+  }));
+}
+
+const { tag, posts } = Astro.props;
+
+const tagLabels: Record<string, string> = {
+  release: 'Releases',
+  'case-study': 'Case Studies',
+  'show-and-tell': 'Show & Tell',
+  tutorial: 'Tutorials',
+};
+---
+
+<BaseLayout title={`${tagLabels[tag] ?? tag} — SDF Blog`}>
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+
+    <header class="mb-12">
+      <a
+        href="/blog"
+        class="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg transition-colors mb-6"
+      >
+        &larr; All posts
+      </a>
+      <h1
+        class="font-display text-4xl sm:text-5xl font-bold text-fg tracking-tight mb-4"
+        style="font-family: var(--font-display); font-weight: 700;"
+      >
+        {tagLabels[tag] ?? tag}
+      </h1>
+      <p class="text-fg-muted">
+        Posts tagged <span class="px-2.5 py-1 rounded-full text-xs font-medium border border-rim bg-panel text-fg-muted">{tag}</span>
+      </p>
+    </header>
+
+    <div class="flex flex-col gap-4">
+      {posts.map((post) => (
+        <BlogCard
+          title={post.data.title}
+          description={post.data.description}
+          datePublished={post.data.datePublished}
+          tags={post.data.tags}
+          slug={post.slug}
+        />
+      ))}
+    </div>
+
+  </div>
+</BaseLayout>

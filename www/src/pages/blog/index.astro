@@ -1,0 +1,42 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import BlogCard from '../../components/BlogCard.astro';
+
+const allPosts = await getCollection('blog', ({ data }) => data.published);
+const sorted = allPosts.sort((a, b) => b.data.datePublished.getTime() - a.data.datePublished.getTime());
+---
+
+<BaseLayout title="Blog — SDF" description="Release notes, case studies, and tutorials for SDF.">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+
+    <header class="mb-12">
+      <h1
+        class="font-display text-4xl sm:text-5xl font-bold text-fg tracking-tight mb-4"
+        style="font-family: var(--font-display); font-weight: 700;"
+      >
+        Blog
+      </h1>
+      <p class="text-fg-muted text-lg">
+        Release notes, case studies, and tutorials from the SDF team.
+      </p>
+    </header>
+
+    <div class="flex flex-col gap-4">
+      {sorted.map((post) => (
+        <BlogCard
+          title={post.data.title}
+          description={post.data.description}
+          datePublished={post.data.datePublished}
+          tags={post.data.tags}
+          slug={post.slug}
+        />
+      ))}
+    </div>
+
+    {sorted.length === 0 && (
+      <p class="text-fg-subtle text-center py-12">No posts yet. Check back soon.</p>
+    )}
+
+  </div>
+</BaseLayout>

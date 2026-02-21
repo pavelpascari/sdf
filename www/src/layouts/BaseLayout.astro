@@ -7,15 +7,17 @@ interface Props {
   title: string;
   description?: string;
   ogImage?: string;
+  ogType?: string;
 }
 
 const {
   title,
   description = 'SDF — Automated cascade rebasing for GitHub PR stacks. Keep your stacked diffs in sync while Claude resolves conflicts with full context awareness.',
   ogImage = '/og.png',
+  ogType = 'website',
 } = Astro.props;
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf.dev');
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf-tool.com');
 ---
 
 <!doctype html>
@@ -29,7 +31,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf.dev'
     <meta name="description" content={description} />
 
     <!-- Open Graph -->
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:url" content={canonicalURL} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -51,6 +53,8 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf.dev'
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <slot name="head" />
   </head>
   <body class="bg-canvas min-h-screen flex flex-col">
     <Header />

@@ -1,0 +1,89 @@
+---
+title: "SDF v0.2.0: Merge, Fetch, and a Real UI"
+description: "SDF v0.2.0 adds sdf merge and sdf fetch, drift detection in status, polished terminal output with the Charm ecosystem, and a dozen quality-of-life improvements."
+datePublished: 2026-02-21
+tags: [release]
+version: "0.2.0"
+author: "Pavel Pascari"
+published: true
+---
+
+If you've worked with stacked PRs, you know the pain isn't creating the stack — it's everything after. Rebasing cascades, retargeting bases, keeping descriptions in sync, merging without GitHub auto-closing your downstream PRs. SDF handles all of that.
+
+v0.2.0 rounds out the workflow with the pieces that were still missing: a merge command that understands stacks, the ability to import existing PR chains, drift detection, and a polished terminal UI.
+
+## `sdf merge` — land PRs without breaking the chain
+
+Here's the problem with merging stacked PRs on GitHub: when you merge a PR and its branch gets deleted, GitHub sees the downstream PR's base disappear and auto-closes it. You lose review threads. To avoid that, you have to manually retarget the next PR's base *before* merging, then cascade-rebase the rest of the stack.
+
+`sdf merge` handles all of this in one command:
+
+```bash
+sdf merge
+```
+
+SDF finds the head PR in the stack, retargets the downstream PR's base before merging (so GitHub doesn't close it), squash-merges via `gh`, and triggers a cascade sync for the remaining branches. The default is squash merge — pass `--method merge` or `--method rebase` if your team prefers a different strategy.
+
+## `sdf fetch` — import stacks from GitHub
+
+Say a colleague has a stack of PRs up for review and you need to pick up their work — or you want to start managing an existing chain of PRs with SDF without recreating anything. `sdf fetch` turns PR chains already on GitHub into a managed stack:
+
+```bash
+sdf fetch
+```
+
+It scans open PRs, detects branch chains (A → main, B → A, C → B), presents them for confirmation, checks out any missing branches locally, and builds the stack metadata. If you already have a local stack that overlaps, it reconciles — adding new branches, updating PR numbers, flagging anything that looks like drift.
+
+No manual setup, no reconstructing state — clone the repo, run `sdf fetch`, and the full stack topology is there.
+
+## Drift detection
+
+`sdf status` talks to GitHub. It polls PR state and compares it against the local stack metadata. If someone retargets a PR's base on GitHub, or a PR gets closed outside of SDF, status flags it:
+
+```
+  my-stack  (base: main)
+
+   ✓  db-schema       PR #142  merged
+   ●  repository      PR #143  open    3 commits ahead, in sync
+ → ●  controller      PR #144  open    1 commits ahead, needs sync
+
+  ⚠ Drift detected:
+    PR #143 (repository) base is main, expected db-schema
+
+  Run `sdf fetch` to reconcile.
+```
+
+Routine changes (like a merged PR) are applied automatically. Notable drift — things that suggest someone changed the stack structure outside of SDF — are surfaced as warnings so you can decide what to do.
+
+## Terminal UI built on Charm
+
+SDF uses the [Charm ecosystem](https://charm.sh) — the same libraries that power the GitHub CLI's terminal output — so the CLI feels like a tool that respects your attention:
+
+- **Consistent color language** — green for merged, cyan for current branch, yellow for warnings, magenta for PR numbers. Every command uses the same palette.
+- **Interactive prompts** — conflict resolution, merge confirmation, and stack selection use arrow-key navigation.
+- **Scannable output** — `✓`, `✗`, `⚠`, `→` make it easy to spot what needs your attention at a glance.
+
+The UI is deliberately restrained. SDF is a command-and-exit CLI, not an interactive dashboard. The Charm libraries give it polish without turning it into something you have to learn to navigate.
+
+## Everything else
+
+A lot of smaller improvements shipped alongside the headline features:
+
+- **PR title generation** — `sdf pr` auto-generates titles from branch names, with optional conventional commit detection from your commit history
+- **`--json` output** — `sdf pr --json` and `sdf init --json` return structured output for scripting and AI agent integration
+- **Branch insertion** — `sdf branch` inserts at your current checkout position in the stack, so new work slots in where it makes sense
+- **`sdf move`** — move commits from the current branch to its parent when you realize work landed on the wrong layer
+- **`sdf register`** — register existing PR chains as SDF stacks without recreating branches
+- **Configurable branch prefixes** — control whether branches are auto-prefixed with the stack name, customize the separator, or disable it entirely
+- **Multiple stacks per repo** — work on independent feature stacks in the same repository
+
+## Get started
+
+```bash
+brew install pavelpascari/tap/sdf
+sdf doctor
+```
+
+If you're already working with stacked PRs and manual rebasing, try `sdf fetch` to import your existing PR chains. If you're starting fresh, the [Getting Started guide](/docs/getting-started) walks through the full workflow.
+
+SDF is fully open source. Feedback and bug reports are welcome on the [GitHub repo](https://github.com/pavelpascari/sdf).

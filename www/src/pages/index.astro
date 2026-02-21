@@ -1,8 +1,33 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+const siteUrl = Astro.site?.href ?? 'https://sdf-tool.com';
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'SDF',
+    url: siteUrl,
+    description: 'Automated cascade rebasing for GitHub PR stacks.',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'SDF',
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Linux, macOS, Windows',
+    url: siteUrl,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    description: 'A CLI tool that automates cascade rebasing for GitHub PR stacks, with optional AI-powered conflict resolution.',
+  },
+];
 ---
 
 <BaseLayout title="SDF — Stacked Diffs That Stay in Sync">
+  {jsonLd.map((item) => (
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(item)} />
+  ))}
 
   <!-- ── Hero ─────────────────────────────────────────── -->
   <section class="relative overflow-hidden">
@@ -92,24 +117,30 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <p class="text-center text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-12">
         The pain of stacked PRs — solved
       </p>
-      <div class="grid sm:grid-cols-3 gap-8">
+      <div class="grid sm:grid-cols-3 gap-5">
         {[
           {
             pain: 'Manual cascade rebasing',
-            fix: 'One command to rebase every downstream branch after an upstream PR merges.',
+            fix: 'One command rebases every downstream branch after an upstream PR merges.',
           },
           {
             pain: 'PR base drift on GitHub',
-            fix: 'PR base branches on GitHub are updated during sync to match the real topology.',
+            fix: 'PR bases are updated during sync to match the real topology.',
           },
           {
-            pain: 'Losing track of PR dependencies',
-            fix: 'Stack topology tracked locally in .sdf/ and PR relationships shown in descriptions with automatic stack navigation.',
+            pain: 'Losing track of dependencies',
+            fix: 'Stack topology tracked in .sdf/ with automatic navigation links in every PR description.',
           },
         ].map(({ pain, fix }) => (
-          <div class="flex flex-col gap-3">
-            <p class="text-fg-subtle text-sm line-through">{pain}</p>
-            <p class="text-fg text-sm leading-relaxed">{fix}</p>
+          <div class="rounded-xl border border-rim bg-panel p-5 flex flex-col gap-4">
+            <p class="flex items-start gap-2 text-sm text-fg-subtle">
+              <span class="text-red-400 shrink-0 mt-0.5">&times;</span>
+              <span class="line-through">{pain}</span>
+            </p>
+            <p class="flex items-start gap-2 text-sm text-fg leading-relaxed">
+              <span class="text-success shrink-0 mt-0.5">&#10003;</span>
+              <span>{fix}</span>
+            </p>
           </div>
         ))}
       </div>
@@ -128,8 +159,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           Everything stacked diffs need
         </h2>
         <p class="text-fg-muted max-w-xl mx-auto">
-          Not a Git wrapper. Not a GitHub replacement. A thin orchestration layer that
-          coordinates the tools you already use.
+          A thin layer built on git and gh.
+          No servers, no extra auth — just the tools you already use, working together.
         </p>
       </div>
 
@@ -265,7 +296,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 <span class="text-fg-subtle">$ </span><span class="text-fg">sdf status</span>
 <span class="text-fg-muted">  </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">  (base: main)</span>
 
-<span class="text-fg-muted">   </span><span class="text-success">&#10003;</span><span class="text-fg"> db-schema                PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
+<span class="text-fg-muted">   </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> db-schema                PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
 <span class="text-fg-muted"> </span><span class="text-accent">&#8594;</span><span class="text-fg-muted"> </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> repository               PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span>
 <span class="text-fg-muted">   </span><span class="text-fg-subtle">&#9679;</span><span class="text-fg"> controller               PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted">  open     </span><span class="text-success">in sync</span></code></pre>
           </div>
@@ -296,14 +327,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf sync</span>
 <span class="text-fg-muted">Syncing stack </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">...</span>
 <span class="text-fg-muted">Fetching from origin...</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted"> (db-schema) merged</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#142</span><span class="text-fg-muted"> (db-schema) merged</span>
 <span class="text-fg-muted">  rebasing repository onto main...</span>
-<span class="text-warn">&#9889;</span> <span class="text-fg-muted">conflict in internal/model/user.go &#8212; 1 file(s)</span>
+  <span class="text-warn">&#9889;</span> <span class="text-fg-muted">conflict in repository &#8212; 1 file(s):</span>
+<span class="text-fg-muted">    internal/model/user.go</span>
 <span class="text-fg-muted">  invoking Claude for conflict resolution...</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">conflict resolved by Claude</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">repository rebased and pushed</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">controller rebased and pushed</span>
-<span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">conflict resolved by Claude</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">repository rebased and pushed</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">controller rebased and pushed</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
 
 <span class="text-fg-muted">Sync complete. Stack updated.</span></code></pre>
           </div>
@@ -379,9 +411,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         Stop rebasing by hand.
       </h2>
       <p class="text-fg-muted mb-8">
-        SDF is free, open source, and takes five minutes to set up.
+        SDF is free and open source.
         Run <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf doctor</code> to
-        verify your dependencies and start stacking.
+        verify your setup and start stacking.
       </p>
       <div class="flex flex-wrap justify-center gap-4">
         <a

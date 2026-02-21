@@ -1,7 +1,7 @@
 ---
 const navLinks = [
   { label: 'Docs', href: '/docs' },
-  { label: 'GitHub', href: 'https://github.com/pavelpascari/sdf', external: true },
+  { label: 'Blog', href: '/blog' },
 ];
 
 const currentPath = Astro.url.pathname;
@@ -29,29 +29,44 @@ const currentPath = Astro.url.pathname;
 
       <!-- Nav -->
       <nav class="flex items-center gap-1">
-        {navLinks.map(({ label, href, external }) => (
+        {navLinks.map(({ label, href }) => (
           <a
             href={href}
-            target={external ? '_blank' : undefined}
-            rel={external ? 'noopener noreferrer' : undefined}
             class:list={[
               'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              currentPath.startsWith('/docs') && href === '/docs'
+              (currentPath.startsWith('/docs') && href === '/docs')
+                || (currentPath.startsWith('/blog') && href === '/blog')
                 ? 'text-brand-light bg-brand/10'
                 : 'text-fg-muted hover:text-fg hover:bg-panel',
             ]}
           >
             {label}
-            {external && (
-              <span class="ml-0.5 opacity-50 text-xs">↗</span>
-            )}
           </a>
         ))}
 
-        <!-- Install CTA -->
+        <!-- GitHub — CTA button on mobile, text link on desktop -->
+        <a
+          href="https://github.com/pavelpascari/sdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="sm:hidden ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-brand hover:bg-brand-dim text-white transition-colors"
+          style="font-weight: 600;"
+        >
+          GitHub<span class="ml-0.5 opacity-50 text-xs">↗</span>
+        </a>
+        <a
+          href="https://github.com/pavelpascari/sdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-medium text-fg-muted hover:text-fg hover:bg-panel transition-colors"
+        >
+          GitHub<span class="ml-0.5 opacity-50 text-xs">↗</span>
+        </a>
+
+        <!-- Install CTA — desktop only -->
         <a
           href="/docs/installation"
-          class="ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-brand hover:bg-brand-dim text-white transition-colors"
+          class="hidden sm:inline-flex ml-2 px-4 py-2 rounded-lg text-sm font-medium bg-brand hover:bg-brand-dim text-white transition-colors"
           style="font-weight: 600;"
         >
           Install

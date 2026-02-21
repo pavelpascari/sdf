@@ -26,3 +26,7 @@ jobs:
 
       - name: Docs check
         run: make docs-check
+
+      - name: Blog content check
+        if: github.event_name == 'pull_request'
+        run: make blog-check
