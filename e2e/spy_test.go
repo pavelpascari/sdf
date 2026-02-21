@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
-	"github.com/pavelpascari/sdf/internal/spy"
 	"github.com/pavelpascari/sdf/internal/testutil"
 )
 
@@ -28,10 +27,12 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 	dir := e2eRepo(t)
 	prefix := testPrefix()
 
-	// Set up spy recording
+	// Set up spy recording via environment variable.
+	// Child sdf processes will pick this up via the init() in gh/claude
+	// packages and record all invocations to JSONL files.
 	recordDir := filepath.Join(t.TempDir(), "recordings")
-	rec := spy.NewRecorder(recordDir, "gh")
-	testutil.SetSpy(t, &ghpkg.Spy, rec)
+	os.MkdirAll(recordDir, 0755)
+	t.Setenv("SDF_SPY_DIR", recordDir)
 
 	t.Cleanup(func() {
 		runGit(t, dir, "checkout", "main")
@@ -65,9 +66,6 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 
 	// Sync (exercises: pr list, pr edit)
 	runSDF(t, dir, "sync", "-y")
-
-	// Force close the recorder so the file is flushed
-	rec.Close()
 
 	// --- Validate recordings ---
 	recordingPath := filepath.Join(recordDir, "gh.jsonl")

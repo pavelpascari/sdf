@@ -4,11 +4,18 @@ package gh
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/pavelpascari/sdf/internal/spy"
 )
+
+func init() {
+	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
+		Spy = spy.NewRecorder(dir, "gh")
+	}
+}
 
 // PRInfo represents pull request information from gh.
 type PRInfo struct {

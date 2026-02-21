@@ -21,6 +21,12 @@ var Binary = "claude"
 // Enable during E2E tests to capture real Claude API responses.
 var Spy *spy.Recorder
 
+func init() {
+	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
+		Spy = spy.NewRecorder(dir, "claude")
+	}
+}
+
 // Available returns true if the claude CLI is installed and accessible.
 func Available() bool {
 	_, err := exec.LookPath(Binary)
