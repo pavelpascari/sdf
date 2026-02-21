@@ -4,6 +4,11 @@ description: Full reference for every sdf command.
 order: 4
 ---
 
+import CommandRef from '../../components/CommandRef.astro';
+import cliRef from '../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
 # Commands
 
 All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf init` or `sdf fetch`).
@@ -12,84 +17,13 @@ All commands are run from within a git repository. Most require the repository t
 
 ## Stack management
 
-### `sdf init`
+<CommandRef command={cmd('init')} />
 
-Create a new stack and its first branch.
+<CommandRef command={cmd('fetch')} />
 
-```bash
-sdf init my-feature                                # positional stack name
-sdf init --stack my-feature                        # explicit flag
-sdf init my-feature --branch db-schema             # custom first branch name
-sdf init my-feature --base develop                 # custom base branch
-sdf init my-feature --json                         # machine-readable output
-```
+<CommandRef command={cmd('branch')} />
 
-The stack name can be provided as a positional argument or via the `--stack` flag. If `--branch` is omitted, the first branch is named after the stack. The base branch is auto-detected from `origin HEAD` if not specified.
-
-Flags:
-
-| Flag | Default | Description |
-|---|---|---|
-| `--stack` | -- | Name for the stack (alternative to positional arg) |
-| `--branch` | stack name | Name of the first branch to create |
-| `--base` | auto-detected from `origin HEAD` | Base branch for the stack |
-| `--json` | false | Output machine-readable JSON (for AI agent integration) |
-
----
-
-### `sdf fetch`
-
-Discover and sync PR stacks from GitHub. Scans your open PRs, detects branch chains, and either registers a new stack or reconciles an existing one.
-
-```bash
-sdf fetch                          # auto-detect base, scan all open PRs
-sdf fetch --stack my-feature       # name the stack explicitly
-sdf fetch --base develop           # specify base branch
-```
-
-When a matching local stack is found, `sdf fetch` reconciles it with the remote state. When no match exists, it registers a new stack.
-
-Flags:
-
-| Flag | Default | Description |
-|---|---|---|
-| `--stack` | auto-generated from branches | Name for the stack |
-| `--base` | auto-detected | Base branch to scan against |
-
----
-
-### `sdf branch <name>`
-
-Add a new branch to the current stack. The branch is inserted at the current checkout position in the stack, not always appended to the end.
-
-```bash
-sdf branch repository              # inserts after current branch
-sdf branch --no-prefix api-layer   # skip configured branch prefix
-```
-
-Must be run from a branch that is already in a stack (or the base branch). If the current branch is part of the stack, the new branch is inserted after it. If downstream branches exist, their PR base is updated on GitHub automatically.
-
-Flags:
-
-| Flag | Default | Description |
-|---|---|---|
-| `--stack` | auto-detect | Stack to add the branch to |
-| `--no-prefix` | false | Create branch without applying the configured prefix |
-
----
-
-### `sdf sync`
-
-Detect merged PRs and cascade-rebase downstream branches.
-
-```bash
-sdf sync                          # sync the stack of the current branch
-sdf sync my-feature               # sync a specific stack by name
-sdf sync --stack my-feature       # explicit flag form
-sdf sync -y                       # skip confirmation prompt
-sdf sync --continue               # resume after manual conflict resolution
-sdf sync --with-content           # also update PR titles and descriptions
-```
+<CommandRef command={cmd('sync')} />
 
 Steps performed:
 
@@ -112,107 +46,21 @@ Merged nodes remain in the stack JSON and are displayed as completed. They are n
 
 After choosing "I'll fix it myself", resolve the conflicts manually, stage the files with `git add`, then run `sdf sync --continue`.
 
-Flags:
+<CommandRef command={cmd('merge')} />
 
-| Flag | Default | Description |
-|---|---|---|
-| `--stack` | auto-detect | Stack to sync |
-| `-y` | false | Skip confirmation prompt |
-| `--continue` | false | Resume a paused sync after manual conflict resolution |
-| `--with-content` | false | Update PR titles and descriptions (uses Claude if available) |
-
----
-
-### `sdf merge`
-
-Merge the head (first open) PR in the stack, then sync the remaining branches.
-
-```bash
-sdf merge                          # merge with squash (default)
-sdf merge -y                       # skip confirmation
-sdf merge --method merge           # use regular merge
-sdf merge --method rebase          # use rebase merge
-sdf merge --stack my-feature       # target a specific stack
-```
-
-Before merging, the next open PR's base is retargeted to prevent GitHub from auto-closing it when the merged branch is deleted. After the merge, a sync is automatically triggered to cascade-rebase remaining branches.
-
-Flags:
-
-| Flag | Default | Description |
-|---|---|---|
-| `--stack` | auto-detect | Stack to merge |
-| `-y` | false | Skip confirmation prompt |
-| `--method` | `squash` | Merge method: `squash`, `merge`, or `rebase` |
-
----
-
-### `sdf status`
-
-Show stack topology and sync state.
-
-```bash
-sdf status                        # status of the current branch's stack
-sdf status my-feature             # status of a named stack
-sdf status --stack my-feature     # explicit flag form
-```
+<CommandRef command={cmd('status')} />
 
 Fetches from origin and fast-forwards the base branch to ensure sync state is accurate. Shows each branch with its PR number, status (open/merged/closed), and whether it needs syncing. Also performs lightweight reconciliation against GitHub PR states and warns about structural drift.
 
-Flags:
+<CommandRef command={cmd('pr')} />
 
-| Flag | Default | Description |
-|---|---|---|
-| `--stack` | auto-detect | Stack to show |
-
----
-
-### `sdf pr`
-
-Create a GitHub PR for the current branch.
-
-```bash
-sdf pr                             # auto-generated title and body
-sdf pr --title "Add users table"   # override title
-sdf pr --json                      # machine-readable output
-```
-
-The PR is automatically based on the parent branch in the stack. The PR body is set to `Part of stack: **<stack>**\n\nBase: '<parent>'`. Stack navigation links are added to all PR descriptions after creation.
-
-Flags:
-
-| Flag | Default | Description |
-|---|---|---|
-| `--title` | auto-generated from branch name | PR title |
-| `--json` | false | Output result as JSON |
-
----
-
-### `sdf move <commit>...`
-
-Move commits from the current branch to the parent branch.
-
-```bash
-sdf move abc1234                   # move one commit
-sdf move abc1234 def5678           # move multiple commits
-```
-
-The listed commits must be a contiguous prefix of the current branch's commits above the parent. They are cherry-picked onto the parent branch, stripped from the current branch via rebase, and all downstream branches are cascade-rebased to keep the stack consistent. If conflicts occur, Claude is tried first (if available), then the operation is aborted with instructions for manual resolution.
+<CommandRef command={cmd('move')} />
 
 ---
 
 ## Navigation
 
-### `sdf switch [<branch>]`
-
-Switch to a branch and report which stack it belongs to.
-
-```bash
-sdf switch db-schema              # switch to a specific branch
-sdf switch                        # list all branches from all stacks
-```
-
-Without arguments, lists all branches across all stacks with the current branch highlighted. With a branch name, checks it out and shows its position in the stack (e.g., `layer 2/4`).
+<CommandRef command={cmd('switch')} />
 
 Short alias: `sdf <branch>` (if no subcommand matches the name).
 
@@ -220,81 +68,21 @@ Short alias: `sdf <branch>` (if no subcommand matches the name).
 
 ## Configuration
 
-### `sdf config show`
-
-Display the effective merged configuration (global + repo).
-
-```bash
-sdf config show
-```
-
-Shows the JSON configuration after merging global (`~/.config/sdf/config.json`) and repo-level (`.sdf/config.json`) settings.
-
----
-
-### `sdf config set <key> <value>`
-
-Set a configuration value.
-
-```bash
-sdf config set branch_prefix.enabled true
-sdf config set branch_prefix.prefix my-project
-sdf config set branch_prefix.separator -
-sdf config set pr_title.conventional_commits true
-sdf config set pr_title.ticket_pattern "PROJ-\\d+"
-sdf config set sync.with_content true
-```
-
-Add `--global` to write to the global config instead of the repo config:
-
-```bash
-sdf config set --global pr_title.conventional_commits true
-```
-
-Valid keys:
-
-| Key | Type | Description |
-|---|---|---|
-| `branch_prefix.enabled` | bool | Enable/disable branch prefix |
-| `branch_prefix.prefix` | string | Prefix string (empty = use stack_id) |
-| `branch_prefix.separator` | string | Separator character (default: `/`) |
-| `pr_title.conventional_commits` | bool | Enable conventional commit prefixes in PR titles |
-| `pr_title.ticket_pattern` | string | Regex to extract ticket ID from branch name |
-| `sync.with_content` | bool | Auto-update PR titles and descriptions during sync |
+<CommandRef command={cmd('config')} />
 
 ---
 
 ## Deprecated commands
 
-### `sdf register`
-
-Deprecated. Delegates to `sdf fetch` with a deprecation notice. Use `sdf fetch` instead.
+<CommandRef command={cmd('register')} />
 
 ---
 
 ## Utilities
 
-### `sdf doctor`
+<CommandRef command={cmd('doctor')} />
 
-Check that all required dependencies are available and configured.
-
-```bash
-sdf doctor
-```
-
-Reports the status of `git` (required), `gh` (needed for PR operations), and `claude` (needed for conflict resolution and PR descriptions).
-
----
-
-### `sdf version`
-
-Print the installed SDF version.
-
-```bash
-sdf version
-```
-
----
+<CommandRef command={cmd('version')} />
 
 ### `sdf help`
 
