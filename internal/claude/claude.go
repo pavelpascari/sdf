@@ -9,11 +9,17 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
 
 // Binary is the name (or path) of the claude executable.
 // Tests can override this to point at a fake binary.
 var Binary = "claude"
+
+// Spy, when non-nil, records every invocation for later analysis.
+// Enable during E2E tests to capture real Claude API responses.
+var Spy *spy.Recorder
 
 // Available returns true if the claude CLI is installed and accessible.
 func Available() bool {
@@ -38,6 +44,15 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	cmd := exec.Command(Binary, "-p", prompt)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+
+	if Spy != nil {
+		exitCode := 0
+		if err != nil {
+			exitCode = 1
+		}
+		Spy.Record([]string{"-p", prompt}, output, exitCode)
+	}
+
 	if err != nil {
 		return output, fmt.Errorf("claude %s: %s", sessionName, output)
 	}

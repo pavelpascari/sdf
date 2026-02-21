@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
 
 // PRInfo represents pull request information from gh.
@@ -23,11 +25,24 @@ type PRInfo struct {
 // Tests can override this to point at a fake binary.
 var Binary = "gh"
 
+// Spy, when non-nil, records every invocation for later analysis.
+// Enable during E2E tests to capture real API responses.
+var Spy *spy.Recorder
+
 // run executes a gh command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
 	cmd := exec.Command(Binary, args...)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+
+	if Spy != nil {
+		exitCode := 0
+		if err != nil {
+			exitCode = 1
+		}
+		Spy.Record(args, output, exitCode)
+	}
+
 	if err != nil {
 		return output, fmt.Errorf("gh %s: %s", strings.Join(args, " "), output)
 	}

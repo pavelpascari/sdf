@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
 
 // FakeBin creates a shell script at dir/<name> that logs its arguments
@@ -114,4 +116,19 @@ func SetBinary(t *testing.T, target *string, fakePath string) {
 	orig := *target
 	*target = fakePath
 	t.Cleanup(func() { *target = orig })
+}
+
+// SetSpy sets a package-level Spy variable and registers cleanup.
+// Usage:
+//
+//	rec := spy.NewRecorder(dir, "gh")
+//	SetSpy(t, &gh.Spy, rec)
+func SetSpy(t *testing.T, target **spy.Recorder, rec *spy.Recorder) {
+	t.Helper()
+	orig := *target
+	*target = rec
+	t.Cleanup(func() {
+		rec.Close()
+		*target = orig
+	})
 }
