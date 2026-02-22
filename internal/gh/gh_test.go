@@ -9,7 +9,7 @@ import (
 
 func TestPRList_ParsesJSON(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr list": `[
 			{"number":1,"headRefName":"feat/a","state":"OPEN","baseRefName":"main","url":"https://github.com/test/repo/pull/1"},
 			{"number":2,"headRefName":"feat/b","state":"MERGED","baseRefName":"feat/a","url":"https://github.com/test/repo/pull/2"},
@@ -51,7 +51,7 @@ func TestPRList_ParsesJSON(t *testing.T) {
 
 func TestPRList_FiltersBranches(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr list": `[
 			{"number":1,"headRefName":"feat/a","state":"OPEN","baseRefName":"main","url":""},
 			{"number":2,"headRefName":"unrelated","state":"OPEN","baseRefName":"main","url":""}
@@ -74,7 +74,7 @@ func TestPRList_FiltersBranches(t *testing.T) {
 
 func TestPRList_KeepsBestState(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr list": `[
 			{"number":1,"headRefName":"feat/a","state":"CLOSED","baseRefName":"main","url":""},
 			{"number":2,"headRefName":"feat/a","state":"OPEN","baseRefName":"main","url":""}
@@ -97,7 +97,7 @@ func TestPRList_KeepsBestState(t *testing.T) {
 
 func TestPRCreate_Arguments(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr create": "https://github.com/test/repo/pull/42",
 	})
 	testutil.SetBinary(t, &Binary, fake)
@@ -123,7 +123,7 @@ func TestPRCreate_Arguments(t *testing.T) {
 
 func TestPRView_ParsesJSON(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr view": `{"number":42,"headRefName":"feat/auth","state":"OPEN","baseRefName":"main","url":"https://github.com/test/repo/pull/42"}`,
 	})
 	testutil.SetBinary(t, &Binary, fake)
@@ -143,7 +143,7 @@ func TestPRView_ParsesJSON(t *testing.T) {
 
 func TestPREditBase_Arguments(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr edit": "",
 	})
 	testutil.SetBinary(t, &Binary, fake)
@@ -163,7 +163,7 @@ func TestPREditBase_Arguments(t *testing.T) {
 
 func TestPRMerge_Arguments(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr merge": "",
 	})
 	testutil.SetBinary(t, &Binary, fake)
@@ -183,6 +183,9 @@ func TestPRMerge_Arguments(t *testing.T) {
 
 func TestPRViewBody_ParsesJSON(t *testing.T) {
 	dir := t.TempDir()
+	// PRViewBody uses "pr view" prefix — the canonical default is the full
+	// PR fields variant, but this test needs the body variant. We use FakeBin
+	// directly with explicit validation for the body shape.
 	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
 		"pr view": `{"body":"This is the PR body.\n\nWith multiple lines."}`,
 	})
