@@ -17,11 +17,11 @@ We went from "run it manually and see if it works" to a system where our fakes a
 
 ```mermaid
 graph BT
-    L1["<b>Layer 1: Fake Binaries</b><br/>Shell scripts that pretend to be git/gh"]
-    L2["<b>Layer 2: Binary Injection</b><br/>Swap real binaries for fakes in tests"]
-    L3["<b>Layer 3: Spy Recording</b><br/>Capture what the real tools actually return"]
-    L4["<b>Layer 4: Cross-Validation</b><br/>Prove fakes match real tool output"]
-    L5["<b>Layer 5: Build Tags</b><br/>Isolate test infra from production binary"]
+    L1["Layer 1 · Fake Binaries"]
+    L2["Layer 2 · Binary Injection"]
+    L3["Layer 3 · Spy Recording"]
+    L4["Layer 4 · Cross-Validation"]
+    L5["Layer 5 · Build Tags"]
 
     L1 --- L2 --- L3 --- L4 --- L5
 ```
@@ -152,19 +152,19 @@ The `t.Cleanup` is critical — it restores the original value after the test, e
 ```mermaid
 graph TD
     subgraph Production
-        PB["var Binary = 'gh'"]
-        PE["exec.Command(Binary, args...)"]
-        PR(["real gh — via PATH"])
-        PA[("GitHub API")]
+        PB["Binary = gh"]
+        PE["exec.Command"]
+        PR["real gh via PATH"]
+        PA["GitHub API"]
         PB --> PE --> PR --> PA
     end
 
     subgraph Tests
-        TB["SetBinary(t, &Binary, fakePath)"]
-        TE["exec.Command(Binary, args...)"]
-        TR(["fake gh — shell script"])
-        TA["Canned JSON + log file"]
-        TC>"t.Cleanup restores Binary = 'gh'"]
+        TB["SetBinary to fakePath"]
+        TE["exec.Command"]
+        TR["fake gh script"]
+        TA["Canned JSON + log"]
+        TC["t.Cleanup restores"]
         TB --> TE --> TR --> TA
         TA -.-> TC
     end
@@ -325,11 +325,11 @@ Here's where it comes together. We have recordings of real API responses. We hav
 
 ```mermaid
 graph TD
-    UT["Unit Tests<br/>use fake binaries"] --> FR["Fake Responses<br/>number: 10, state: OPEN, ..."]
-    E2E["E2E Tests<br/>use real git & gh"] --> REC["Recordings<br/>number: 847, state: OPEN, ..."]
+    UT["Unit Tests"] --> FR["Fake Responses"]
+    E2E["E2E Tests"] --> REC["Recordings"]
 
-    FR -->|"JSONShape()"| FS["array[object{headRefName,<br/>number, state, url}]"]
-    REC -->|"JSONShape()"| RS["array[object{headRefName,<br/>number, state, url}]"]
+    FR -->|"JSONShape()"| FS["Fake shape"]
+    REC -->|"JSONShape()"| RS["Real shape"]
 
     FS --> CMP{"Structures match?"}
     RS --> CMP
@@ -535,10 +535,10 @@ Each layer is more expensive and slower than the last. You run unit tests on eve
 
 ```mermaid
 graph TD
-    U["<b>Unit tests with fakes</b><br/>Milliseconds · every save · fast feedback"]
-    CV["<b>Cross-validation</b><br/>Seconds · periodic · fakes stay honest"]
-    SPY["<b>Spy recordings</b><br/>Seconds · on demand · ground truth"]
-    E2E["<b>E2E tests</b><br/>Minutes · in CI · real workflows"]
+    U["Unit tests with fakes"]
+    CV["Cross-validation"]
+    SPY["Spy recordings"]
+    E2E["E2E tests"]
 
     U -->|"more confidence"| CV
     CV -->|"more confidence"| SPY

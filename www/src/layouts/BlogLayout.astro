@@ -113,8 +113,8 @@ const jsonLd = {
         nodeTextColor: '#f1f5f9',
       },
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      flowchart: { curve: 'basis', padding: 16 },
-      sequence: { mirrorActors: false },
+      flowchart: { curve: 'basis', padding: 20, useMaxWidth: false, htmlLabels: true },
+      sequence: { mirrorActors: false, useMaxWidth: false },
     });
 
     async function renderMermaidBlocks() {

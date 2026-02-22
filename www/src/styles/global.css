@@ -163,8 +163,8 @@ html {
 }
 
 .mermaid-diagram svg {
-  max-width: 100%;
   height: auto;
+  min-width: 0;
 }
 
 /* ── Utility: glow effects ───────────────────────────── */
