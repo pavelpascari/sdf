@@ -117,6 +117,147 @@ func truncate(s string, n int) string {
 	return s
 }
 
+// TestCrossValidateClaudeFakesAgainstRecordings reads persisted E2E spy
+// recordings and compares each recorded claude response against the canonical
+// fake registry. Scans claude_sdf.jsonl files under e2e/testdata/recordings/.
+func TestCrossValidateClaudeFakesAgainstRecordings(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	recordingsRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "e2e", "testdata", "recordings")
+
+	if _, err := os.Stat(recordingsRoot); os.IsNotExist(err) {
+		t.Skip("no E2E recordings found — run 'make test-e2e' first to populate recordings")
+	}
+
+	var claudeFiles []string
+	filepath.Walk(recordingsRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.Name() == "claude_sdf.jsonl" && !info.IsDir() {
+			claudeFiles = append(claudeFiles, path)
+		}
+		return nil
+	})
+
+	if len(claudeFiles) == 0 {
+		t.Skip("no claude_sdf.jsonl recordings found — run 'make test-e2e' first")
+	}
+
+	var allRecordings []spy.Invocation
+	for _, f := range claudeFiles {
+		allRecordings = append(allRecordings, ReadRecordings(t, f)...)
+	}
+
+	if len(allRecordings) == 0 {
+		t.Skip("recording files are empty — run 'make test-e2e' first")
+	}
+
+	fakes := ClaudeCanonicalFakes()
+	t.Logf("Loaded %d canonical claude fake entries", len(fakes))
+	t.Logf("Reading %d recorded invocations from %d files", len(allRecordings), len(claudeFiles))
+
+	var matched, unmatched int
+
+	for _, inv := range allRecordings {
+		if inv.ExitCode != 0 {
+			continue
+		}
+
+		key := ClassifyClaudeArgs(inv.Args)
+		fake, exists := fakes[key]
+		if !exists {
+			unmatched++
+			t.Logf("  [info] no canonical fake for %q (args: %s)", key, strings.Join(inv.Args, " "))
+			continue
+		}
+		matched++
+
+		switch fake.Kind {
+		case "jsonl":
+			// Each line of the real output should be valid JSON.
+			for i, line := range strings.Split(strings.TrimSpace(inv.Stdout), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				if !IsJSON(line) {
+					t.Errorf("expected JSON on line %d of %q response, got: %q", i, key, truncate(line, 60))
+				}
+			}
+			t.Logf("  [ok] %q JSONL output validated", key)
+
+		case "text":
+			if strings.TrimSpace(inv.Stdout) == "" {
+				t.Errorf("expected non-empty text for %q, got empty", key)
+			} else {
+				t.Logf("  [ok] %q is non-empty text: %s", key, truncate(strings.TrimSpace(inv.Stdout), 60))
+			}
+		}
+	}
+
+	t.Logf("Cross-validation: %d matched, %d unmatched (no canonical fake)", matched, unmatched)
+}
+
+// TestCrossValidateGitFakesAgainstRecordings reads persisted E2E spy
+// recordings and compares each recorded git response against the canonical
+// fake registry. Scans git_sdf.jsonl files under e2e/testdata/recordings/.
+func TestCrossValidateGitFakesAgainstRecordings(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	recordingsRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "e2e", "testdata", "recordings")
+
+	if _, err := os.Stat(recordingsRoot); os.IsNotExist(err) {
+		t.Skip("no E2E recordings found — run 'make test-e2e' first to populate recordings")
+	}
+
+	var gitFiles []string
+	filepath.Walk(recordingsRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.Name() == "git_sdf.jsonl" && !info.IsDir() {
+			gitFiles = append(gitFiles, path)
+		}
+		return nil
+	})
+
+	if len(gitFiles) == 0 {
+		t.Skip("no git_sdf.jsonl recordings found — run 'make test-e2e' first")
+	}
+
+	var allRecordings []spy.Invocation
+	for _, f := range gitFiles {
+		allRecordings = append(allRecordings, ReadRecordings(t, f)...)
+	}
+
+	if len(allRecordings) == 0 {
+		t.Skip("recording files are empty — run 'make test-e2e' first")
+	}
+
+	fakes := GitCanonicalFakes()
+	t.Logf("Loaded %d canonical git fake entries", len(fakes))
+	t.Logf("Reading %d recorded invocations from %d files", len(allRecordings), len(gitFiles))
+
+	var matched, unmatched int
+
+	for _, inv := range allRecordings {
+		if inv.ExitCode != 0 {
+			continue
+		}
+
+		key := ClassifyGitArgs(inv.Args)
+		_, exists := fakes[key]
+		if !exists {
+			unmatched++
+			// Don't log every git command — there are many.
+			continue
+		}
+		matched++
+		t.Logf("  [ok] %q classified and matched", key)
+	}
+
+	t.Logf("Cross-validation: %d matched, %d unmatched (no canonical fake)", matched, unmatched)
+}
+
 // TestGHCanonicalFakes_InternalConsistency validates that the canonical fake
 // registry is self-consistent:
 // - JSON entries parse as valid JSON
@@ -249,5 +390,229 @@ func TestGHFakeBinWith_ValidatesOverrides(t *testing.T) {
 	// The binary should exist after a valid call.
 	if _, err := os.Stat(filepath.Join(dir, "gh")); err != nil {
 		t.Errorf("GHFakeBinWith didn't create binary for valid overrides: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Claude canonical fake tests
+// ---------------------------------------------------------------------------
+
+// TestClaudeCanonicalFakes_InternalConsistency validates that the Claude
+// canonical fake registry is self-consistent.
+func TestClaudeCanonicalFakes_InternalConsistency(t *testing.T) {
+	canon := ClaudeCanonicalFakes()
+
+	for key, entry := range canon {
+		t.Run(key, func(t *testing.T) {
+			response := strings.TrimSpace(entry.Response)
+
+			switch entry.Kind {
+			case "jsonl":
+				lines := strings.Split(response, "\n")
+				if len(lines) == 0 {
+					t.Errorf("canonical entry %q claims jsonl but has no lines", key)
+				}
+				for i, line := range lines {
+					line = strings.TrimSpace(line)
+					if line == "" {
+						continue
+					}
+					if !IsJSON(line) {
+						t.Errorf("canonical entry %q line %d is not JSON: %q", key, i, truncate(line, 60))
+					}
+				}
+
+			case "text":
+				if response == "" {
+					t.Errorf("canonical entry %q claims text but response is empty", key)
+				}
+
+			default:
+				t.Errorf("canonical entry %q has unknown kind %q", key, entry.Kind)
+			}
+		})
+	}
+}
+
+// TestClaudeFakeResponses_StructuralCompliance validates that the FakeBin-compatible
+// response map derived from ClaudeCanonicalFakes is structurally sound.
+func TestClaudeFakeResponses_StructuralCompliance(t *testing.T) {
+	responses := ClaudeFakeResponses()
+
+	if len(responses) == 0 {
+		t.Fatal("ClaudeFakeResponses returned empty map")
+	}
+
+	ValidateClaudeFakeResponses(t, responses)
+
+	// Verify key commands are present.
+	required := []string{"--version", "-p"}
+	for _, cmd := range required {
+		if _, ok := responses[cmd]; !ok {
+			t.Errorf("ClaudeFakeResponses missing required command %q", cmd)
+		}
+	}
+}
+
+// TestClaudeFakeBin_ProducesWorkingBinary verifies that ClaudeFakeBin creates
+// a shell script that can be executed.
+func TestClaudeFakeBin_ProducesWorkingBinary(t *testing.T) {
+	dir := t.TempDir()
+	binPath := ClaudeFakeBin(t, dir)
+
+	if _, err := os.Stat(binPath); err != nil {
+		t.Fatalf("ClaudeFakeBin didn't create binary: %v", err)
+	}
+
+	info, _ := os.Stat(binPath)
+	if info.Mode()&0111 == 0 {
+		t.Error("ClaudeFakeBin binary is not executable")
+	}
+
+	log := ReadLog(t, dir, "claude")
+	if log != nil {
+		t.Errorf("expected empty log before any invocations, got %v", log)
+	}
+}
+
+// TestClaudeFakeBinWith_ValidatesOverrides verifies that ClaudeFakeBinWith
+// catches structurally invalid overrides at test time.
+func TestClaudeFakeBinWith_ValidatesOverrides(t *testing.T) {
+	dir := t.TempDir()
+
+	_ = ClaudeFakeBinWith(t, dir, map[string]string{
+		"-p": "Custom test response",
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, "claude")); err != nil {
+		t.Errorf("ClaudeFakeBinWith didn't create binary for valid overrides: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Git canonical fake tests
+// ---------------------------------------------------------------------------
+
+// TestGitCanonicalFakes_InternalConsistency validates that the Git
+// canonical fake registry is self-consistent.
+func TestGitCanonicalFakes_InternalConsistency(t *testing.T) {
+	canon := GitCanonicalFakes()
+
+	for key, entry := range canon {
+		t.Run(key, func(t *testing.T) {
+			switch entry.Kind {
+			case "text":
+				if strings.TrimSpace(entry.Response) == "" {
+					t.Errorf("canonical entry %q claims text but response is empty", key)
+				}
+			case "empty":
+				// Empty is valid — e.g., status --porcelain for clean repo.
+			default:
+				t.Errorf("canonical entry %q has unknown kind %q", key, entry.Kind)
+			}
+		})
+	}
+}
+
+// TestGitFakeResponses_StructuralCompliance validates that GitFakeResponses
+// returns a well-formed response map.
+func TestGitFakeResponses_StructuralCompliance(t *testing.T) {
+	responses := GitFakeResponses()
+
+	if len(responses) == 0 {
+		t.Fatal("GitFakeResponses returned empty map")
+	}
+
+	// Verify version command is present.
+	if _, ok := responses["--version"]; !ok {
+		t.Error("GitFakeResponses missing required command --version")
+	}
+}
+
+// TestGitFakeBin_ProducesWorkingBinary verifies that GitFakeBin creates
+// a shell script that can be executed.
+func TestGitFakeBin_ProducesWorkingBinary(t *testing.T) {
+	dir := t.TempDir()
+	binPath := GitFakeBin(t, dir)
+
+	if _, err := os.Stat(binPath); err != nil {
+		t.Fatalf("GitFakeBin didn't create binary: %v", err)
+	}
+
+	info, _ := os.Stat(binPath)
+	if info.Mode()&0111 == 0 {
+		t.Error("GitFakeBin binary is not executable")
+	}
+}
+
+// TestGitFakeBinWith_ValidatesOverrides verifies that GitFakeBinWith
+// works with valid overrides.
+func TestGitFakeBinWith_ValidatesOverrides(t *testing.T) {
+	dir := t.TempDir()
+
+	_ = GitFakeBinWith(t, dir, map[string]string{
+		"--version": "git version 2.46.0",
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, "git")); err != nil {
+		t.Errorf("GitFakeBinWith didn't create binary for valid overrides: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ClassifyClaudeArgs tests
+// ---------------------------------------------------------------------------
+
+func TestClassifyClaudeArgs(t *testing.T) {
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--version"}, "--version"},
+		{[]string{"-p", "Generate a title"}, "-p"},
+		{[]string{"-p", "--verbose", "--output-format", "stream-json", "--include-partial-messages", "Resolve conflicts"}, "stream-json"},
+		{nil, ""},
+	}
+	for _, tt := range tests {
+		got := ClassifyClaudeArgs(tt.args)
+		if got != tt.want {
+			t.Errorf("ClassifyClaudeArgs(%v) = %q, want %q", tt.args, got, tt.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ClassifyGitArgs tests
+// ---------------------------------------------------------------------------
+
+func TestClassifyGitArgs(t *testing.T) {
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--version"}, "--version"},
+		{[]string{"rev-parse", "--abbrev-ref", "HEAD"}, "rev-parse --abbrev-ref HEAD"},
+		{[]string{"rev-parse", "--show-toplevel"}, "rev-parse --show-toplevel"},
+		{[]string{"rev-parse", "abc123"}, "rev-parse"},
+		{[]string{"rev-parse", "--verify", "main"}, "rev-parse"},
+		{[]string{"status", "--porcelain", "--untracked-files=no"}, "status --porcelain"},
+		{[]string{"log", "--oneline", "main..feat"}, "log --oneline"},
+		{[]string{"diff", "--stat", "main..feat"}, "diff --stat"},
+		{[]string{"diff", "--name-only", "--diff-filter=U"}, "diff --name-only"},
+		{[]string{"rev-list", "--count", "main..feat"}, "rev-list --count"},
+		{[]string{"rev-list", "--reverse", "main..feat"}, "rev-list --reverse"},
+		{[]string{"merge-base", "main", "feat"}, "merge-base"},
+		{[]string{"merge-base", "--is-ancestor", "abc", "def"}, "merge-base --is-ancestor"},
+		{[]string{"checkout", "main"}, "checkout"},
+		{[]string{"push", "--force-with-lease", "origin", "feat"}, "push"},
+		{[]string{"fetch", "origin"}, "fetch"},
+		{[]string{"symbolic-ref", "refs/remotes/origin/HEAD"}, "symbolic-ref"},
+		{nil, ""},
+	}
+	for _, tt := range tests {
+		got := ClassifyGitArgs(tt.args)
+		if got != tt.want {
+			t.Errorf("ClassifyGitArgs(%v) = %q, want %q", tt.args, got, tt.want)
+		}
 	}
 }
