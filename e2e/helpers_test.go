@@ -44,8 +44,8 @@ var runID string
 
 // Per-test recorders, keyed by t.Name().
 var sdfSpies sync.Map  // sdf CLI invocations
-var gitSpies sync.Map  // git CLI invocations (test-level)
-var ghSpies sync.Map   // gh CLI invocations (test-level, e.g. assertions)
+var gitSpies sync.Map  // git CLI invocations
+var ghSpies sync.Map   // gh CLI invocations from tests (assertions/verification)
 var fullSpies sync.Map // combined log of all invocations
 
 // recordingsBaseDir returns the path to the recordings root directory.
@@ -70,7 +70,7 @@ func setupRecording(t *testing.T) {
 	// Per-tool recorders + combined full log
 	sdfRec := spy.NewRecorder(testDir, "sdf")
 	gitRec := spy.NewRecorder(testDir, "git")
-	ghRec := spy.NewRecorder(testDir, "gh-test")
+	ghRec := spy.NewRecorder(testDir, "gh_assertions")
 	fullRec := spy.NewRecorder(testDir, "full")
 
 	sdfSpies.Store(t.Name(), sdfRec)
@@ -99,9 +99,14 @@ func spyFor(m *sync.Map, t *testing.T) *spy.Recorder {
 }
 
 // recordInvocation records to both the per-tool spy and the full combined log.
+// The binary name from the per-tool recorder is used in the full log entry.
 func recordInvocation(t *testing.T, toolSpies *sync.Map, args []string, output string, exitCode int) {
-	spyFor(toolSpies, t).Record(args, output, exitCode)
-	spyFor(&fullSpies, t).Record(args, output, exitCode)
+	toolRec := spyFor(toolSpies, t)
+	toolRec.Record(args, output, exitCode)
+	// Write to full log with the correct binary name (not "full").
+	if fullRec := spyFor(&fullSpies, t); fullRec != nil && toolRec != nil {
+		fullRec.RecordAs(toolRec.Name(), args, output, exitCode)
+	}
 }
 
 // TestMain runs global setup/teardown for the E2E suite.

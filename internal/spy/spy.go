@@ -43,13 +43,29 @@ func NewRecorder(dir, binary string) *Recorder {
 	return &Recorder{file: f, name: binary}
 }
 
+// Name returns the binary name this recorder was created with.
+// Returns "" on nil receiver.
+func (r *Recorder) Name() string {
+	if r == nil {
+		return ""
+	}
+	return r.name
+}
+
 // Record appends an invocation to the log. No-op on nil receiver.
 func (r *Recorder) Record(args []string, stdout string, exitCode int) {
+	r.RecordAs(r.name, args, stdout, exitCode)
+}
+
+// RecordAs appends an invocation with an explicit binary name.
+// Use this when a single recorder (e.g., full.jsonl) captures
+// invocations from multiple tools. No-op on nil receiver.
+func (r *Recorder) RecordAs(binary string, args []string, stdout string, exitCode int) {
 	if r == nil {
 		return
 	}
 	inv := Invocation{
-		Binary:    r.name,
+		Binary:    binary,
 		Args:      args,
 		Stdout:    stdout,
 		ExitCode:  exitCode,
