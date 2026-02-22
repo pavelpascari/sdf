@@ -44,7 +44,7 @@ var runID string
 
 // Per-test recorders, keyed by t.Name().
 var sdfSpies sync.Map  // sdf CLI invocations
-var gitSpies sync.Map  // git CLI invocations
+var gitSpies sync.Map  // git CLI invocations from tests (setup/assertions)
 var ghSpies sync.Map   // gh CLI invocations from tests (assertions/verification)
 var fullSpies sync.Map // combined log of all invocations
 
@@ -69,7 +69,7 @@ func setupRecording(t *testing.T) {
 
 	// Per-tool recorders + combined full log
 	sdfRec := spy.NewRecorder(testDir, "sdf")
-	gitRec := spy.NewRecorder(testDir, "git")
+	gitRec := spy.NewRecorder(testDir, "git_assertions")
 	ghRec := spy.NewRecorder(testDir, "gh_assertions")
 	fullRec := spy.NewRecorder(testDir, "full")
 
