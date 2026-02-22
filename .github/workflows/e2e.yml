@@ -36,8 +36,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build sdf
-        run: make build
+      - name: Build sdf (with spy recording)
+        run: make build-spy
 
       - name: Check E2E prerequisites
         run: |

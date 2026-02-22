@@ -9,25 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/pavelpascari/sdf/internal/spy"
 )
 
 // Binary is the name (or path) of the claude executable.
 // Tests can override this to point at a fake binary.
 var Binary = "claude"
-
-// Spy, when non-nil, records every invocation for later analysis.
-// Enable during E2E tests to capture real Claude API responses.
-var Spy *spy.Recorder
-var fullSpy *spy.Recorder
-
-func init() {
-	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
-		Spy = spy.NewRecorderFor(dir, "sdf", "claude")
-		fullSpy = spy.NewRecorder(dir, "full")
-	}
-}
 
 // Available returns true if the claude CLI is installed and accessible.
 func Available() bool {
@@ -53,14 +39,11 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 
-	if Spy != nil {
-		exitCode := 0
-		if err != nil {
-			exitCode = 1
-		}
-		Spy.Record([]string{"-p", prompt}, output, exitCode)
-		fullSpy.RecordAs("sdf", "claude", []string{"-p", prompt}, output, exitCode)
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
 	}
+	recordRun([]string{"-p", prompt}, output, exitCode)
 
 	if err != nil {
 		return output, fmt.Errorf("claude %s: %s", sessionName, output)

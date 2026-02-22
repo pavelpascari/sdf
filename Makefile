@@ -9,6 +9,11 @@ BUILD    := go build -ldflags "$(LDFLAGS)" -trimpath
 build:
 	$(BUILD) -o bin/$(BINARY) .
 
+# Build with spy recording enabled (for E2E tests)
+.PHONY: build-spy
+build-spy:
+	$(BUILD) -tags spyrecord -o bin/$(BINARY) .
+
 # Run the binary
 .PHONY: run
 run: build
@@ -43,7 +48,7 @@ test-golden-update:
 
 # E2E tests against a real GitHub repo (requires SDF_E2E_REPO and GH_TOKEN)
 .PHONY: test-e2e
-test-e2e:
+test-e2e: build-spy
 	go test -tags e2e -v -count=1 -timeout 10m ./e2e/...
 
 # Run vet and static checks
@@ -102,6 +107,7 @@ install:
 help:
 	@echo "sdf build targets:"
 	@echo "  make build      Build for current platform → bin/sdf"
+	@echo "  make build-spy  Build with spy recording (for E2E tests)"
 	@echo "  make dist       Cross-compile for all platforms → dist/"
 	@echo "  make build-for OS=linux ARCH=arm64"
 	@echo "                  Build for a specific platform → bin/sdf-<os>-<arch>"
