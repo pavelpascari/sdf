@@ -42,8 +42,11 @@ var withClaude = flag.Bool("with-claude", false, "include tests that call the Cl
 // Format: "2006-01-02T15-04-05Z-<random>" (human-readable timestamp + uniquifier).
 var runID string
 
-// sdfSpies stores per-test sdf recorders, keyed by t.Name().
-var sdfSpies sync.Map
+// Per-test recorders, keyed by t.Name().
+var sdfSpies sync.Map  // sdf CLI invocations
+var gitSpies sync.Map  // git CLI invocations (test-level)
+var ghSpies sync.Map   // gh CLI invocations (test-level, e.g. assertions)
+var fullSpies sync.Map // combined log of all invocations
 
 // recordingsBaseDir returns the path to the recordings root directory.
 func recordingsBaseDir() string {
@@ -53,8 +56,9 @@ func recordingsBaseDir() string {
 
 // setupRecording creates a per-test recording directory at
 // e2e/testdata/recordings/<runID>/<testName>/ and configures spy
-// recording for both sdf (via per-test recorder) and gh/claude
-// (via SDF_SPY_DIR env var inherited by child processes).
+// recording for sdf, git (via per-test recorders), gh/claude
+// (via SDF_SPY_DIR env var inherited by child processes), and
+// a combined full.jsonl log of all invocations in order.
 func setupRecording(t *testing.T) {
 	t.Helper()
 	testDir := filepath.Join(recordingsBaseDir(), runID, t.Name())
@@ -63,21 +67,41 @@ func setupRecording(t *testing.T) {
 	// gh/claude recording: child sdf processes read this env var in init()
 	t.Setenv("SDF_SPY_DIR", testDir)
 
-	// sdf recording: per-test recorder stored in sync.Map
-	rec := spy.NewRecorder(testDir, "sdf")
-	sdfSpies.Store(t.Name(), rec)
+	// Per-tool recorders + combined full log
+	sdfRec := spy.NewRecorder(testDir, "sdf")
+	gitRec := spy.NewRecorder(testDir, "git")
+	ghRec := spy.NewRecorder(testDir, "gh-test")
+	fullRec := spy.NewRecorder(testDir, "full")
+
+	sdfSpies.Store(t.Name(), sdfRec)
+	gitSpies.Store(t.Name(), gitRec)
+	ghSpies.Store(t.Name(), ghRec)
+	fullSpies.Store(t.Name(), fullRec)
+
 	t.Cleanup(func() {
-		rec.Close()
+		sdfRec.Close()
+		gitRec.Close()
+		ghRec.Close()
+		fullRec.Close()
 		sdfSpies.Delete(t.Name())
+		gitSpies.Delete(t.Name())
+		ghSpies.Delete(t.Name())
+		fullSpies.Delete(t.Name())
 	})
 }
 
-// sdfSpyFor returns the per-test sdf recorder. Nil-safe fallback.
-func sdfSpyFor(t *testing.T) *spy.Recorder {
-	if v, ok := sdfSpies.Load(t.Name()); ok {
+// spyFor returns the per-test recorder for the given tool. Nil-safe fallback.
+func spyFor(m *sync.Map, t *testing.T) *spy.Recorder {
+	if v, ok := m.Load(t.Name()); ok {
 		return v.(*spy.Recorder)
 	}
 	return nil
+}
+
+// recordInvocation records to both the per-tool spy and the full combined log.
+func recordInvocation(t *testing.T, toolSpies *sync.Map, args []string, output string, exitCode int) {
+	spyFor(toolSpies, t).Record(args, output, exitCode)
+	spyFor(&fullSpies, t).Record(args, output, exitCode)
 }
 
 // TestMain runs global setup/teardown for the E2E suite.
@@ -189,7 +213,7 @@ func runSDF(t *testing.T, dir string, args ...string) string {
 	if err != nil {
 		exitCode = 1
 	}
-	sdfSpyFor(t).Record(args, output, exitCode)
+	recordInvocation(t, &sdfSpies, args, output, exitCode)
 	if err != nil {
 		t.Fatalf("sdf %s failed:\n%s", strings.Join(args, " "), output)
 	}
@@ -208,7 +232,7 @@ func runSdfMayFail(t *testing.T, dir string, args ...string) (string, error) {
 	if err != nil {
 		exitCode = 1
 	}
-	sdfSpyFor(t).Record(args, output, exitCode)
+	recordInvocation(t, &sdfSpies, args, output, exitCode)
 	return output, err
 }
 
@@ -218,7 +242,13 @@ func runGitMayFail(t *testing.T, dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
+	output := strings.TrimSpace(string(out))
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	recordInvocation(t, &gitSpies, args, output, exitCode)
+	return output, err
 }
 
 // runGit executes a git command in the given directory.
@@ -228,6 +258,11 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	recordInvocation(t, &gitSpies, args, output, exitCode)
 	if err != nil {
 		t.Fatalf("git %s failed:\n%s", strings.Join(args, " "), output)
 	}
@@ -241,6 +276,11 @@ func runGH(t *testing.T, dir string, args ...string) string {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	recordInvocation(t, &ghSpies, args, output, exitCode)
 	if err != nil {
 		t.Fatalf("gh %s failed:\n%s", strings.Join(args, " "), output)
 	}
