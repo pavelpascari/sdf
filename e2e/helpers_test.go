@@ -31,9 +31,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
 
 var withClaude = flag.Bool("with-claude", false, "include tests that call the Claude API")
+
+// sdfSpy records all sdf CLI invocations during E2E tests.
+// Initialized in TestMain; nil-safe (no-op when not set).
+var sdfSpy *spy.Recorder
 
 // TestMain runs global setup/teardown for the E2E suite.
 // After all tests complete (pass or fail), it sweeps stale e2e-*
@@ -55,8 +61,11 @@ func TestMain(m *testing.M) {
 	recDir := recordingsDir()
 	os.MkdirAll(recDir, 0755)
 	os.Setenv("SDF_SPY_DIR", recDir)
+	sdfSpy = spy.NewRecorder(recDir, "sdf")
 
 	code := m.Run()
+
+	sdfSpy.Close()
 
 	if repo := os.Getenv("SDF_E2E_REPO"); repo != "" {
 		sweepStaleResources(repo)
@@ -151,6 +160,11 @@ func runSDF(t *testing.T, dir string, args ...string) string {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	sdfSpy.Record(args, output, exitCode)
 	if err != nil {
 		t.Fatalf("sdf %s failed:\n%s", strings.Join(args, " "), output)
 	}
@@ -164,7 +178,13 @@ func runSdfMayFail(t *testing.T, dir string, args ...string) (string, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
+	output := strings.TrimSpace(string(out))
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	sdfSpy.Record(args, output, exitCode)
+	return output, err
 }
 
 // runGitMayFail executes a git command and returns output + error (does not fail the test).
