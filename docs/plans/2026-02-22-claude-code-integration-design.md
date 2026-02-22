@@ -21,10 +21,12 @@ Claude knows its own skill format, its own rules format, its own settings schema
 
 ```
 sdf ai intro           Print a prompt that introduces SDF and asks Claude to save a skill
-sdf ai setup           Print a prompt that asks Claude to set up full integration
-sdf ai context         Print current stack context in a Claude-friendly format
-sdf ai status          Print stack state as a prompt Claude can reason about
+sdf ai setup           Print a prompt that asks Claude to set up full integration (skills + hooks)
 ```
+
+That's it. Two commands.
+
+There is no `sdf ai context` or `sdf ai status`. Claude can run `sdf status` and `sdf context show` directly — the intro prompt teaches it which commands to run and when. Wrapping existing command output in a "Claude-friendly" format is unnecessary duplication; Claude can read CLI output just fine.
 
 These commands don't write any files. They print text to stdout. The developer pastes the output into Claude Code (or pipes it), and Claude takes action.
 
@@ -45,8 +47,10 @@ SDF prints a carefully crafted prompt to stdout. The developer pastes it into Cl
 1. **What SDF is** — one paragraph
 2. **The rules** — what to do and what NOT to do (use `sdf branch` not `git checkout -b`, etc.)
 3. **Command reference** — every command with flags and purpose
-4. **Current state** — all stacks in this repo, their branches, PR numbers, sync status
-5. **The ask** — "Save a Claude Code skill for yourself so you remember this in future sessions. Include the rules, the command reference, and the workflow."
+4. **When to run what** — which commands to use to understand state, and when to run them
+5. **The ask** — "Save a Claude Code skill for yourself so you remember this in future sessions."
+
+The prompt does NOT include current stack state. Instead, it tells Claude to run `sdf status` itself whenever it needs to understand the stack. This keeps the prompt static (cacheable, committable) and ensures Claude always sees live state rather than a stale snapshot.
 
 #### Example output
 
@@ -73,7 +77,6 @@ part of an SDF stack:
   branch and adds navigation links
 - Use `sdf merge` instead of `gh pr merge` — it retargets the next PR and
   syncs the remaining stack
-- Run `sdf status` before starting work to understand the current state
 - After amending an earlier branch, run `sdf sync` to cascade changes forward
 
 ## Commands
@@ -91,31 +94,32 @@ part of an SDF stack:
 | `sdf fetch` | Discover existing PR chains from GitHub |
 | `sdf doctor` | Check that git, gh, and claude are available |
 
-## Current State
+## When to Run What
 
-Stack: auth-feature (base: main)
-  ✓  auth/db-schema     PR #142  merged
-  ●  auth/session-api   PR #143  open     in sync
-  ●  auth/ui-login      PR #144  open     needs sync
-
-Current branch: auth/session-api
+- **Starting a session:** Run `sdf status` to see all stacks, which branches
+  need syncing, and where you are in the stack.
+- **Before creating a branch:** Run `sdf status` to confirm you're on the
+  right branch (new branch inserts after current position).
+- **After pushing changes to an earlier branch:** Run `sdf sync` to cascade.
+- **After a PR is merged on GitHub:** Run `sdf sync` to rebase remaining
+  branches onto the new base.
+- **To understand the full stack context:** Run `sdf context show` to see
+  assembled intent docs for all ancestor branches.
 
 ## What To Do Now
 
 Please save a Claude Code skill for yourself that captures the rules above
 and the command reference so you remember how to work with SDF in future
-sessions in this repository. The skill should be saved to
-`.claude/skills/sdf/SKILL.md` using whatever format Claude Code skills
-currently use. Include:
+sessions in this repository. Include:
 1. The rules (what to use, what to avoid)
 2. The command reference table
-3. A note to run `sdf status` at the start of each session
+3. The "when to run what" guidance
 ```
 
 #### Why this works
 
 - **Claude writes the skill file** — it knows the current SKILL.md format with YAML frontmatter, allowed-tools, etc. better than SDF ever will
-- **Dynamic state is included** — Claude sees the actual stacks, not just a reference
+- **No stale state** — instead of embedding a snapshot, the prompt teaches Claude to run `sdf status` itself
 - **Zero maintenance** — if Claude Code changes its skill format, SDF doesn't need an update
 - **One command** — no setup wizard, no flags, no config. Just paste.
 - **Discoverable** — a developer who types `sdf ai` sees what's available
@@ -130,11 +134,11 @@ A more comprehensive version that asks Claude to set up everything:
 sdf ai setup
 ```
 
-Prints a prompt that asks Claude to:
+Prints everything from `sdf ai intro`, plus asks Claude to:
 
 1. **Create a skill** (same as `sdf ai intro`)
-2. **Create a `.claude/rules/sdf.md`** file with the rules and command reference — this persists across sessions without needing the skill
-3. **Set up a SessionStart hook** that runs `sdf status` at the start of each session, so Claude always sees the stack state
+2. **Create a `.claude/rules/sdf.md`** file with the rules — this loads automatically every session without needing the skill to fire
+3. **Set up a SessionStart hook** that runs `sdf status` at the start of each session, so Claude always sees the stack state without being asked
 4. **Set up a PreToolUse hook** that guards against raw git/gh commands on stack branches
 
 The prompt includes enough context for Claude to do all of this correctly, but Claude makes the formatting decisions.
@@ -162,45 +166,6 @@ don't overwrite other hooks that might already be configured.
 
 ---
 
-### `sdf ai context` — Stack Context for Claude
-
-Prints the assembled context for the current branch's stack. This is the same information that `sdf context show` would produce (from the DESIGN.md vision), formatted as a prompt:
-
-```
-sdf ai context
-```
-
-Useful when a developer wants to bring Claude up to speed mid-session:
-
-```
-Here is the full context for the stack I'm working on:
-[output of sdf ai context]
-```
-
-This reads all `.sdf/stacks/*.json` files and, if context docs exist (`.sdf/context/*.md`), assembles them into a unified view.
-
----
-
-### `sdf ai status` — Machine-Readable Stack State
-
-```
-sdf ai status
-```
-
-Prints `sdf status` output wrapped in a Claude-friendly frame:
-
-```
-This repository uses SDF for stacked PRs. Here is the current state:
-
-[sdf status output]
-
-Based on this state, the next recommended action is: [suggestion]
-```
-
-Lighter than `intro` — for when Claude already has the skill but needs a state refresh.
-
----
-
 ## Implementation
 
 ### What SDF Needs to Build
@@ -219,54 +184,45 @@ var aiIntroCmd = &cobra.Command{
     Use:   "intro",
     Short: "Print a prompt that introduces SDF to your AI assistant",
     Long:  `Outputs a prompt that teaches Claude (or any AI assistant) about SDF,
-including the command reference, rules, and current stack state. Paste the
-output into your AI assistant session. If using Claude Code, the prompt asks
-Claude to save a skill so it remembers SDF in future sessions.`,
+including the command reference, rules, and which commands to run when. Paste
+the output into your AI assistant session. If using Claude Code, the prompt
+asks Claude to save a skill so it remembers SDF in future sessions.`,
     RunE: runAIIntro,
 }
 
 var aiSetupCmd = &cobra.Command{
-    Use:   "intro",
+    Use:   "setup",
     Short: "Print a prompt that asks Claude to set up full SDF integration",
+    Long:  `Like intro, but also asks Claude to create rules files and hooks
+for automatic SDF awareness in every session.`,
     RunE: runAISetup,
-}
-
-var aiContextCmd = &cobra.Command{
-    Use:   "context",
-    Short: "Print assembled stack context for the current branch",
-    RunE: runAIContext,
-}
-
-var aiStatusCmd = &cobra.Command{
-    Use:   "status",
-    Short: "Print current stack state as a prompt",
-    RunE: runAIStatus,
 }
 ```
 
 #### 2. `internal/ai/prompt.go` — Prompt builders
 
-Each function builds a prompt string from:
-- A static template (the rules, command reference, workflow)
-- Dynamic state (loaded from `.sdf/stacks/*.json` via existing `internal/stack` package)
-- The current git branch (via existing `internal/git` package)
+Each function builds a prompt string from a static template (the rules, command reference, "when to run what" guidance). No dynamic state — the prompt teaches Claude to run `sdf status` and `sdf context show` itself.
 
 ```go
-// BuildIntroPrompt assembles the full introduction prompt.
-func BuildIntroPrompt(root string) (string, error) {
-    // 1. Load all stacks
-    // 2. Get current branch
-    // 3. Render static template + dynamic state
-    // 4. Append the "save a skill" instruction
-    return prompt, nil
+// BuildIntroPrompt assembles the introduction prompt.
+func BuildIntroPrompt() string {
+    // Static template: what SDF is, rules, commands, when to run what,
+    // instruction to save a skill
+    return prompt
+}
+
+// BuildSetupPrompt assembles the full setup prompt (intro + hooks + rules).
+func BuildSetupPrompt() string {
+    // BuildIntroPrompt() + hook setup instructions + rules file instructions
+    return prompt
 }
 ```
 
 #### 3. That's it
 
-No `.claude/` file generation. No YAML frontmatter templates. No settings.json merging. No MCP protocol implementation.
+No `.claude/` file generation. No YAML frontmatter templates. No settings.json merging. No MCP protocol implementation. No dynamic state loading.
 
-The entire feature is ~200 lines of Go: a command group and a prompt builder.
+The entire feature is ~150 lines of Go: a command group and a prompt template.
 
 ### What Claude Does (When the Developer Pastes the Prompt)
 
@@ -289,9 +245,9 @@ In future sessions:
 ### What we gain
 
 - **Zero coupling to Claude Code internals.** SDF doesn't need to know SKILL.md format, settings.json schema, or hook configuration syntax. Claude knows its own formats.
-- **Trivial implementation.** ~200 lines of prompt-building Go code vs. a full file generation system with format tracking, merging, and idempotency.
+- **Trivial implementation.** ~150 lines of prompt template Go code vs. a full file generation system with format tracking, merging, and idempotency.
 - **Works with any AI assistant.** The prompt output is plain text. It works with Claude Code, but also with any other AI tool that accepts text input.
-- **Always current.** The prompt includes live stack state from `.sdf/stacks/*.json`.
+- **No stale state.** The prompt teaches Claude to run `sdf status` itself rather than embedding a snapshot. Claude always sees live state.
 - **Maintainable.** When SDF adds a new command, updating the prompt template is a one-line change. No format migration needed.
 
 ### What we lose
@@ -351,30 +307,23 @@ The hook subcommands (`sdf hook guard-git`, `sdf hook post-update`) would still 
 
 ## Implementation Plan
 
-### Phase 1: `sdf ai intro` + `sdf ai status`
+### Phase 1: `sdf ai intro` + `sdf ai setup`
 
-1. Create `cmd/ai.go` with the command group
-2. Create `internal/ai/prompt.go` with `BuildIntroPrompt` and `BuildStatusPrompt`
-3. `BuildIntroPrompt` loads stacks, current branch, renders template
-4. Test: verify prompt includes command reference, rules, and dynamic state
+1. Create `cmd/ai.go` with the `ai` command group, `intro` and `setup` subcommands
+2. Create `internal/ai/prompt.go` with `BuildIntroPrompt` and `BuildSetupPrompt`
+3. Both are pure string templates — no dynamic state loading needed
+4. Test: verify prompts include command reference, rules, and "when to run what" guidance
 
-### Phase 2: `sdf ai setup` + `sdf ai context`
-
-1. Extend `internal/ai/prompt.go` with `BuildSetupPrompt` (adds hook/rules setup instructions)
-2. Implement `BuildContextPrompt` (assembles stack context docs if they exist)
-3. Test: verify setup prompt includes hook configuration instructions
-
-### Phase 3: `sdf ai export-*` (Deterministic Fallback)
-
-1. Add `sdf ai export-rules` and `sdf ai export-skill`
-2. These produce static files (SDF does need to know the format here, but it's opt-in)
-3. Test: verify exported files are valid
-
-### Phase 4: Hook Subcommands
+### Phase 2: Hook Subcommands (Optional)
 
 1. Implement `sdf hook guard-git` (reads stdin JSON, checks stack membership, exits 0 or 2)
-2. Implement `sdf hook post-update` (regenerates dynamic state in rules file)
-3. These are called by hooks that Claude (or the export) sets up
+2. These are called by hooks that Claude sets up when the developer runs `sdf ai setup`
+
+### Phase 3: Deterministic Fallback (Optional)
+
+1. Add `sdf ai export-rules` and `sdf ai export-skill`
+2. These produce static files for teams who want committed, reproducible integration
+3. Only path where SDF needs to know Claude Code file formats
 
 ---
 
@@ -382,8 +331,6 @@ The hook subcommands (`sdf hook guard-git`, `sdf hook post-update`) would still 
 
 1. **Should `sdf ai intro` output be copied to clipboard automatically?** On macOS (`pbcopy`), Linux (`xclip`), etc. Pro: one less step. Con: platform-specific, might overwrite clipboard.
 
-2. **Should there be a `--pipe` mode?** e.g., `sdf ai intro | claude -p` to send the prompt directly to Claude without pasting. This works for the `intro` case but not for `setup` (which needs Claude to create files, requiring interactive mode).
+2. **Naming: `sdf ai` vs `sdf claude` vs `sdf assist`?** `ai` is generic (works with any assistant). `claude` is specific (SDF already has a Claude dependency). Recommendation: `sdf ai` — keeps the door open for other assistants while being descriptive.
 
-3. **Should `sdf ai intro` detect if Claude Code is running and offer to inject directly?** Claude Code has no such API today, but it's worth noting as a future possibility.
-
-4. **Naming: `sdf ai` vs `sdf claude` vs `sdf assist`?** `ai` is generic (works with any assistant). `claude` is specific (SDF already has a Claude dependency). Recommendation: `sdf ai` — keeps the door open for other assistants while being descriptive.
+3. **Should the intro prompt be fully static or include the project's stack names?** The current design is fully static (teaches Claude to run `sdf status` itself). An argument for including stack names: Claude sees them immediately and can reference them without an extra command. An argument against: the prompt stays identical across sessions and repos, making it cacheable and committable as documentation.
