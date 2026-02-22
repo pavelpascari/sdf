@@ -25,6 +25,7 @@ import (
 //   - The new commit from main should be reachable from all branches
 func TestE2E_SyncAfterBaseAdvances(t *testing.T) {
 	dir := e2eRepo(t)
+	setupRecording(t)
 	prefix := testPrefix()
 
 	t.Cleanup(func() {
@@ -136,6 +137,7 @@ func TestE2E_SyncAfterBaseAdvances(t *testing.T) {
 //   - All PRs remain OPEN
 func TestE2E_InsertBranchMidStack(t *testing.T) {
 	dir := e2eRepo(t)
+	setupRecording(t)
 	prefix := testPrefix()
 
 	t.Cleanup(func() {

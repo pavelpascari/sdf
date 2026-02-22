@@ -18,6 +18,7 @@ import (
 // This test creates real branches and real PRs on the sandbox repo.
 func TestE2E_FullStackLifecycle(t *testing.T) {
 	dir := e2eRepo(t)
+	setupRecording(t)
 	prefix := testPrefix()
 
 	// Cleanup after test

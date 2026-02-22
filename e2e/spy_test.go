@@ -25,10 +25,8 @@ import (
 // are honest representations of the real API.
 func TestE2E_RecordAndValidate(t *testing.T) {
 	dir := e2eRepo(t)
+	setupRecording(t)
 	prefix := testPrefix()
-
-	// Spy recording is enabled globally by TestMain (SDF_SPY_DIR).
-	// This test runs a lifecycle and then validates the recordings.
 
 	t.Cleanup(func() {
 		runGit(t, dir, "checkout", "main")
@@ -64,7 +62,7 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 	runSDF(t, dir, "sync", "-y")
 
 	// --- Validate recordings ---
-	recordingPath := filepath.Join(recordingsDir(), "gh.jsonl")
+	recordingPath := filepath.Join(recordingsBaseDir(), runID, t.Name(), "gh.jsonl")
 	recordings := testutil.ReadRecordings(t, recordingPath)
 
 	t.Logf("Captured %d gh invocations", len(recordings))

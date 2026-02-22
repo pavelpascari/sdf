@@ -25,6 +25,7 @@ import (
 //   - PR#2 should still be OPEN with base=main
 func TestE2E_MergeRetargetOrdering(t *testing.T) {
 	dir := e2eRepo(t)
+	setupRecording(t)
 	prefix := testPrefix()
 
 	t.Cleanup(func() {
@@ -118,6 +119,7 @@ func TestE2E_MergeRetargetOrdering(t *testing.T) {
 // sdf sync correctly rebases remaining branches onto the new base.
 func TestE2E_MergeThenSync(t *testing.T) {
 	dir := e2eRepo(t)
+	setupRecording(t)
 	prefix := testPrefix()
 
 	t.Cleanup(func() {

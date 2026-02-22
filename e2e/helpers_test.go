@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,35 +38,59 @@ import (
 
 var withClaude = flag.Bool("with-claude", false, "include tests that call the Claude API")
 
-// sdfSpy records all sdf CLI invocations during E2E tests.
-// Initialized in TestMain; nil-safe (no-op when not set).
-var sdfSpy *spy.Recorder
+// runID identifies this test run. Set once in TestMain.
+// Format: "2006-01-02T15-04-05Z-<random>" (human-readable timestamp + uniquifier).
+var runID string
+
+// sdfSpies stores per-test sdf recorders, keyed by t.Name().
+var sdfSpies sync.Map
+
+// recordingsBaseDir returns the path to the recordings root directory.
+func recordingsBaseDir() string {
+	_, thisFile, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(thisFile), "testdata", "recordings")
+}
+
+// setupRecording creates a per-test recording directory at
+// e2e/testdata/recordings/<runID>/<testName>/ and configures spy
+// recording for both sdf (via per-test recorder) and gh/claude
+// (via SDF_SPY_DIR env var inherited by child processes).
+func setupRecording(t *testing.T) {
+	t.Helper()
+	testDir := filepath.Join(recordingsBaseDir(), runID, t.Name())
+	os.MkdirAll(testDir, 0755)
+
+	// gh/claude recording: child sdf processes read this env var in init()
+	t.Setenv("SDF_SPY_DIR", testDir)
+
+	// sdf recording: per-test recorder stored in sync.Map
+	rec := spy.NewRecorder(testDir, "sdf")
+	sdfSpies.Store(t.Name(), rec)
+	t.Cleanup(func() {
+		rec.Close()
+		sdfSpies.Delete(t.Name())
+	})
+}
+
+// sdfSpyFor returns the per-test sdf recorder. Nil-safe fallback.
+func sdfSpyFor(t *testing.T) *spy.Recorder {
+	if v, ok := sdfSpies.Load(t.Name()); ok {
+		return v.(*spy.Recorder)
+	}
+	return nil
+}
 
 // TestMain runs global setup/teardown for the E2E suite.
 // After all tests complete (pass or fail), it sweeps stale e2e-*
 // branches and PRs from the sandbox repo — catching orphans from
 // crashed or timed-out runs.
-// recordingsDir returns the path to the shared spy recordings directory.
-// Uses runtime.Caller to find the repo root relative to this file.
-func recordingsDir() string {
-	_, thisFile, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(thisFile), "testdata", "recordings")
-}
-
 func TestMain(m *testing.M) {
 	flag.Parse()
 
-	// Enable spy recording for ALL E2E tests.
-	// Child sdf processes inherit this env var and record gh/claude
-	// invocations to JSONL files in e2e/testdata/recordings/.
-	recDir := recordingsDir()
-	os.MkdirAll(recDir, 0755)
-	os.Setenv("SDF_SPY_DIR", recDir)
-	sdfSpy = spy.NewRecorder(recDir, "sdf")
+	// Generate a human-readable run ID for organizing recordings.
+	runID = fmt.Sprintf("%s-%04x", time.Now().UTC().Format("2006-01-02T15-04-05Z"), rand.Intn(0xFFFF))
 
 	code := m.Run()
-
-	sdfSpy.Close()
 
 	if repo := os.Getenv("SDF_E2E_REPO"); repo != "" {
 		sweepStaleResources(repo)
@@ -164,7 +189,7 @@ func runSDF(t *testing.T, dir string, args ...string) string {
 	if err != nil {
 		exitCode = 1
 	}
-	sdfSpy.Record(args, output, exitCode)
+	sdfSpyFor(t).Record(args, output, exitCode)
 	if err != nil {
 		t.Fatalf("sdf %s failed:\n%s", strings.Join(args, " "), output)
 	}
@@ -183,7 +208,7 @@ func runSdfMayFail(t *testing.T, dir string, args ...string) (string, error) {
 	if err != nil {
 		exitCode = 1
 	}
-	sdfSpy.Record(args, output, exitCode)
+	sdfSpyFor(t).Record(args, output, exitCode)
 	return output, err
 }
 

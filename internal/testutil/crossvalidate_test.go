@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
 
 // TestCrossValidateFakesAgainstRecordings reads persisted E2E spy recordings
@@ -14,29 +16,52 @@ import (
 // For JSON responses, it compares structural shapes (key sets).
 // For non-JSON responses, it validates the output format (URL, empty, etc.).
 //
-// This test gracefully skips when no recordings exist (E2E hasn't been run).
+// Scans all recording directories under e2e/testdata/recordings/<run>/<test>/gh.jsonl.
+// Gracefully skips when no recordings exist (E2E hasn't been run).
 // Run E2E first to populate recordings: make test-e2e
 func TestCrossValidateFakesAgainstRecordings(t *testing.T) {
 	// Locate recordings relative to this file: ../../e2e/testdata/recordings/
 	_, thisFile, _, _ := runtime.Caller(0)
-	recordingPath := filepath.Join(filepath.Dir(thisFile), "..", "..", "e2e", "testdata", "recordings", "gh.jsonl")
+	recordingsRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "e2e", "testdata", "recordings")
 
-	if _, err := os.Stat(recordingPath); os.IsNotExist(err) {
+	if _, err := os.Stat(recordingsRoot); os.IsNotExist(err) {
 		t.Skip("no E2E recordings found — run 'make test-e2e' first to populate recordings")
 	}
 
-	recordings := ReadRecordings(t, recordingPath)
-	if len(recordings) == 0 {
-		t.Skip("recording file is empty — run 'make test-e2e' first")
+	// Find all gh.jsonl files across run/test directories.
+	var ghFiles []string
+	filepath.Walk(recordingsRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.Name() == "gh.jsonl" && !info.IsDir() {
+			ghFiles = append(ghFiles, path)
+		}
+		return nil
+	})
+
+	if len(ghFiles) == 0 {
+		t.Skip("no gh.jsonl recordings found — run 'make test-e2e' first")
+	}
+
+	// Collect all recordings across files.
+	var allRecordings []spy.Invocation
+	for _, f := range ghFiles {
+		recordings := ReadRecordings(t, f)
+		allRecordings = append(allRecordings, recordings...)
+	}
+
+	if len(allRecordings) == 0 {
+		t.Skip("recording files are empty — run 'make test-e2e' first")
 	}
 
 	fakes := GHCanonicalFakes()
 	t.Logf("Loaded %d canonical fake entries", len(fakes))
-	t.Logf("Reading %d recorded invocations", len(recordings))
+	t.Logf("Reading %d recorded invocations from %d files", len(allRecordings), len(ghFiles))
 
 	var matched, unmatched int
 
-	for _, inv := range recordings {
+	for _, inv := range allRecordings {
 		if inv.ExitCode != 0 {
 			continue
 		}
@@ -74,9 +99,6 @@ func TestCrossValidateFakesAgainstRecordings(t *testing.T) {
 			}
 
 		case "empty":
-			// "empty" means the command's meaningful output is empty or
-			// non-structured. For version commands, we just check it
-			// succeeded (exit 0), which we already know at this point.
 			t.Logf("  [ok] %q exited 0 (empty/text kind)", key)
 		}
 	}
