@@ -15,6 +15,29 @@ This post walks through the testing strategy we built for [SDF](https://github.c
 
 We went from "run it manually and see if it works" to a system where our fakes are provably honest — where we can demonstrate, in CI, that our test doubles produce structurally compatible output to the real tools. Here's how we got there, and what we learned along the way.
 
+```
+                    ┌─────────────────────────────────────────────────────┐
+                    │                 The Five Layers                     │
+                    ├─────────────────────────────────────────────────────┤
+                    │                                                     │
+  Confidence ▲      │   Layer 5 ── Build Tags                            │
+             │      │       Isolate test infra from production binary     │
+             │      │                                                     │
+             │      │   Layer 4 ── Cross-Validation                      │
+             │      │       Prove fakes match real tool output            │
+             │      │                                                     │
+             │      │   Layer 3 ── Spy Recording                         │
+             │      │       Capture what the real tools actually return   │
+             │      │                                                     │
+             │      │   Layer 2 ── Binary Injection                      │
+             │      │       Swap real binaries for fakes in tests         │
+             │      │                                                     │
+             │      │   Layer 1 ── Fake Binaries                         │
+             │      │       Shell scripts that pretend to be git/gh      │
+             │      │                                                     │
+             └──────┴─────────────────────────────────────────────────────┘
+```
+
 ## The problem, concretely
 
 Consider a function that syncs a stack of PRs. In pseudocode:
@@ -89,6 +112,31 @@ func FakeBinFail(t *testing.T, dir, name, stderr string) string {
 
 Why shell scripts instead of Go mocks? Because your production code uses `exec.Command()`. It doesn't call a Go interface — it spawns a process. The fake needs to *be* a process. Shell scripts are the simplest thing that satisfies this constraint.
 
+Here's the flow at test time:
+
+```
+  Test                          Fake Binary                    Log File
+   │                           (shell script)                 (gh.log)
+   │                                │                             │
+   │  exec.Command("gh", ...)      │                             │
+   ├───────────────────────────────►│                             │
+   │                                │  echo "$ARGS" >> gh.log    │
+   │                                ├────────────────────────────►│
+   │                                │                             │
+   │                                │  case "$ARGS" in            │
+   │                                │    *"pr list"*) cat JSON    │
+   │                                │  esac                       │
+   │      ◄─────────────────────────┤                             │
+   │      canned JSON response      │                             │
+   │                                                              │
+   │  ReadLog("gh")                                               │
+   ├─────────────────────────────────────────────────────────────►│
+   │      ◄───────────────────────────────────────────────────────┤
+   │      ["pr list --state all"]                                 │
+   │                                                              │
+   ▼  Assert result + Assert invocations                          │
+```
+
 ## Layer 2: Binary injection
 
 Creating a fake binary is only half the problem. Your production code needs to *use* it instead of the real `git` or `gh`. This is where a small design decision pays off hugely.
@@ -118,6 +166,28 @@ func SetBinary(t *testing.T, target *string, fakePath string) {
 ```
 
 The `t.Cleanup` is critical — it restores the original value after the test, even if the test panics. Without it, one test's fake would leak into the next.
+
+```
+  Production                           Tests
+  ──────────                           ─────
+
+  var Binary = "gh"                    SetBinary(t, &Binary, "/tmp/fake-gh")
+       │                                    │
+       ▼                                    ▼
+  exec.Command("gh", ...)             exec.Command("/tmp/fake-gh", ...)
+       │                                    │
+       ▼                                    ▼
+  ┌─────────────┐                     ┌─────────────────┐
+  │   real gh    │                     │   fake gh       │
+  │  (via PATH)  │                     │  (shell script) │
+  └─────────────┘                     └─────────────────┘
+       │                                    │
+       ▼                                    ▼
+  GitHub API                           Canned JSON + log file
+                                            │
+                                       t.Cleanup restores
+                                       Binary = "gh"
+```
 
 Here's what a real test looks like with these two pieces combined:
 
@@ -234,6 +304,27 @@ The recording infrastructure distinguishes between two actors:
 
 This distinction matters because a single E2E test run interleaves both: the test sets up a git repo (testing actor), then runs `sdf sync` (sdf actor), then verifies the result (testing actor again). The combined `full.jsonl` log preserves the complete interleaved sequence, while per-tool logs (`git_sdf.jsonl`, `gh_testing.jsonl`) let you focus on one perspective.
 
+```
+  E2E Test Timeline                          Recorded To
+  ──────────────────                         ───────────
+
+  ▼ Test setup
+  │  git init                        ──────► git_testing.jsonl
+  │  git commit -m "initial"         ──────► git_testing.jsonl
+  │  git checkout -b feature-a       ──────► git_testing.jsonl     ──┐
+  │                                                                  │
+  ▼ sdf sync                                                         │
+  │  git log --oneline main..HEAD    ──────► git_sdf.jsonl           ├──► full.jsonl
+  │  gh pr list --json ...           ──────► gh_sdf.jsonl            │    (interleaved)
+  │  git rebase --onto main ...      ──────► git_sdf.jsonl           │
+  │  git push --force-with-lease     ──────► git_sdf.jsonl           │
+  │                                                                  │
+  ▼ Test verification                                                │
+  │  git log --oneline               ──────► git_testing.jsonl     ──┘
+  │
+  ▼ Done
+```
+
 After an E2E run, you get a directory like this:
 
 ```
@@ -250,6 +341,38 @@ These recordings are the ground truth. They capture exactly what `gh pr list` re
 ## Layer 4: Cross-validation
 
 Here's where it comes together. We have recordings of real API responses. We have fake binaries that return canned responses. The question is: **do they match?**
+
+```
+  Unit Tests                              E2E Tests
+  ──────────                              ─────────
+  Use fake binaries                       Use real git & gh
+       │                                       │
+       ▼                                       ▼
+  ┌──────────────────┐                ┌──────────────────┐
+  │  Fake Responses  │                │    Recordings    │
+  │                  │                │                  │
+  │  "pr list" ──►   │                │  "pr list" ──►   │
+  │  [{"number":10,  │                │  [{"number":847, │
+  │    "state":"OPEN" │                │    "state":"OPEN" │
+  │    ...}]         │                │    ...}]         │
+  └────────┬─────────┘                └────────┬─────────┘
+           │                                   │
+           │          JSONShape()               │
+           ▼                                   ▼
+    array[object{         ◄── compare ──►  array[object{
+      headRefName,                           headRefName,
+      number,                                number,
+      state,                                 state,
+      url}]                                  url}]
+
+           │                                   │
+           └───────────── match? ──────────────┘
+                            │
+                     ┌──────┴──────┐
+                     │  ✓  same    │  Fakes are honest
+                     │  ✗  differ  │  Fakes have drifted
+                     └─────────────┘
+```
 
 The bridge is a function that converts recordings into fake responses:
 
@@ -374,6 +497,31 @@ func recordRun(args []string, output string, exitCode int) {
 
 The production `run()` function calls `recordRun()` unconditionally. In a normal build, the compiler sees an empty function body and optimizes it away completely — zero runtime cost. When built with `-tags spyrecord`, the real recording kicks in.
 
+```
+  Source Files                       Compiled Binary
+  ────────────                       ───────────────
+
+  record_noop.go                     go build (default)
+  ┌──────────────────────┐           ┌───────────────────────┐
+  │ //go:build !spyrecord│    ──►    │  recordRun() { }      │
+  │ func recordRun() {}  │           │  ← inlined to nothing │
+  └──────────────────────┘           │                       │
+                                     │  No spy imports.      │
+  record_spy.go                      │  No JSONL writing.    │
+  ┌──────────────────────┐           │  Zero overhead.       │
+  │ //go:build spyrecord │           └───────────────────────┘
+  │ import "spy"         │
+  │ func recordRun() {   │           go build -tags spyrecord
+  │   spyRec.Record(...) │           ┌───────────────────────┐
+  │ }                    │    ──►    │  recordRun() {        │
+  └──────────────────────┘           │    spyRec.Record(...) │
+                                     │  }                    │
+  Only ONE file is                   │                       │
+  compiled per build.                │  Writes to JSONL.     │
+                                     │  Full recording.      │
+                                     └───────────────────────┘
+```
+
 ```makefile
 # Production build — no spy code compiled
 make build
@@ -420,5 +568,33 @@ The testing strategy for a CLI tool that shells out is fundamentally about build
 - **E2E tests** give you end-to-end confidence. They run against real GitHub repos, create real PRs, and verify the full workflow.
 
 Each layer is more expensive and slower than the last. You run unit tests on every save. You run E2E tests in CI. You cross-validate periodically to keep fakes honest. The trust gradient lets you move fast *and* be confident.
+
+```
+  Speed                                                    Confidence
+  ◄──────────────────────────────────────────────────────────────────►
+
+  ┌───────────────────┐
+  │ Unit tests        │  milliseconds     every save       fast
+  │ with fakes        │                                    feedback
+  └─────────┬─────────┘
+            │
+  ┌─────────▼─────────┐
+  │ Cross-validation  │  seconds          periodic         fakes are
+  │ shape comparison  │                                    honest
+  └─────────┬─────────┘
+            │
+  ┌─────────▼─────────┐
+  │ Spy recordings    │  seconds          on demand        ground
+  │ capture reality   │                                    truth
+  └─────────┬─────────┘
+            │
+  ┌─────────▼─────────┐
+  │ E2E tests         │  minutes          in CI            real
+  │ real git, real gh  │                                    workflows
+  └───────────────────┘
+
+  ◄──────────────────────────────────────────────────────────────────►
+  Cheap, fast, frequent                     Expensive, slow, thorough
+```
 
 The code for all of this is open source in the [SDF repository](https://github.com/pavelpascari/sdf). The testing infrastructure lives in `internal/spy/`, `internal/testutil/`, and `e2e/`. If you're building a CLI tool that shells out to external binaries, feel free to steal the pattern.
