@@ -149,25 +149,26 @@ func SetBinary(t *testing.T, target *string, fakePath string) {
 
 The `t.Cleanup` is critical — it restores the original value after the test, even if the test panics. Without it, one test's fake would leak into the next.
 
-```mermaid
-graph TD
-    subgraph Production
-        PB["Binary = gh"]
-        PE["exec.Command"]
-        PR["real gh via PATH"]
-        PA["GitHub API"]
-        PB --> PE --> PR --> PA
-    end
+```
+  Production                       Tests
+  ──────────                       ─────
 
-    subgraph Tests
-        TB["SetBinary to fakePath"]
-        TE["exec.Command"]
-        TR["fake gh script"]
-        TA["Canned JSON + log"]
-        TC["t.Cleanup restores"]
-        TB --> TE --> TR --> TA
-        TA -.-> TC
-    end
+  var Binary = "gh"                SetBinary(t, &Binary, fakePath)
+       │                                │
+       ▼                                ▼
+  exec.Command("gh", ...)          exec.Command(fakePath, ...)
+       │                                │
+       ▼                                ▼
+  ┌─────────────┐                  ┌─────────────────┐
+  │  real gh     │                  │  fake gh        │
+  │  (via PATH)  │                  │  (shell script) │
+  └─────────────┘                  └─────────────────┘
+       │                                │
+       ▼                                ▼
+  GitHub API                        Canned JSON + log
+                                        │
+                                   t.Cleanup restores
+                                   Binary = "gh"
 ```
 
 Here's what a real test looks like with these two pieces combined:
