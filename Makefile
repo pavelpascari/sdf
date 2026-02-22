@@ -14,10 +14,37 @@ build:
 run: build
 	./bin/$(BINARY) $(ARGS)
 
-# Run tests
+# ── Testing ───────────────────────────────────────────────────────
+
+# Run all tests (unit + property + golden, no network needed)
 .PHONY: test
 test:
-	go test ./...
+	go test -count=1 ./...
+
+# Unit tests only (skip property-based tests)
+.PHONY: test-unit
+test-unit:
+	go test -count=1 -skip TestProperty ./...
+
+# Property-based invariant tests
+.PHONY: test-property
+test-property:
+	go test -count=1 -run TestProperty ./...
+
+# Golden file snapshot tests
+.PHONY: test-golden
+test-golden:
+	go test -count=1 -run 'Golden|TestBuildStackNav|TestReplaceStackNav|TestReplaceDescription' ./cmd/...
+
+# Regenerate golden files after intentional output changes
+.PHONY: test-golden-update
+test-golden-update:
+	go test -count=1 -run 'Golden|TestBuildStackNav|TestReplaceStackNav|TestReplaceDescription' ./cmd -args -update
+
+# E2E tests against a real GitHub repo (requires SDF_E2E_REPO and GH_TOKEN)
+.PHONY: test-e2e
+test-e2e:
+	go test -tags e2e -v -count=1 -timeout 10m ./e2e/...
 
 # Run vet and static checks
 .PHONY: vet
@@ -79,7 +106,12 @@ help:
 	@echo "  make build-for OS=linux ARCH=arm64"
 	@echo "                  Build for a specific platform → bin/sdf-<os>-<arch>"
 	@echo "  make install    Install to GOPATH/bin"
-	@echo "  make test       Run tests"
+	@echo "  make test              Run all tests (unit + property + golden)"
+	@echo "  make test-unit         Unit tests only (skip property-based)"
+	@echo "  make test-property     Property-based invariant tests"
+	@echo "  make test-golden       Golden file snapshot tests"
+	@echo "  make test-golden-update  Regenerate golden files"
+	@echo "  make test-e2e          E2E tests (needs SDF_E2E_REPO + GH_TOKEN)"
 	@echo "  make vet        Run go vet"
 	@echo "  make fmt        Format code"
 	@echo "  make clean      Remove build artifacts"

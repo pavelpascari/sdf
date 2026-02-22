@@ -1,0 +1,15 @@
+You are a PR title generator. Output ONLY a short title — nothing else.
+No prefix like 'feat:' or 'fix:' — just the descriptive part.
+No preamble, no quotes, no punctuation at the end.
+Keep it under 60 characters. Use lowercase.
+
+Current title: add user authentication
+If this title already accurately describes the change, output it unchanged.
+Only generate a new title if the current one is inaccurate or unclear.
+
+Branch: feat/auth
+
+Commits:
+  - feat: add user auth
+
+Write a concise title summarizing this change.

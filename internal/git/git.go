@@ -7,13 +7,41 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
+
+// Binary is the name (or path) of the git executable.
+// Tests can override this to point at a fake binary.
+var Binary = "git"
+
+// Spy, when non-nil, records every invocation for later analysis.
+// Enable during E2E tests to capture real git operations.
+var Spy *spy.Recorder
+var fullSpy *spy.Recorder
+
+func init() {
+	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
+		Spy = spy.NewRecorderFor(dir, "sdf", "git")
+		fullSpy = spy.NewRecorder(dir, "full")
+	}
+}
 
 // run executes a git command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command(Binary, args...)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+
+	if Spy != nil {
+		exitCode := 0
+		if err != nil {
+			exitCode = 1
+		}
+		Spy.Record(args, output, exitCode)
+		fullSpy.RecordAs("sdf", "git", args, output, exitCode)
+	}
+
 	if err != nil {
 		return output, fmt.Errorf("git %s: %s", strings.Join(args, " "), output)
 	}

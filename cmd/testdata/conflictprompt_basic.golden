@@ -1,0 +1,21 @@
+You are resolving conflicts during a stack rebase.
+
+=== UPSTREAM CHANGE SUMMARY ===
+ auth.go | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+=== BRANCH PR DESCRIPTION ===
+This PR adds JWT-based authentication for the API layer.
+
+=== CONFLICTS ===
+File: auth.go
+```
+<<<<<<< HEAD
+func Login() { /* old */ }
+=======
+func Login() { /* new */ }
+>>>>>>> feat/auth
+```
+
+Resolve all conflicts. For each file output the complete resolved content in a
+fenced code block with the filename: ```<lang> <filename>

@@ -4,9 +4,21 @@ package gh
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/pavelpascari/sdf/internal/spy"
 )
+
+var fullSpy *spy.Recorder
+
+func init() {
+	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
+		Spy = spy.NewRecorderFor(dir, "sdf", "gh")
+		fullSpy = spy.NewRecorder(dir, "full")
+	}
+}
 
 // PRInfo represents pull request information from gh.
 type PRInfo struct {
@@ -19,11 +31,29 @@ type PRInfo struct {
 	StatusChecks  string `json:"statusCheckRollup"`
 }
 
+// Binary is the name (or path) of the gh executable.
+// Tests can override this to point at a fake binary.
+var Binary = "gh"
+
+// Spy, when non-nil, records every invocation for later analysis.
+// Enable during E2E tests to capture real API responses.
+var Spy *spy.Recorder
+
 // run executes a gh command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
-	cmd := exec.Command("gh", args...)
+	cmd := exec.Command(Binary, args...)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
+
+	if Spy != nil {
+		exitCode := 0
+		if err != nil {
+			exitCode = 1
+		}
+		Spy.Record(args, output, exitCode)
+		fullSpy.RecordAs("sdf", "gh", args, output, exitCode)
+	}
+
 	if err != nil {
 		return output, fmt.Errorf("gh %s: %s", strings.Join(args, " "), output)
 	}
@@ -32,7 +62,7 @@ func run(args ...string) (string, error) {
 
 // Available returns true if the gh CLI is installed and accessible.
 func Available() bool {
-	_, err := exec.LookPath("gh")
+	_, err := exec.LookPath(Binary)
 	return err == nil
 }
 

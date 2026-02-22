@@ -1,0 +1,7 @@
+<!-- sdf:stack-nav -->
+---
+Stack: `auth-feature`
+1. https://github.com/test/repo/pull/10
+2. https://github.com/test/repo/pull/11 ◀ this PR
+3. https://github.com/test/repo/pull/12
+<!-- /sdf:stack-nav -->

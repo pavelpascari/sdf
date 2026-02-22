@@ -1,0 +1,7 @@
+<!-- sdf:description -->
+This PR adds the database schema for user authentication.
+<!-- /sdf:description -->
+
+Part of stack: **auth**
+
+Base: `main`
