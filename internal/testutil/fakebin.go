@@ -116,3 +116,100 @@ func SetBinary(t *testing.T, target *string, fakePath string) {
 	t.Cleanup(func() { *target = orig })
 }
 
+// GHFakeBin creates a fake gh binary backed by canonical responses from
+// GHCanonicalFakes. The returned binary produces structurally correct
+// output for all known gh commands (pr list, pr view, pr create, etc.).
+//
+// This makes fake binaries structurally self-enforcing: you get correct
+// JSON shapes by default, without needing E2E cross-validation to catch drift.
+//
+// Usage:
+//
+//	dir := t.TempDir()
+//	fake := testutil.GHFakeBin(t, dir)
+//	testutil.SetBinary(t, &gh.Binary, fake)
+func GHFakeBin(t *testing.T, dir string) string {
+	t.Helper()
+	return FakeBin(t, dir, "gh", GHFakeResponses())
+}
+
+// GHFakeBinWith creates a fake gh binary backed by canonical responses
+// with test-specific overrides. Overrides are validated against the
+// canonical response shapes — if a test provides a "pr list" response
+// with the wrong JSON structure, the test fails immediately rather than
+// silently producing incorrect behavior.
+//
+// Usage:
+//
+//	dir := t.TempDir()
+//	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
+//	    "pr list": `[{"number":10,"headRefName":"branchA","state":"OPEN","baseRefName":"main","url":""}]`,
+//	})
+//	testutil.SetBinary(t, &gh.Binary, fake)
+func GHFakeBinWith(t *testing.T, dir string, overrides map[string]string) string {
+	t.Helper()
+	responses := MustGHFakeResponses(t, overrides)
+	return FakeBin(t, dir, "gh", responses)
+}
+
+// ClaudeFakeBin creates a fake claude binary backed by canonical responses
+// from ClaudeCanonicalFakes. The returned binary produces correct output
+// for all known claude commands (--version, -p prompt, stream-json).
+//
+// Usage:
+//
+//	dir := t.TempDir()
+//	fake := testutil.ClaudeFakeBin(t, dir)
+//	testutil.SetBinary(t, &claude.Binary, fake)
+func ClaudeFakeBin(t *testing.T, dir string) string {
+	t.Helper()
+	return FakeBin(t, dir, "claude", ClaudeFakeResponses())
+}
+
+// ClaudeFakeBinWith creates a fake claude binary backed by canonical
+// responses with test-specific overrides.
+//
+// Usage:
+//
+//	dir := t.TempDir()
+//	fake := testutil.ClaudeFakeBinWith(t, dir, map[string]string{
+//	    "-p": "Custom response for this test",
+//	})
+//	testutil.SetBinary(t, &claude.Binary, fake)
+func ClaudeFakeBinWith(t *testing.T, dir string, overrides map[string]string) string {
+	t.Helper()
+	responses := MustClaudeFakeResponses(t, overrides)
+	return FakeBin(t, dir, "claude", responses)
+}
+
+// GitFakeBin creates a fake git binary backed by canonical responses
+// from GitCanonicalFakes. Most git tests use real git in temp directories;
+// this is for tests that need to avoid real git (e.g., doctor tests,
+// version checks).
+//
+// Usage:
+//
+//	dir := t.TempDir()
+//	fake := testutil.GitFakeBin(t, dir)
+//	testutil.SetBinary(t, &git.Binary, fake)
+func GitFakeBin(t *testing.T, dir string) string {
+	t.Helper()
+	return FakeBin(t, dir, "git", GitFakeResponses())
+}
+
+// GitFakeBinWith creates a fake git binary backed by canonical responses
+// with test-specific overrides.
+//
+// Usage:
+//
+//	dir := t.TempDir()
+//	fake := testutil.GitFakeBinWith(t, dir, map[string]string{
+//	    "--version": "git version 2.46.0",
+//	})
+//	testutil.SetBinary(t, &git.Binary, fake)
+func GitFakeBinWith(t *testing.T, dir string, overrides map[string]string) string {
+	t.Helper()
+	responses := MustGitFakeResponses(t, overrides)
+	return FakeBin(t, dir, "git", responses)
+}
+

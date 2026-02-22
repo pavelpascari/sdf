@@ -9,9 +9,7 @@ import (
 
 func TestRunPrompt_ReturnsFakeResponse(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "claude", map[string]string{
-		"-p": "This is a generated PR title",
-	})
+	fake := testutil.ClaudeFakeBin(t, dir)
 	testutil.SetBinary(t, &Binary, fake)
 
 	result, err := RunPrompt("test-session", "Generate a title for this PR")
@@ -35,9 +33,7 @@ func TestRunPrompt_ReturnsFakeResponse(t *testing.T) {
 
 func TestVersion_ReturnsFakeVersion(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "claude", map[string]string{
-		"--version": "claude-code 1.0.0",
-	})
+	fake := testutil.ClaudeFakeBin(t, dir)
 	testutil.SetBinary(t, &Binary, fake)
 
 	ver, err := Version()
