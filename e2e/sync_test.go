@@ -63,6 +63,13 @@ func TestE2E_SyncAfterBaseAdvances(t *testing.T) {
 		t.Logf("PR created for %s: %s", br, out)
 	}
 
+	// Verify: 3 nodes with PRs, all open
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/alpha", HasPR: true, Status: "open"},
+		{BranchSuffix: "/beta", HasPR: true, Status: "open"},
+		{BranchSuffix: "/gamma", HasPR: true, Status: "open"},
+	})
+
 	// --- Advance main: simulate another PR merging ---
 	t.Log("Advancing main with a new commit")
 	runGit(t, dir, "checkout", "main")
@@ -114,6 +121,13 @@ func TestE2E_SyncAfterBaseAdvances(t *testing.T) {
 				newMainTip[:12], br, out)
 		}
 	}
+
+	// Verify: stack state unchanged after sync (still 3 nodes, all open)
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/alpha", HasPR: true, Status: "open"},
+		{BranchSuffix: "/beta", HasPR: true, Status: "open"},
+		{BranchSuffix: "/gamma", HasPR: true, Status: "open"},
+	})
 
 	t.Log("Sync after base advance test passed — all branches rebased onto new main")
 }
@@ -188,6 +202,14 @@ func TestE2E_InsertBranchMidStack(t *testing.T) {
 		t.Logf("PR#%d created for %s", result.Number, br)
 	}
 
+	// Verify: 4 nodes A, B, C, D with PRs
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/step-a", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-b", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-c", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-d", HasPR: true, Status: "open"},
+	})
+
 	// Verify initial PR bases
 	pr2Base := runGH(t, dir, "pr", "view", fmt.Sprint(prNumbers[branchB]), "--json", "baseRefName")
 	if !strings.Contains(pr2Base, "step-a") {
@@ -218,6 +240,15 @@ func TestE2E_InsertBranchMidStack(t *testing.T) {
 	json.Unmarshal([]byte(eOut), &eResult)
 	prNumbers[branchE] = eResult.Number
 	t.Logf("PR#%d created for %s (inserted)", eResult.Number, branchE)
+
+	// Verify: 5 nodes A, E, B, C, D — E inserted between A and B
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/step-a", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-e", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-b", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-c", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-d", HasPR: true, Status: "open"},
+	})
 
 	// --- Verify: PR for B should now have base=E ---
 	t.Log("Verifying PR for B was retargeted to E")

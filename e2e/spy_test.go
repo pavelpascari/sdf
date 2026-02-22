@@ -62,7 +62,7 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 	runSDF(t, dir, "sync", "-y")
 
 	// --- Validate recordings ---
-	recordingPath := filepath.Join(recordingsBaseDir(), runID, t.Name(), "gh.jsonl")
+	recordingPath := filepath.Join(recordingsBaseDir(), runID, t.Name(), "gh_sdf.jsonl")
 	recordings := testutil.ReadRecordings(t, recordingPath)
 
 	t.Logf("Captured %d gh invocations", len(recordings))

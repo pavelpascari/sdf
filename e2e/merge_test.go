@@ -68,6 +68,12 @@ func TestE2E_MergeRetargetOrdering(t *testing.T) {
 	json.Unmarshal([]byte(prBOut), &prB)
 	t.Logf("PR#%d created for %s", prB.Number, branchB)
 
+	// Verify: 2 nodes with PRs, both open
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/layer-a", HasPR: true, Status: "open"},
+		{BranchSuffix: "/layer-b", HasPR: true, Status: "open"},
+	})
+
 	// Verify PR#2 base is branch-A
 	pr2Info := runGH(t, dir, "pr", "view", fmt.Sprint(prB.Number), "--json", "baseRefName,state")
 	t.Logf("PR#%d before merge: %s", prB.Number, pr2Info)
@@ -112,6 +118,12 @@ func TestE2E_MergeRetargetOrdering(t *testing.T) {
 		t.Errorf("PR#%d should be MERGED, got: %s", prA.Number, pr1After)
 	}
 
+	// Verify: stack reflects merge — first node merged, second still open
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/layer-a", HasPR: true, Status: "merged"},
+		{BranchSuffix: "/layer-b", HasPR: true, Status: "open"},
+	})
+
 	t.Log("Merge ordering test passed — downstream PR survived the merge")
 }
 
@@ -150,6 +162,13 @@ func TestE2E_MergeThenSync(t *testing.T) {
 		runSDF(t, dir, "pr", "--json")
 	}
 
+	// Verify: 3 nodes with PRs, all open
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/step-1", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-2", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-3", HasPR: true, Status: "open"},
+	})
+
 	// Merge head PR
 	t.Log("Merging step-1...")
 	runGit(t, dir, "checkout", stackName+"/step-3")
@@ -175,6 +194,13 @@ func TestE2E_MergeThenSync(t *testing.T) {
 	if !strings.Contains(step2Info, "main") {
 		t.Errorf("after merge, step-2 base should be main, got: %s", step2Info)
 	}
+
+	// Verify: stack reflects merge — first node merged, others still open
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/step-1", HasPR: true, Status: "merged"},
+		{BranchSuffix: "/step-2", HasPR: true, Status: "open"},
+		{BranchSuffix: "/step-3", HasPR: true, Status: "open"},
+	})
 
 	t.Log("Merge-then-sync test passed")
 }

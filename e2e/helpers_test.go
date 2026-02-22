@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/pavelpascari/sdf/internal/spy"
+	"github.com/pavelpascari/sdf/internal/stack"
 )
 
 var withClaude = flag.Bool("with-claude", false, "include tests that call the Claude API")
@@ -299,6 +300,58 @@ func writeCommit(t *testing.T, dir, filename, content, message string) {
 	}
 	runGit(t, dir, "add", filename)
 	runGit(t, dir, "commit", "-m", message)
+}
+
+// loadStack reads the stack JSON from the sandbox repo's .sdf/stacks/ directory.
+func loadStack(t *testing.T, dir, stackName string) *stack.Stack {
+	t.Helper()
+	s, err := stack.LoadStack(dir, stackName)
+	if err != nil {
+		t.Fatalf("cannot load stack %q: %v", stackName, err)
+	}
+	return s
+}
+
+// nodeExpectation describes the expected state of a single stack node.
+type nodeExpectation struct {
+	BranchSuffix string // matched against the end of the branch name
+	HasPR        bool   // if true, PR number must be > 0
+	Status       string // "open", "merged", or "" to skip check
+}
+
+// assertStack verifies the stack topology matches expectations.
+func assertStack(t *testing.T, dir, stackName, expectedBase string, expected []nodeExpectation) {
+	t.Helper()
+	s := loadStack(t, dir, stackName)
+
+	if s.Base != expectedBase {
+		t.Errorf("stack base: want %q, got %q", expectedBase, s.Base)
+	}
+	if len(s.Nodes) != len(expected) {
+		t.Fatalf("stack nodes: want %d, got %d (%v)",
+			len(expected), len(s.Nodes), nodeBranches(s))
+	}
+	for i, e := range expected {
+		node := s.Nodes[i]
+		if !strings.HasSuffix(node.Branch, e.BranchSuffix) {
+			t.Errorf("node[%d] branch: want suffix %q, got %q", i, e.BranchSuffix, node.Branch)
+		}
+		if e.HasPR && node.PR == 0 {
+			t.Errorf("node[%d] (%s): expected PR number, got 0", i, node.Branch)
+		}
+		if e.Status != "" && node.Status != e.Status {
+			t.Errorf("node[%d] (%s) status: want %q, got %q", i, node.Branch, e.Status, node.Status)
+		}
+	}
+}
+
+// nodeBranches returns the branch names from a stack for diagnostic output.
+func nodeBranches(s *stack.Stack) []string {
+	names := make([]string, len(s.Nodes))
+	for i, n := range s.Nodes {
+		names[i] = n.Branch
+	}
+	return names
 }
 
 // cleanupBranches deletes remote branches matching a prefix.

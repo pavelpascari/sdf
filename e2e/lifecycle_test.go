@@ -52,6 +52,11 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 	// Add a commit to the first branch
 	writeCommit(t, dir, prefix+"-schema.sql", "CREATE TABLE users (id INT);\n", "feat: add users table schema")
 
+	// Verify: stack has 1 node, no PR yet
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/db-schema", Status: "open"},
+	})
+
 	// --- Step 2: sdf branch (second branch) ---
 	t.Log("Step 2: sdf branch (api-endpoints)")
 	runSDF(t, dir, "branch", "api-endpoints")
@@ -64,6 +69,12 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 
 	writeCommit(t, dir, prefix+"-api.go", "package api\n\nfunc CreateUser() {}\n", "feat: add user creation endpoint")
 
+	// Verify: stack has 2 nodes
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/db-schema", Status: "open"},
+		{BranchSuffix: "/api-endpoints", Status: "open"},
+	})
+
 	// --- Step 3: sdf branch (third branch) ---
 	t.Log("Step 3: sdf branch (frontend)")
 	runSDF(t, dir, "branch", "frontend")
@@ -75,6 +86,13 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 	}
 
 	writeCommit(t, dir, prefix+"-ui.tsx", "export const UserForm = () => <form/>;\n", "feat: add user registration form")
+
+	// Verify: stack has 3 nodes, no PRs yet
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/db-schema", Status: "open"},
+		{BranchSuffix: "/api-endpoints", Status: "open"},
+		{BranchSuffix: "/frontend", Status: "open"},
+	})
 
 	// --- Step 4: Create PRs for all three branches ---
 	t.Log("Step 4: sdf pr for each branch")
@@ -106,6 +124,13 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 		}
 		prNumbers[i] = result.Number
 	}
+
+	// Verify: all 3 nodes now have PRs
+	assertStack(t, dir, stackName, "main", []nodeExpectation{
+		{BranchSuffix: "/db-schema", HasPR: true, Status: "open"},
+		{BranchSuffix: "/api-endpoints", HasPR: true, Status: "open"},
+		{BranchSuffix: "/frontend", HasPR: true, Status: "open"},
+	})
 
 	// --- Step 5: Verify PRs exist on GitHub with correct bases ---
 	t.Log("Step 5: verify PR bases on GitHub")
