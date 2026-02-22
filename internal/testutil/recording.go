@@ -33,26 +33,21 @@ func ReadRecordings(t *testing.T, path string) []spy.Invocation {
 }
 
 // RecordingsToFakeResponses converts recorded invocations into a response
-// map suitable for FakeBin. For each invocation, the argument prefix
-// (first N args) is used as the key. Only successful invocations (exit 0)
-// are included.
+// map suitable for FakeBin. The full argument string is used as the key.
+// Only successful invocations (exit 0) are included.
 //
 // This is the bridge between "record real API" and "replay as fake":
 //
 //	recordings := ReadRecordings(t, "recordings/gh.jsonl")
-//	responses := RecordingsToFakeResponses(recordings, 2)
+//	responses := RecordingsToFakeResponses(recordings)
 //	fake := FakeBin(t, dir, "gh", responses)
-func RecordingsToFakeResponses(invocations []spy.Invocation, keyArgCount int) map[string]string {
+func RecordingsToFakeResponses(invocations []spy.Invocation) map[string]string {
 	responses := make(map[string]string)
 	for _, inv := range invocations {
 		if inv.ExitCode != 0 {
 			continue
 		}
-		n := keyArgCount
-		if n > len(inv.Args) {
-			n = len(inv.Args)
-		}
-		key := strings.Join(inv.Args[:n], " ")
+		key := strings.Join(inv.Args, " ")
 		// First recording wins (don't overwrite with later calls)
 		if _, exists := responses[key]; !exists {
 			responses[key] = inv.Stdout
@@ -68,7 +63,7 @@ func RecordingsToFakeResponses(invocations []spy.Invocation, keyArgCount int) ma
 // For JSON responses, it compares the structural shape (keys present,
 // array vs object). For non-JSON responses, it checks for non-empty
 // fake responses where real ones existed.
-func ValidateFakeAgainstRecordings(t *testing.T, fakeResponses map[string]string, recordings []spy.Invocation, keyArgCount int) {
+func ValidateFakeAgainstRecordings(t *testing.T, fakeResponses map[string]string, recordings []spy.Invocation) {
 	t.Helper()
 
 	for _, inv := range recordings {
@@ -76,15 +71,11 @@ func ValidateFakeAgainstRecordings(t *testing.T, fakeResponses map[string]string
 			continue
 		}
 
-		n := keyArgCount
-		if n > len(inv.Args) {
-			n = len(inv.Args)
-		}
-		key := strings.Join(inv.Args[:n], " ")
+		key := strings.Join(inv.Args, " ")
 
 		fakeResponse, exists := fakeResponses[key]
 		if !exists {
-			t.Errorf("no fake response for %q (args: %v)", key, inv.Args)
+			t.Errorf("no fake response for %q", key)
 			continue
 		}
 

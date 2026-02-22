@@ -129,29 +129,35 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 	}
 
 	// --- Cross-validate: convert recordings to fake responses and verify structure ---
-	fakeResponses := testutil.RecordingsToFakeResponses(recordings, 2)
+	fakeResponses := testutil.RecordingsToFakeResponses(recordings)
 	t.Logf("Generated %d fake response entries from recordings", len(fakeResponses))
 
-	testutil.ValidateFakeAgainstRecordings(t, fakeResponses, recordings, 2)
+	testutil.ValidateFakeAgainstRecordings(t, fakeResponses, recordings)
 
 	// --- Verify specific structural expectations ---
-	// pr list should return array of objects with our expected fields
-	if resp, ok := fakeResponses["pr list"]; ok {
-		var prs []ghpkg.PRInfo
-		if err := json.Unmarshal([]byte(resp), &prs); err != nil {
-			t.Errorf("recorded pr list response doesn't parse as []PRInfo: %v", err)
-		} else {
-			t.Logf("pr list response contains %d PRs, parseable as []PRInfo", len(prs))
+	// Find a pr list response and verify it parses as []PRInfo
+	for _, inv := range recordings {
+		if len(inv.Args) >= 2 && inv.Args[0] == "pr" && inv.Args[1] == "list" && inv.ExitCode == 0 && strings.HasPrefix(strings.TrimSpace(inv.Stdout), "[") {
+			var prs []ghpkg.PRInfo
+			if err := json.Unmarshal([]byte(inv.Stdout), &prs); err != nil {
+				t.Errorf("recorded pr list response doesn't parse as []PRInfo: %v", err)
+			} else {
+				t.Logf("pr list response contains %d PRs, parseable as []PRInfo", len(prs))
+			}
+			break
 		}
 	}
 
-	// pr view should return object with number field
-	if resp, ok := fakeResponses["pr view"]; ok {
-		var pr ghpkg.PRInfo
-		if err := json.Unmarshal([]byte(resp), &pr); err != nil {
-			t.Errorf("recorded pr view response doesn't parse as PRInfo: %v", err)
-		} else {
-			t.Logf("pr view response: PR #%d (%s), parseable as PRInfo", pr.Number, pr.State)
+	// Find a pr view response with full PR fields and verify it parses as PRInfo
+	for _, inv := range recordings {
+		if len(inv.Args) >= 2 && inv.Args[0] == "pr" && inv.Args[1] == "view" && inv.ExitCode == 0 && strings.Contains(strings.Join(inv.Args, " "), "number,headRefName") {
+			var pr ghpkg.PRInfo
+			if err := json.Unmarshal([]byte(inv.Stdout), &pr); err != nil {
+				t.Errorf("recorded pr view response doesn't parse as PRInfo: %v", err)
+			} else {
+				t.Logf("pr view response: PR #%d (%s), parseable as PRInfo", pr.Number, pr.State)
+			}
+			break
 		}
 	}
 
