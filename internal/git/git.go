@@ -18,10 +18,12 @@ var Binary = "git"
 // Spy, when non-nil, records every invocation for later analysis.
 // Enable during E2E tests to capture real git operations.
 var Spy *spy.Recorder
+var fullSpy *spy.Recorder
 
 func init() {
 	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
 		Spy = spy.NewRecorderFor(dir, "sdf", "git")
+		fullSpy = spy.NewRecorder(dir, "full")
 	}
 }
 
@@ -37,6 +39,7 @@ func run(args ...string) (string, error) {
 			exitCode = 1
 		}
 		Spy.Record(args, output, exitCode)
+		fullSpy.RecordAs("sdf", "git", args, output, exitCode)
 	}
 
 	if err != nil {

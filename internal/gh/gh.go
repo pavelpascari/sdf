@@ -11,9 +11,12 @@ import (
 	"github.com/pavelpascari/sdf/internal/spy"
 )
 
+var fullSpy *spy.Recorder
+
 func init() {
 	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
 		Spy = spy.NewRecorderFor(dir, "sdf", "gh")
+		fullSpy = spy.NewRecorder(dir, "full")
 	}
 }
 
@@ -48,6 +51,7 @@ func run(args ...string) (string, error) {
 			exitCode = 1
 		}
 		Spy.Record(args, output, exitCode)
+		fullSpy.RecordAs("sdf", "gh", args, output, exitCode)
 	}
 
 	if err != nil {

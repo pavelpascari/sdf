@@ -20,10 +20,12 @@ var Binary = "claude"
 // Spy, when non-nil, records every invocation for later analysis.
 // Enable during E2E tests to capture real Claude API responses.
 var Spy *spy.Recorder
+var fullSpy *spy.Recorder
 
 func init() {
 	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
 		Spy = spy.NewRecorderFor(dir, "sdf", "claude")
+		fullSpy = spy.NewRecorder(dir, "full")
 	}
 }
 
@@ -57,6 +59,7 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 			exitCode = 1
 		}
 		Spy.Record([]string{"-p", prompt}, output, exitCode)
+		fullSpy.RecordAs("sdf", "claude", []string{"-p", prompt}, output, exitCode)
 	}
 
 	if err != nil {
