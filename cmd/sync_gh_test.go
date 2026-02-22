@@ -14,7 +14,7 @@ func TestReconcileSyncPRStates_FillsFromGitHub(t *testing.T) {
 	syncTestRepo(t)
 
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr list": `[
 			{"number":10,"headRefName":"branchA","state":"OPEN","baseRefName":"main","url":"https://github.com/test/pull/10"},
 			{"number":11,"headRefName":"branchB","state":"OPEN","baseRefName":"branchA","url":"https://github.com/test/pull/11"},
@@ -66,7 +66,7 @@ func TestReconcileSyncPRStates_DetectsMerged(t *testing.T) {
 	syncTestRepo(t)
 
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr list": `[
 			{"number":10,"headRefName":"branchA","state":"MERGED","baseRefName":"main","url":""},
 			{"number":11,"headRefName":"branchB","state":"OPEN","baseRefName":"branchA","url":""},
@@ -96,7 +96,7 @@ func TestComputeSyncPlan_WithFakeGH_MergedHead(t *testing.T) {
 	syncTestRepo(t)
 
 	dir := t.TempDir()
-	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"pr list": `[]`,
 	})
 	testutil.SetBinary(t, &ghpkg.Binary, fake)

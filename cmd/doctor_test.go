@@ -18,7 +18,7 @@ func TestDoctor_AllAvailable(t *testing.T) {
 	fakeGit := testutil.FakeBin(t, dir, "fake-git", map[string]string{
 		"--version": "git version 2.45.0",
 	})
-	fakeGH := testutil.FakeBin(t, dir, "fake-gh", map[string]string{
+	fakeGH := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"version": "gh version 2.50.0 (2024-06-01)",
 	})
 	fakeClaude := testutil.FakeBin(t, dir, "fake-claude", map[string]string{
@@ -66,7 +66,7 @@ func TestDoctor_GitMissing(t *testing.T) {
 	// Point git at a nonexistent binary
 	testutil.SetBinary(t, &gitpkg.Binary, filepath.Join(dir, "nonexistent-git"))
 	// gh and claude are available
-	fakeGH := testutil.FakeBin(t, dir, "fake-gh", map[string]string{
+	fakeGH := testutil.GHFakeBinWith(t, dir, map[string]string{
 		"version": "gh version 2.50.0",
 	})
 	fakeClaude := testutil.FakeBin(t, dir, "fake-claude", map[string]string{
