@@ -139,6 +139,23 @@ html {
 
 .prose hr { border: none; border-top: 1px solid var(--color-rim); margin: 2rem 0; }
 
+/* ── Mermaid diagrams ───────────────────────────────── */
+.mermaid-diagram {
+  background: var(--color-panel);
+  border: 1px solid var(--color-rim);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ── Utility: glow effects ───────────────────────────── */
 .glow-brand {
   box-shadow: 0 0 40px color-mix(in srgb, var(--color-brand) 20%, transparent);

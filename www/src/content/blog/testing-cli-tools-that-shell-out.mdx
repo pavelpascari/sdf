@@ -15,27 +15,15 @@ This post walks through the testing strategy we built for [SDF](https://github.c
 
 We went from "run it manually and see if it works" to a system where our fakes are provably honest — where we can demonstrate, in CI, that our test doubles produce structurally compatible output to the real tools. Here's how we got there, and what we learned along the way.
 
-```
-                    ┌─────────────────────────────────────────────────────┐
-                    │                 The Five Layers                     │
-                    ├─────────────────────────────────────────────────────┤
-                    │                                                     │
-  Confidence ▲      │   Layer 5 ── Build Tags                            │
-             │      │       Isolate test infra from production binary     │
-             │      │                                                     │
-             │      │   Layer 4 ── Cross-Validation                      │
-             │      │       Prove fakes match real tool output            │
-             │      │                                                     │
-             │      │   Layer 3 ── Spy Recording                         │
-             │      │       Capture what the real tools actually return   │
-             │      │                                                     │
-             │      │   Layer 2 ── Binary Injection                      │
-             │      │       Swap real binaries for fakes in tests         │
-             │      │                                                     │
-             │      │   Layer 1 ── Fake Binaries                         │
-             │      │       Shell scripts that pretend to be git/gh      │
-             │      │                                                     │
-             └──────┴─────────────────────────────────────────────────────┘
+```mermaid
+graph BT
+    L1["<b>Layer 1: Fake Binaries</b><br/>Shell scripts that pretend to be git/gh"]
+    L2["<b>Layer 2: Binary Injection</b><br/>Swap real binaries for fakes in tests"]
+    L3["<b>Layer 3: Spy Recording</b><br/>Capture what the real tools actually return"]
+    L4["<b>Layer 4: Cross-Validation</b><br/>Prove fakes match real tool output"]
+    L5["<b>Layer 5: Build Tags</b><br/>Isolate test infra from production binary"]
+
+    L1 --- L2 --- L3 --- L4 --- L5
 ```
 
 ## The problem, concretely
@@ -114,27 +102,21 @@ Why shell scripts instead of Go mocks? Because your production code uses `exec.C
 
 Here's the flow at test time:
 
-```
-  Test                          Fake Binary                    Log File
-   │                           (shell script)                 (gh.log)
-   │                                │                             │
-   │  exec.Command("gh", ...)      │                             │
-   ├───────────────────────────────►│                             │
-   │                                │  echo "$ARGS" >> gh.log    │
-   │                                ├────────────────────────────►│
-   │                                │                             │
-   │                                │  case "$ARGS" in            │
-   │                                │    *"pr list"*) cat JSON    │
-   │                                │  esac                       │
-   │      ◄─────────────────────────┤                             │
-   │      canned JSON response      │                             │
-   │                                                              │
-   │  ReadLog("gh")                                               │
-   ├─────────────────────────────────────────────────────────────►│
-   │      ◄───────────────────────────────────────────────────────┤
-   │      ["pr list --state all"]                                 │
-   │                                                              │
-   ▼  Assert result + Assert invocations                          │
+```mermaid
+sequenceDiagram
+    participant T as Test
+    participant F as Fake Binary
+    participant L as Log File
+
+    T->>F: exec.Command("gh", "pr", "list", ...)
+    F->>L: Append args to gh.log
+    Note over F: Match args against<br/>canned responses
+    F-->>T: Return canned JSON
+
+    T->>L: ReadLog("gh")
+    L-->>T: Return logged invocations
+
+    Note over T: Assert result<br/>Assert invocations
 ```
 
 ## Layer 2: Binary injection
@@ -167,26 +149,25 @@ func SetBinary(t *testing.T, target *string, fakePath string) {
 
 The `t.Cleanup` is critical — it restores the original value after the test, even if the test panics. Without it, one test's fake would leak into the next.
 
-```
-  Production                           Tests
-  ──────────                           ─────
+```mermaid
+graph TD
+    subgraph Production
+        PB["var Binary = 'gh'"]
+        PE["exec.Command(Binary, args...)"]
+        PR(["real gh — via PATH"])
+        PA[("GitHub API")]
+        PB --> PE --> PR --> PA
+    end
 
-  var Binary = "gh"                    SetBinary(t, &Binary, "/tmp/fake-gh")
-       │                                    │
-       ▼                                    ▼
-  exec.Command("gh", ...)             exec.Command("/tmp/fake-gh", ...)
-       │                                    │
-       ▼                                    ▼
-  ┌─────────────┐                     ┌─────────────────┐
-  │   real gh    │                     │   fake gh       │
-  │  (via PATH)  │                     │  (shell script) │
-  └─────────────┘                     └─────────────────┘
-       │                                    │
-       ▼                                    ▼
-  GitHub API                           Canned JSON + log file
-                                            │
-                                       t.Cleanup restores
-                                       Binary = "gh"
+    subgraph Tests
+        TB["SetBinary(t, &Binary, fakePath)"]
+        TE["exec.Command(Binary, args...)"]
+        TR(["fake gh — shell script"])
+        TA["Canned JSON + log file"]
+        TC>"t.Cleanup restores Binary = 'gh'"]
+        TB --> TE --> TR --> TA
+        TA -.-> TC
+    end
 ```
 
 Here's what a real test looks like with these two pieces combined:
@@ -342,36 +323,19 @@ These recordings are the ground truth. They capture exactly what `gh pr list` re
 
 Here's where it comes together. We have recordings of real API responses. We have fake binaries that return canned responses. The question is: **do they match?**
 
-```
-  Unit Tests                              E2E Tests
-  ──────────                              ─────────
-  Use fake binaries                       Use real git & gh
-       │                                       │
-       ▼                                       ▼
-  ┌──────────────────┐                ┌──────────────────┐
-  │  Fake Responses  │                │    Recordings    │
-  │                  │                │                  │
-  │  "pr list" ──►   │                │  "pr list" ──►   │
-  │  [{"number":10,  │                │  [{"number":847, │
-  │    "state":"OPEN" │                │    "state":"OPEN" │
-  │    ...}]         │                │    ...}]         │
-  └────────┬─────────┘                └────────┬─────────┘
-           │                                   │
-           │          JSONShape()               │
-           ▼                                   ▼
-    array[object{         ◄── compare ──►  array[object{
-      headRefName,                           headRefName,
-      number,                                number,
-      state,                                 state,
-      url}]                                  url}]
+```mermaid
+graph TD
+    UT["Unit Tests<br/>use fake binaries"] --> FR["Fake Responses<br/>number: 10, state: OPEN, ..."]
+    E2E["E2E Tests<br/>use real git & gh"] --> REC["Recordings<br/>number: 847, state: OPEN, ..."]
 
-           │                                   │
-           └───────────── match? ──────────────┘
-                            │
-                     ┌──────┴──────┐
-                     │  ✓  same    │  Fakes are honest
-                     │  ✗  differ  │  Fakes have drifted
-                     └─────────────┘
+    FR -->|"JSONShape()"| FS["array[object{headRefName,<br/>number, state, url}]"]
+    REC -->|"JSONShape()"| RS["array[object{headRefName,<br/>number, state, url}]"]
+
+    FS --> CMP{"Structures match?"}
+    RS --> CMP
+
+    CMP -->|Yes| OK["Fakes are honest"]
+    CMP -->|No| DRIFT["Fakes have drifted"]
 ```
 
 The bridge is a function that converts recordings into fake responses:
@@ -569,32 +533,16 @@ The testing strategy for a CLI tool that shells out is fundamentally about build
 
 Each layer is more expensive and slower than the last. You run unit tests on every save. You run E2E tests in CI. You cross-validate periodically to keep fakes honest. The trust gradient lets you move fast *and* be confident.
 
-```
-  Speed                                                    Confidence
-  ◄──────────────────────────────────────────────────────────────────►
+```mermaid
+graph TD
+    U["<b>Unit tests with fakes</b><br/>Milliseconds · every save · fast feedback"]
+    CV["<b>Cross-validation</b><br/>Seconds · periodic · fakes stay honest"]
+    SPY["<b>Spy recordings</b><br/>Seconds · on demand · ground truth"]
+    E2E["<b>E2E tests</b><br/>Minutes · in CI · real workflows"]
 
-  ┌───────────────────┐
-  │ Unit tests        │  milliseconds     every save       fast
-  │ with fakes        │                                    feedback
-  └─────────┬─────────┘
-            │
-  ┌─────────▼─────────┐
-  │ Cross-validation  │  seconds          periodic         fakes are
-  │ shape comparison  │                                    honest
-  └─────────┬─────────┘
-            │
-  ┌─────────▼─────────┐
-  │ Spy recordings    │  seconds          on demand        ground
-  │ capture reality   │                                    truth
-  └─────────┬─────────┘
-            │
-  ┌─────────▼─────────┐
-  │ E2E tests         │  minutes          in CI            real
-  │ real git, real gh  │                                    workflows
-  └───────────────────┘
-
-  ◄──────────────────────────────────────────────────────────────────►
-  Cheap, fast, frequent                     Expensive, slow, thorough
+    U -->|"more confidence"| CV
+    CV -->|"more confidence"| SPY
+    SPY -->|"more confidence"| E2E
 ```
 
 The code for all of this is open source in the [SDF repository](https://github.com/pavelpascari/sdf). The testing infrastructure lives in `internal/spy/`, `internal/testutil/`, and `e2e/`. If you're building a CLI tool that shells out to external binaries, feel free to steal the pattern.
