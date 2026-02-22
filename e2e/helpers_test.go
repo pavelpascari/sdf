@@ -26,6 +26,8 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -37,8 +39,23 @@ var withClaude = flag.Bool("with-claude", false, "include tests that call the Cl
 // After all tests complete (pass or fail), it sweeps stale e2e-*
 // branches and PRs from the sandbox repo — catching orphans from
 // crashed or timed-out runs.
+// recordingsDir returns the path to the shared spy recordings directory.
+// Uses runtime.Caller to find the repo root relative to this file.
+func recordingsDir() string {
+	_, thisFile, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(thisFile), "testdata", "recordings")
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
+
+	// Enable spy recording for ALL E2E tests.
+	// Child sdf processes inherit this env var and record gh/claude
+	// invocations to JSONL files in e2e/testdata/recordings/.
+	recDir := recordingsDir()
+	os.MkdirAll(recDir, 0755)
+	os.Setenv("SDF_SPY_DIR", recDir)
+
 	code := m.Run()
 
 	if repo := os.Getenv("SDF_E2E_REPO"); repo != "" {

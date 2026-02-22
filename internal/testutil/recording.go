@@ -80,9 +80,9 @@ func ValidateFakeAgainstRecordings(t *testing.T, fakeResponses map[string]string
 		}
 
 		// For JSON responses, validate structural compatibility
-		if isJSON(inv.Stdout) && isJSON(fakeResponse) {
-			realShape := jsonShape(inv.Stdout)
-			fakeShape := jsonShape(fakeResponse)
+		if IsJSON(inv.Stdout) && IsJSON(fakeResponse) {
+			realShape := JSONShape(inv.Stdout)
+			fakeShape := JSONShape(fakeResponse)
 			if realShape != fakeShape {
 				t.Errorf("JSON structure mismatch for %q:\n  real: %s\n  fake: %s",
 					key, realShape, fakeShape)
@@ -91,15 +91,15 @@ func ValidateFakeAgainstRecordings(t *testing.T, fakeResponses map[string]string
 	}
 }
 
-// isJSON returns true if s looks like JSON (starts with { or [).
-func isJSON(s string) bool {
+// IsJSON returns true if s looks like JSON (starts with { or [).
+func IsJSON(s string) bool {
 	s = strings.TrimSpace(s)
 	return len(s) > 0 && (s[0] == '{' || s[0] == '[')
 }
 
-// jsonShape returns a structural description of a JSON value.
+// JSONShape returns a structural description of a JSON value.
 // Used for structural comparison without comparing actual values.
-func jsonShape(s string) string {
+func JSONShape(s string) string {
 	s = strings.TrimSpace(s)
 	if len(s) == 0 {
 		return "empty"
@@ -113,7 +113,7 @@ func jsonShape(s string) string {
 		if len(arr) == 0 {
 			return "array[]"
 		}
-		return fmt.Sprintf("array[%s]", jsonShape(string(arr[0])))
+		return fmt.Sprintf("array[%s]", JSONShape(string(arr[0])))
 	}
 
 	if s[0] == '{' {
