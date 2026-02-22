@@ -15,15 +15,9 @@ import (
 func TestDoctor_AllAvailable(t *testing.T) {
 	dir := t.TempDir()
 
-	fakeGit := testutil.FakeBin(t, dir, "fake-git", map[string]string{
-		"--version": "git version 2.45.0",
-	})
-	fakeGH := testutil.FakeBin(t, dir, "fake-gh", map[string]string{
-		"version": "gh version 2.50.0 (2024-06-01)",
-	})
-	fakeClaude := testutil.FakeBin(t, dir, "fake-claude", map[string]string{
-		"--version": "claude-code 1.0.0",
-	})
+	fakeGit := testutil.GitFakeBin(t, dir)
+	fakeGH := testutil.GHFakeBin(t, dir)
+	fakeClaude := testutil.ClaudeFakeBin(t, dir)
 
 	testutil.SetBinary(t, &gitpkg.Binary, fakeGit)
 	testutil.SetBinary(t, &ghpkg.Binary, fakeGH)
@@ -48,9 +42,9 @@ func TestDoctor_AllAvailable(t *testing.T) {
 	}
 
 	checks := []string{
-		"git version 2.45.0",
-		"gh version 2.50.0",
-		"claude-code 1.0.0",
+		"git version 2.45.0",   // from GitCanonicalFakes --version
+		"gh version 2.50.0",    // from GHCanonicalFakes version
+		"claude-code 1.0.0",    // from ClaudeCanonicalFakes --version
 		"All required dependencies are available.",
 	}
 	for _, check := range checks {
@@ -66,12 +60,8 @@ func TestDoctor_GitMissing(t *testing.T) {
 	// Point git at a nonexistent binary
 	testutil.SetBinary(t, &gitpkg.Binary, filepath.Join(dir, "nonexistent-git"))
 	// gh and claude are available
-	fakeGH := testutil.FakeBin(t, dir, "fake-gh", map[string]string{
-		"version": "gh version 2.50.0",
-	})
-	fakeClaude := testutil.FakeBin(t, dir, "fake-claude", map[string]string{
-		"--version": "claude-code 1.0.0",
-	})
+	fakeGH := testutil.GHFakeBin(t, dir)
+	fakeClaude := testutil.ClaudeFakeBin(t, dir)
 	testutil.SetBinary(t, &ghpkg.Binary, fakeGH)
 	testutil.SetBinary(t, &claudepkg.Binary, fakeClaude)
 
@@ -102,9 +92,7 @@ func TestDoctor_OptionalToolsMissing(t *testing.T) {
 	dir := t.TempDir()
 
 	// git is available, gh and claude are missing
-	fakeGit := testutil.FakeBin(t, dir, "fake-git", map[string]string{
-		"--version": "git version 2.45.0",
-	})
+	fakeGit := testutil.GitFakeBin(t, dir)
 	testutil.SetBinary(t, &gitpkg.Binary, fakeGit)
 	testutil.SetBinary(t, &ghpkg.Binary, filepath.Join(dir, "nonexistent-gh"))
 	testutil.SetBinary(t, &claudepkg.Binary, filepath.Join(dir, "nonexistent-claude"))

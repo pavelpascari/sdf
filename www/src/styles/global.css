@@ -50,6 +50,8 @@ html {
 .prose {
   color: var(--color-fg-muted);
   max-width: 72ch;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .prose h1, .prose h2, .prose h3, .prose h4 {
@@ -81,6 +83,7 @@ html {
   border-radius: 4px;
   padding: 0.125em 0.375em;
   color: var(--color-accent);
+  overflow-wrap: anywhere;
 }
 
 .prose pre {
@@ -90,6 +93,7 @@ html {
   padding: 1.25rem 1.5rem;
   overflow-x: auto;
   margin: 1.5rem 0;
+  max-width: 100%;
 }
 
 .prose pre code {
@@ -116,11 +120,18 @@ html {
   margin: 1.5rem 0;
 }
 
+.prose .table-wrapper {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
 .prose table {
   width: 100%;
   border-collapse: collapse;
   margin: 1.5rem 0;
   font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
 }
 .prose th {
   background: var(--color-panel);
@@ -138,6 +149,23 @@ html {
 .prose tr:nth-child(even) td { background: color-mix(in srgb, var(--color-surface) 50%, transparent); }
 
 .prose hr { border: none; border-top: 1px solid var(--color-rim); margin: 2rem 0; }
+
+/* ── Mermaid diagrams ───────────────────────────────── */
+.mermaid-diagram {
+  background: var(--color-panel);
+  border: 1px solid var(--color-rim);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  height: auto;
+  min-width: 0;
+}
 
 /* ── Utility: glow effects ───────────────────────────── */
 .glow-brand {

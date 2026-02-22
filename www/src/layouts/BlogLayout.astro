@@ -35,7 +35,7 @@ const jsonLd = {
 
 <BaseLayout title={`${title} — SDF Blog`} description={description} ogType="article">
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  <article class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+  <article class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 overflow-hidden">
 
     <!-- Back link -->
     <a
@@ -83,4 +83,74 @@ const jsonLd = {
     </div>
 
   </article>
+
+  <script>
+    import mermaid from 'mermaid';
+
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      themeVariables: {
+        darkMode: true,
+        background: '#161627',
+        primaryColor: '#6366f1',
+        primaryTextColor: '#f1f5f9',
+        primaryBorderColor: '#2e2e55',
+        secondaryColor: '#3730a3',
+        secondaryTextColor: '#f1f5f9',
+        secondaryBorderColor: '#2e2e55',
+        tertiaryColor: '#0f0f1a',
+        tertiaryTextColor: '#f1f5f9',
+        tertiaryBorderColor: '#2e2e55',
+        lineColor: '#94a3b8',
+        textColor: '#f1f5f9',
+        mainBkg: '#161627',
+        nodeBorder: '#6366f1',
+        clusterBkg: '#0f0f1a',
+        clusterBorder: '#2e2e55',
+        titleColor: '#f1f5f9',
+        edgeLabelBackground: '#161627',
+        nodeTextColor: '#f1f5f9',
+      },
+      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      flowchart: { curve: 'basis', padding: 20, useMaxWidth: false, htmlLabels: true },
+      sequence: { mirrorActors: false, useMaxWidth: false },
+    });
+
+    async function renderMermaidBlocks() {
+      // Astro/Shiki renders ```mermaid blocks as <pre> with data-language="mermaid"
+      // Also handle <code class="language-mermaid"> as a fallback
+      const blocks = document.querySelectorAll(
+        'pre[data-language="mermaid"], pre:has(> code.language-mermaid)'
+      );
+
+      for (const block of blocks) {
+        const code = block.querySelector('code');
+        if (!code) continue;
+
+        const definition = code.textContent?.trim();
+        if (!definition) continue;
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-diagram';
+
+        const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
+
+        try {
+          const { svg } = await mermaid.render(id, definition);
+          container.innerHTML = svg;
+          block.replaceWith(container);
+        } catch (err) {
+          console.warn('Mermaid render failed, keeping code block:', err);
+        }
+      }
+    }
+
+    // Run after DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', renderMermaidBlocks);
+    } else {
+      renderMermaidBlocks();
+    }
+  </script>
 </BaseLayout>
