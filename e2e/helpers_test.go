@@ -20,6 +20,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -31,6 +32,69 @@ import (
 )
 
 var withClaude = flag.Bool("with-claude", false, "include tests that call the Claude API")
+
+// TestMain runs global setup/teardown for the E2E suite.
+// After all tests complete (pass or fail), it sweeps stale e2e-*
+// branches and PRs from the sandbox repo — catching orphans from
+// crashed or timed-out runs.
+func TestMain(m *testing.M) {
+	flag.Parse()
+	code := m.Run()
+
+	if repo := os.Getenv("SDF_E2E_REPO"); repo != "" {
+		sweepStaleResources(repo)
+	}
+
+	os.Exit(code)
+}
+
+// sweepStaleResources removes any e2e-* branches and PRs left in the
+// sandbox repo. Best-effort — failures are logged but don't affect
+// the exit code.
+func sweepStaleResources(repo string) {
+	fmt.Println("\n--- E2E cleanup: sweeping stale resources ---")
+
+	// Fetch so we see all remote branches
+	run := func(name string, args ...string) (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+
+	run("git", "fetch", "--prune")
+
+	// Close open PRs with e2e- prefix
+	if out, err := run("gh", "pr", "list", "--state", "open",
+		"--json", "number,headRefName", "--limit", "200"); err == nil {
+		var prs []struct {
+			Number      int    `json:"number"`
+			HeadRefName string `json:"headRefName"`
+		}
+		if json.Unmarshal([]byte(out), &prs) == nil {
+			for _, pr := range prs {
+				if strings.HasPrefix(pr.HeadRefName, "e2e-") {
+					fmt.Printf("  closing PR #%d (%s)\n", pr.Number, pr.HeadRefName)
+					run("gh", "pr", "close", fmt.Sprint(pr.Number))
+				}
+			}
+		}
+	}
+
+	// Delete remote branches with e2e- prefix
+	if out, err := run("git", "branch", "-r", "--list", "origin/e2e-*"); err == nil && out != "" {
+		for _, line := range strings.Split(out, "\n") {
+			branch := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "origin/"))
+			if branch == "" {
+				continue
+			}
+			fmt.Printf("  deleting branch %s\n", branch)
+			run("git", "push", "origin", "--delete", branch)
+		}
+	}
+
+	fmt.Println("--- E2E cleanup complete ---")
+}
 
 // testPrefix generates a unique prefix for branches created by this test run
 // to avoid collisions with other test runs or manual work.
@@ -134,6 +198,7 @@ func writeCommit(t *testing.T, dir, filename, content, message string) {
 // cleanupBranches deletes remote branches matching a prefix.
 func cleanupBranches(t *testing.T, dir, prefix string) {
 	t.Helper()
+	runGitMayFail(t, dir, "fetch", "--prune")
 	out := runGit(t, dir, "branch", "-r", "--list", fmt.Sprintf("origin/%s*", prefix))
 	if out == "" {
 		return
@@ -160,25 +225,18 @@ func cleanupPRs(t *testing.T, dir, prefix string) {
 		return // best-effort
 	}
 
-	// Quick and dirty JSON parse — just find PR numbers matching prefix
-	output := string(out)
-	if !strings.Contains(output, prefix) {
+	var prs []struct {
+		Number      int    `json:"number"`
+		HeadRefName string `json:"headRefName"`
+	}
+	if json.Unmarshal(out, &prs) != nil {
 		return
 	}
-
-	// Close matching PRs
-	for _, line := range strings.Split(output, "\n") {
-		if strings.Contains(line, prefix) {
-			// Extract number — find "number":N
-			if idx := strings.Index(line, `"number":`); idx >= 0 {
-				numStr := line[idx+9:]
-				if end := strings.IndexAny(numStr, ",}"); end >= 0 {
-					num := strings.TrimSpace(numStr[:end])
-					cmd := exec.Command("gh", "pr", "close", num)
-					cmd.Dir = dir
-					cmd.CombinedOutput() // best-effort
-				}
-			}
+	for _, pr := range prs {
+		if strings.HasPrefix(pr.HeadRefName, prefix) {
+			cmd := exec.Command("gh", "pr", "close", fmt.Sprint(pr.Number))
+			cmd.Dir = dir
+			cmd.CombinedOutput() // best-effort
 		}
 	}
 }
