@@ -44,8 +44,8 @@ var runID string
 
 // Per-test recorders, keyed by t.Name().
 var sdfSpies sync.Map  // sdf CLI invocations
-var gitSpies sync.Map  // git CLI invocations from tests (setup/assertions)
-var ghSpies sync.Map   // gh CLI invocations from tests (assertions/verification)
+var gitSpies sync.Map  // git CLI invocations from tests (setup/modeling user behavior)
+var ghSpies sync.Map   // gh CLI invocations from tests (verification/modeling user behavior)
 var fullSpies sync.Map // combined log of all invocations
 
 // recordingsBaseDir returns the path to the recordings root directory.
@@ -68,9 +68,9 @@ func setupRecording(t *testing.T) {
 	t.Setenv("SDF_SPY_DIR", testDir)
 
 	// Per-tool recorders + combined full log
-	sdfRec := spy.NewRecorder(testDir, "sdf")
-	gitRec := spy.NewRecorder(testDir, "git_assertions")
-	ghRec := spy.NewRecorder(testDir, "gh_assertions")
+	sdfRec := spy.NewRecorderFor(testDir, "testing", "sdf")
+	gitRec := spy.NewRecorderFor(testDir, "testing", "git")
+	ghRec := spy.NewRecorderFor(testDir, "testing", "gh")
 	fullRec := spy.NewRecorder(testDir, "full")
 
 	sdfSpies.Store(t.Name(), sdfRec)
@@ -99,13 +99,12 @@ func spyFor(m *sync.Map, t *testing.T) *spy.Recorder {
 }
 
 // recordInvocation records to both the per-tool spy and the full combined log.
-// The binary name from the per-tool recorder is used in the full log entry.
+// The actor and binary from the per-tool recorder are forwarded to the full log.
 func recordInvocation(t *testing.T, toolSpies *sync.Map, args []string, output string, exitCode int) {
 	toolRec := spyFor(toolSpies, t)
 	toolRec.Record(args, output, exitCode)
-	// Write to full log with the correct binary name (not "full").
 	if fullRec := spyFor(&fullSpies, t); fullRec != nil && toolRec != nil {
-		fullRec.RecordAs(toolRec.Name(), args, output, exitCode)
+		fullRec.RecordAs(toolRec.Name(), toolRec.Binary(), args, output, exitCode)
 	}
 }
 

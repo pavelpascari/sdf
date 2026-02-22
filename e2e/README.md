@@ -60,6 +60,27 @@ The workflow requires the `SDF_E2E_TOKEN` secret to be set.
 | `TestE2E_MergeRetargetOrdering` | Downstream PR survives head merge (retarget-before-delete) |
 | `TestE2E_MergeThenSync` | Post-merge sync rebases remaining branches correctly |
 
+## Spy recordings
+
+Every E2E test run records all tool invocations to JSONL files under
+`e2e/testdata/recordings/<runID>/<testName>/`. Each entry contains
+`actor` (who initiated the call) and `binary` (the tool invoked).
+
+| File | Actor | Binary | Source |
+|------|-------|--------|--------|
+| `sdf_testing.jsonl` | testing | sdf | test helper (`runSDF`) |
+| `git_sdf.jsonl` | sdf | git | sdf child process |
+| `gh_sdf.jsonl` | sdf | gh | sdf child process |
+| `claude_sdf.jsonl` | sdf | claude | sdf child process |
+| `git_testing.jsonl` | testing | git | test helper (`runGit`) |
+| `gh_testing.jsonl` | testing | gh | test helper (`runGH`) |
+| `full.jsonl` | varies | varies | combined log of all invocations |
+
+Recordings are gitignored and used for:
+- Debugging test failures (replay exact sequences)
+- Cross-validating fake binaries against real API responses
+- Capturing realistic command examples for documentation
+
 ## Cleanup
 
 Tests clean up after themselves (branches + PRs). If a test fails mid-run,

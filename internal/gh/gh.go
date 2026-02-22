@@ -13,7 +13,7 @@ import (
 
 func init() {
 	if dir := os.Getenv("SDF_SPY_DIR"); dir != "" {
-		Spy = spy.NewRecorder(dir, "gh")
+		Spy = spy.NewRecorderFor(dir, "sdf", "gh")
 	}
 }
 
