@@ -151,7 +151,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nExecuting split...")
 	branches, err := splitpkg.Execute(result.Plan, stackName, base, fromBranch, root)
 	if err != nil {
-		splitpkg.Cleanup(branches, originalBranch)
+		splitpkg.Cleanup(branches, originalBranch, root, stackName)
 		return err
 	}
 
@@ -165,7 +165,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 	// --- Validate tree identity ---
 	lastBranch := branches[len(branches)-1]
 	if err := splitpkg.ValidateTree(fromBranch, lastBranch); err != nil {
-		splitpkg.Cleanup(branches, originalBranch)
+		splitpkg.Cleanup(branches, originalBranch, root, stackName)
 		return err
 	}
 	fmt.Printf("  %s Tree identity verified — split is lossless\n", ui.SymOK)

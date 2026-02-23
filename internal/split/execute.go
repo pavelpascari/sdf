@@ -2,6 +2,7 @@ package split
 
 import (
 	"fmt"
+	"os"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
@@ -101,10 +102,13 @@ func ValidateTree(source, lastBranch string) error {
 	return nil
 }
 
-// Cleanup deletes created branches and restores the original branch.
-func Cleanup(branches []string, restoreTo string) {
+// Cleanup deletes created branches, removes the stack file, and restores
+// the original branch. Safe to call with empty branches or missing stack.
+func Cleanup(branches []string, restoreTo, root, stackID string) {
 	gitpkg.Checkout(restoreTo)
 	for _, b := range branches {
 		gitpkg.DeleteBranch(b)
 	}
+	// Remove the stack file created during Init
+	os.Remove(stack.StackPath(root, stackID))
 }

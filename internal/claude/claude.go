@@ -143,11 +143,15 @@ func runStreaming(name string, args []string, display io.Writer) (StreamResult, 
 		}
 	}
 
+	exitCode := 0
 	if err := cmd.Wait(); err != nil {
+		exitCode = 1
+		recordRun(args, sr.Result, exitCode)
 		return sr, fmt.Errorf("claude %s: failed", name)
 	}
 
 	sr.Result = strings.TrimSpace(sr.Result)
+	recordRun(args, sr.Result, exitCode)
 	return sr, nil
 }
 

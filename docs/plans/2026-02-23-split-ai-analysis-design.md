@@ -151,7 +151,7 @@ Replaces the cherry-pick engine from iterations 1+2.
 3. Tree identity check: `git diff source_branch last_layer_branch` must be empty
 4. Push branches (unless `--no-push`)
 5. Create PRs with stack navigation (if `gh` available and push succeeded)
-6. Save YAML plan to `.sdf/split-plans/<stack-name>.yaml`
+6. Save YAML plan to `.sdf/split-plans/<stack-name>.yaml` *(deferred to iteration 4)*
 7. Store session ID in `.sdf/local.json`
 8. Restore original branch
 
