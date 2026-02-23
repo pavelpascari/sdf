@@ -139,6 +139,49 @@ func MergePlan(plan *Plan, resp *HunkAssignmentResponse) *Plan {
 	return merged
 }
 
+// BuildRefinePrompt constructs the initial prompt for an interactive
+// Claude session where the user can refine the split plan.
+func BuildRefinePrompt(plan *Plan) string {
+	var b strings.Builder
+	b.WriteString("The user wants to refine the split plan. Here's the current plan:\n\n")
+
+	for i, layer := range plan.Layers {
+		fmt.Fprintf(&b, "Layer %d: %s\n", i+1, layer.Name)
+		fmt.Fprintf(&b, "  Description: %s\n", layer.Description)
+		for _, f := range layer.Files {
+			fmt.Fprintf(&b, "  - %s\n", f)
+		}
+		for _, pf := range layer.PartialFiles {
+			fmt.Fprintf(&b, "  - %s (hunks %v)\n", pf.Path, pf.Hunks)
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("Ask the user what they'd like to change. When they're satisfied, they can\n")
+	b.WriteString("exit this session (Ctrl+C or /exit) and sdf will re-read the updated plan.\n\n")
+	b.WriteString("Remember: every changed file must appear in at least one layer, use kebab-case\n")
+	b.WriteString("layer names, and return YAML in the same format when asked.\n")
+
+	return b.String()
+}
+
+// BuildReExtractPrompt constructs the prompt to re-extract the plan
+// after an interactive refinement session.
+func BuildReExtractPrompt() string {
+	return `Return the current split plan as YAML (wrapped in ` + "```" + `yaml fences).
+Use the exact same format:
+
+` + "```" + `yaml
+layers:
+  - name: <kebab-case-name>
+    description: "<one-line summary>"
+    files:
+      - <path/to/file>
+` + "```" + `
+
+Include any changes discussed in the refinement session.`
+}
+
 // Analyze invokes Claude to analyze a branch and produce a split plan.
 // Phase 1: file-level grouping (files may appear in multiple layers).
 // Phase 2: if shared files exist, assign individual hunks to layers.

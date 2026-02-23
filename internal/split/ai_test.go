@@ -132,6 +132,57 @@ func TestMergePlan(t *testing.T) {
 	}
 }
 
+func TestBuildRefinePrompt(t *testing.T) {
+	plan := &Plan{
+		Layers: []Layer{
+			{Name: "db", Description: "Add schema", Files: []string{"a.go", "b.go"}},
+			{Name: "api", Description: "REST endpoints", Files: []string{"c.go"},
+				PartialFiles: []PartialFile{{Path: "shared.go", Hunks: []int{1, 3}}}},
+		},
+	}
+
+	prompt := BuildRefinePrompt(plan)
+
+	if !strings.Contains(prompt, "db") {
+		t.Error("prompt should contain layer name 'db'")
+	}
+	if !strings.Contains(prompt, "api") {
+		t.Error("prompt should contain layer name 'api'")
+	}
+	if !strings.Contains(prompt, "Add schema") {
+		t.Error("prompt should contain layer description")
+	}
+	if !strings.Contains(prompt, "a.go") {
+		t.Error("prompt should contain file names")
+	}
+	if !strings.Contains(prompt, "shared.go") {
+		t.Error("prompt should contain partial file names")
+	}
+	if !strings.Contains(prompt, "refine") || !strings.Contains(prompt, "change") {
+		t.Error("prompt should ask user what to change")
+	}
+}
+
+func TestBuildReExtractPrompt(t *testing.T) {
+	prompt := BuildReExtractPrompt()
+
+	if !strings.Contains(prompt, "layers:") {
+		t.Error("prompt should show expected YAML format")
+	}
+	if !strings.Contains(prompt, "yaml") {
+		t.Error("prompt should mention YAML")
+	}
+	if !strings.Contains(prompt, "name:") {
+		t.Error("re-extract prompt should contain name field")
+	}
+	if !strings.Contains(prompt, "description:") {
+		t.Error("re-extract prompt should contain description field")
+	}
+	if !strings.Contains(prompt, "files:") {
+		t.Error("re-extract prompt should contain files field")
+	}
+}
+
 func TestBuildRetryPrompt(t *testing.T) {
 	errs := []error{
 		fmt.Errorf("file %q is not assigned to any layer", "missing.go"),
