@@ -1,0 +1,35 @@
+name: Release Checklist
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches:
+      - main
+
+jobs:
+  release-checklist:
+    if: contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip if label present
+        if: contains(github.event.pull_request.labels.*.name, 'skip-blog-check')
+        run: |
+          echo "SKIP — 'skip-blog-check' label is present, bypassing release checklist."
+          exit 0
+
+      - uses: actions/checkout@v4
+
+      - name: Extract version from PR title
+        id: version
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          VERSION=$(echo "$TITLE" | grep -oP '\d+\.\d+\.\d+' || true)
+          if [[ -z "$VERSION" ]]; then
+            echo "Could not extract version from PR title: $TITLE"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Release checklist
+        if: "!contains(github.event.pull_request.labels.*.name, 'skip-blog-check')"
+        run: make release-checklist RELEASE_VERSION="v${{ steps.version.outputs.version }}"
