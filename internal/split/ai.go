@@ -139,25 +139,63 @@ func MergePlan(plan *Plan, resp *HunkAssignmentResponse) *Plan {
 }
 
 // Analyze invokes Claude to analyze a branch and produce a split plan.
-// It streams Claude's progress to the display writer, retries up to MaxRetries
-// times on validation failure, and returns the validated plan with session ID.
+// Phase 1: file-level grouping (files may appear in multiple layers).
+// Phase 2: if shared files exist, assign individual hunks to layers.
+// Returns the validated plan with session ID.
 func Analyze(fromBranch, base string, display io.Writer) (*AnalysisResult, error) {
-	// Get the list of changed files for validation
 	changedFiles, err := gitpkg.DiffNameOnly(base, fromBranch)
 	if err != nil {
 		return nil, fmt.Errorf("cannot list changed files: %w", err)
 	}
 
+	// --- Phase 1: file-level grouping ---
 	prompt := BuildPrompt(fromBranch, base)
 	name := "split-analysis"
 
-	// First attempt
 	sr, err := claudepkg.RunPromptStreaming(name, prompt, display)
 	if err != nil {
 		return nil, fmt.Errorf("claude analysis failed: %w", err)
 	}
 
 	sessionID := sr.SessionID
+	plan, err := parseAndValidatePhase1(sr.Result, changedFiles, sessionID, name, display)
+	if err != nil {
+		return nil, err
+	}
+
+	// --- Check for shared files ---
+	shared := SharedFiles(plan)
+	if len(shared) == 0 {
+		// No shared files — plan is complete (backward compatible with iteration 3)
+		return &AnalysisResult{Plan: plan, SessionID: sessionID}, nil
+	}
+
+	// --- Phase 2: hunk assignment ---
+	fmt.Fprintf(display, "\n%d file(s) appear in multiple layers — assigning hunks...\n", len(shared))
+
+	fileDiffs, hunkCounts, err := parseSharedFileDiffs(base, fromBranch, shared)
+	if err != nil {
+		return nil, err
+	}
+
+	hunkPrompt := BuildHunkPrompt(shared, fileDiffs)
+	sr, err = claudepkg.RunPromptStreamingResume(name, sessionID, hunkPrompt, display)
+	if err != nil {
+		return nil, fmt.Errorf("claude hunk assignment failed: %w", err)
+	}
+
+	resp, err := parseAndValidatePhase2(sr.Result, shared, hunkCounts, sessionID, name, display)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := MergePlan(plan, resp)
+	return &AnalysisResult{Plan: merged, SessionID: sessionID}, nil
+}
+
+// parseAndValidatePhase1 parses and validates Phase 1 with retries.
+func parseAndValidatePhase1(result string, changedFiles []string, sessionID, name string, display io.Writer) (*Plan, error) {
+	sr := claudepkg.StreamResult{Result: result, SessionID: sessionID}
 
 	for attempt := 0; attempt <= MaxRetries; attempt++ {
 		plan, parseErr := ParsePlan(sr.Result)
@@ -167,6 +205,7 @@ func Analyze(fromBranch, base string, display io.Writer) (*AnalysisResult, error
 			}
 			retryPrompt := fmt.Sprintf("Your response could not be parsed: %s\n\nPlease return a valid YAML plan.", parseErr.Error())
 			fmt.Fprintf(display, "\n⚠ Parse error, retrying (%d/%d)...\n", attempt+1, MaxRetries)
+			var err error
 			sr, err = claudepkg.RunPromptStreamingResume(name, sessionID, retryPrompt, display)
 			if err != nil {
 				return nil, fmt.Errorf("claude retry failed: %w", err)
@@ -174,9 +213,9 @@ func Analyze(fromBranch, base string, display io.Writer) (*AnalysisResult, error
 			continue
 		}
 
-		validationErrs := ValidatePlan(plan, changedFiles)
+		validationErrs := ValidatePhase1(plan, changedFiles)
 		if len(validationErrs) == 0 {
-			return &AnalysisResult{Plan: plan, SessionID: sessionID}, nil
+			return plan, nil
 		}
 
 		if attempt == MaxRetries {
@@ -190,12 +229,84 @@ func Analyze(fromBranch, base string, display io.Writer) (*AnalysisResult, error
 
 		retryPrompt := BuildRetryPrompt(validationErrs)
 		fmt.Fprintf(display, "\n⚠ Validation failed, retrying (%d/%d)...\n", attempt+1, MaxRetries)
+		var err error
 		sr, err = claudepkg.RunPromptStreamingResume(name, sessionID, retryPrompt, display)
 		if err != nil {
 			return nil, fmt.Errorf("claude retry failed: %w", err)
 		}
 	}
 
-	// Unreachable, but satisfy the compiler
 	return nil, fmt.Errorf("analysis failed")
+}
+
+// parseSharedFileDiffs extracts and parses diffs for shared files.
+func parseSharedFileDiffs(base, source string, shared map[string][]string) ([]FileDiff, map[string]int, error) {
+	var sharedPaths []string
+	for f := range shared {
+		sharedPaths = append(sharedPaths, f)
+	}
+
+	diff, err := gitpkg.DiffFiles(base, source, sharedPaths)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot extract diff for shared files: %w", err)
+	}
+
+	allFileDiffs := ParseDiff(diff)
+
+	var fileDiffs []FileDiff
+	hunkCounts := make(map[string]int)
+	for _, fd := range allFileDiffs {
+		if _, ok := shared[fd.Path]; ok {
+			fileDiffs = append(fileDiffs, fd)
+			hunkCounts[fd.Path] = len(fd.Hunks)
+		}
+	}
+
+	return fileDiffs, hunkCounts, nil
+}
+
+// parseAndValidatePhase2 parses and validates Phase 2 hunk assignments with retries.
+func parseAndValidatePhase2(result string, shared map[string][]string, hunkCounts map[string]int, sessionID, name string, display io.Writer) (*HunkAssignmentResponse, error) {
+	sr := claudepkg.StreamResult{Result: result, SessionID: sessionID}
+
+	for attempt := 0; attempt <= MaxRetries; attempt++ {
+		resp, parseErr := ParseHunkAssignment(sr.Result)
+		if parseErr != nil {
+			if attempt == MaxRetries {
+				return nil, fmt.Errorf("claude returned invalid hunk assignment after %d attempts: %w", MaxRetries+1, parseErr)
+			}
+			retryPrompt := fmt.Sprintf("Your response could not be parsed: %s\n\nPlease return valid YAML hunk assignments.", parseErr.Error())
+			fmt.Fprintf(display, "\n⚠ Parse error, retrying (%d/%d)...\n", attempt+1, MaxRetries)
+			var err error
+			sr, err = claudepkg.RunPromptStreamingResume(name, sessionID, retryPrompt, display)
+			if err != nil {
+				return nil, fmt.Errorf("claude retry failed: %w", err)
+			}
+			continue
+		}
+
+		validationErrs := ValidateHunkAssignment(resp, shared, hunkCounts)
+		if len(validationErrs) == 0 {
+			return resp, nil
+		}
+
+		if attempt == MaxRetries {
+			var errMsgs []string
+			for _, e := range validationErrs {
+				errMsgs = append(errMsgs, e.Error())
+			}
+			return nil, fmt.Errorf("hunk assignment validation failed after %d attempts:\n  %s",
+				MaxRetries+1, strings.Join(errMsgs, "\n  "))
+		}
+
+		retryPrompt := ValidationSummary(validationErrs)
+		fmt.Fprintf(display, "\n⚠ Hunk assignment validation failed, retrying (%d/%d)...\n", attempt+1, MaxRetries)
+		var err error
+		sr, err = claudepkg.RunPromptStreamingResume(name, sessionID, retryPrompt, display)
+		if err != nil {
+			return nil, fmt.Errorf("claude retry failed: %w", err)
+		}
+	}
+
+	return nil, fmt.Errorf("hunk assignment failed")
 }
