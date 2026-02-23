@@ -162,3 +162,15 @@ func SanitizeSessionName(prefix, branch string) string {
 	name = strings.ReplaceAll(name, " ", "-")
 	return name
 }
+
+// RunInteractiveResume spawns an interactive Claude session that resumes
+// a previous conversation. The initialPrompt is passed as the positional
+// argument so Claude starts with context. Returns nil when the user exits.
+func RunInteractiveResume(sessionID, initialPrompt string) error {
+	args := []string{"--resume", sessionID, initialPrompt}
+	cmd := exec.Command(Binary, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
