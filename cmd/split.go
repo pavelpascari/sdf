@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
@@ -133,23 +134,130 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 	// --- Display plan ---
 	displaySplitPlan(result.Plan, stackName, base, fromBranch)
 
+	// --- Save plan to disk ---
+	planPath := splitpkg.PlanPath(root, stackName)
+	if err := splitpkg.SavePlan(planPath, result.Plan); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s could not save plan: %v\n", ui.SymWarn, err)
+	} else {
+		fmt.Printf("  Plan saved to %s\n", planPath)
+	}
+
 	if dryRun {
 		return nil
 	}
 
-	// --- Confirm ---
+	// --- Choose action ---
+	plan := result.Plan
+	sessionID := result.SessionID
+
 	if !yes {
-		if !ui.Confirm("Execute this split?") {
-			fmt.Println("Aborted.")
-			return nil
+		for {
+			choice := ui.Select("What would you like to do?", []huh.Option[string]{
+				huh.NewOption("Execute this split", "execute"),
+				huh.NewOption("Refine plan (opens Claude session)", "refine"),
+				huh.NewOption("Abort", "abort"),
+			})
+
+			switch choice {
+			case "execute":
+				goto execute
+			case "refine":
+				if sessionID == "" {
+					fmt.Println("No Claude session available for refinement.")
+					continue
+				}
+
+				fmt.Println("\nOpening Claude session for plan refinement...")
+				fmt.Println("(Exit with Ctrl+C or /exit when done)")
+				fmt.Println()
+
+				refinePrompt := splitpkg.BuildRefinePrompt(plan)
+				if err := claudepkg.RunInteractiveResume(sessionID, refinePrompt); err != nil {
+					fmt.Fprintf(os.Stderr, "\n%s Claude session exited with error: %v\n", ui.SymWarn, err)
+					fmt.Println("Continuing with the previous plan.")
+					displaySplitPlan(plan, stackName, base, fromBranch)
+					continue
+				}
+
+				fmt.Println("\nRe-reading plan from Claude session...")
+				newPlan, err := splitpkg.ReExtractPlan(sessionID, "split-analysis", changedFiles, os.Stdout)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "\n%s Could not re-extract plan: %v\n", ui.SymWarn, err)
+					fmt.Println("Continuing with the previous plan.")
+					displaySplitPlan(plan, stackName, base, fromBranch)
+					continue
+				}
+
+				plan = newPlan
+				// Check for shared files in the refined plan
+				shared := splitpkg.SharedFiles(plan)
+				if len(shared) > 0 {
+					fmt.Printf("\n%d file(s) appear in multiple layers — assigning hunks...\n", len(shared))
+					fileDiffs, hunkCounts, err := splitpkg.ParseSharedFileDiffs(base, fromBranch, shared)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "\n%s Could not parse shared file diffs: %v\n", ui.SymWarn, err)
+						fmt.Println("Continuing with the previous plan.")
+						plan = result.Plan
+						displaySplitPlan(plan, stackName, base, fromBranch)
+						continue
+					}
+
+					hunkPrompt := splitpkg.BuildHunkPrompt(shared, fileDiffs)
+					sr, err := claudepkg.RunPromptStreamingResume("split-analysis", sessionID, hunkPrompt, os.Stdout)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "\n%s Hunk assignment failed: %v\n", ui.SymWarn, err)
+						fmt.Println("Continuing with the previous plan.")
+						plan = result.Plan
+						displaySplitPlan(plan, stackName, base, fromBranch)
+						continue
+					}
+
+					resp, err := splitpkg.ParseHunkAssignment(sr.Result)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "\n%s Could not parse hunk assignments: %v\n", ui.SymWarn, err)
+						fmt.Println("Continuing with the previous plan.")
+						plan = result.Plan
+						displaySplitPlan(plan, stackName, base, fromBranch)
+						continue
+					}
+
+					validationErrs := splitpkg.ValidateHunkAssignment(resp, shared, hunkCounts)
+					if len(validationErrs) > 0 {
+						fmt.Fprintf(os.Stderr, "\n%s Hunk assignment validation failed\n", ui.SymWarn)
+						fmt.Println("Continuing with the previous plan.")
+						plan = result.Plan
+						displaySplitPlan(plan, stackName, base, fromBranch)
+						continue
+					}
+
+					plan = splitpkg.MergePlan(plan, resp)
+				}
+
+				result.Plan = plan
+
+				fmt.Println()
+				displaySplitPlan(plan, stackName, base, fromBranch)
+
+				// Update saved plan
+				if err := splitpkg.SavePlan(planPath, plan); err != nil {
+					fmt.Fprintf(os.Stderr, "  %s could not save updated plan: %v\n", ui.SymWarn, err)
+				}
+
+				continue
+			default:
+				// abort or empty (user cancelled)
+				fmt.Println("Aborted.")
+				return nil
+			}
 		}
 	}
+execute:
 
 	// --- Execute ---
 	originalBranch, _ := gitpkg.CurrentBranch()
 
 	fmt.Println("\nExecuting split...")
-	branches, err := splitpkg.Execute(result.Plan, stackName, base, fromBranch, root)
+	branches, err := splitpkg.Execute(plan, stackName, base, fromBranch, root)
 	if err != nil {
 		splitpkg.Cleanup(branches, originalBranch, root, stackName)
 		return err
@@ -157,7 +265,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 
 	// Report each layer
 	for i, b := range branches {
-		layer := result.Plan.Layers[i]
+		layer := plan.Layers[i]
 		fmt.Printf("  %s Layer %d: %s — %d files applied\n",
 			ui.SymOK, i+1, ui.Branch(b), len(layer.Files)+len(layer.PartialFiles))
 	}
@@ -169,6 +277,9 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Printf("  %s Tree identity verified — split is lossless\n", ui.SymOK)
+
+	// --- Delete plan file (split succeeded) ---
+	splitpkg.DeletePlan(planPath)
 
 	// --- Save session ID ---
 	if result.SessionID != "" {
@@ -211,7 +322,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 		if err == nil {
 			cfg, _ := cfgpkg.Load(root)
 			fmt.Println("\nCreating pull requests...")
-			if err := createSplitPRs(root, s, cfg, fromBranch, result.Plan); err != nil {
+			if err := createSplitPRs(root, s, cfg, fromBranch, plan); err != nil {
 				fmt.Fprintf(os.Stderr, "  %s could not create PRs: %v\n", ui.SymWarn, err)
 				fmt.Println("  You can create them manually with: sdf pr (from each branch)")
 			}

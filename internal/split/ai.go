@@ -217,7 +217,7 @@ func Analyze(fromBranch, base string, display io.Writer) (*AnalysisResult, error
 	// --- Phase 2: hunk assignment ---
 	fmt.Fprintf(display, "\n%d file(s) appear in multiple layers — assigning hunks...\n", len(shared))
 
-	fileDiffs, hunkCounts, err := parseSharedFileDiffs(base, fromBranch, shared)
+	fileDiffs, hunkCounts, err := ParseSharedFileDiffs(base, fromBranch, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -283,8 +283,8 @@ func parseAndValidatePhase1(result string, changedFiles []string, sessionID, nam
 	return nil, fmt.Errorf("analysis failed")
 }
 
-// parseSharedFileDiffs extracts and parses diffs for shared files.
-func parseSharedFileDiffs(base, source string, shared map[string][]string) ([]FileDiff, map[string]int, error) {
+// ParseSharedFileDiffs extracts and parses diffs for shared files.
+func ParseSharedFileDiffs(base, source string, shared map[string][]string) ([]FileDiff, map[string]int, error) {
 	var sharedPaths []string
 	for f := range shared {
 		sharedPaths = append(sharedPaths, f)
