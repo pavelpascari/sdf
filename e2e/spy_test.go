@@ -21,6 +21,11 @@ import (
 //  3. The responses can be converted to FakeBin fixtures that are
 //     structurally compatible with reality
 //
+// Scenario: A developer adds application configuration support in two
+// stacked PRs — first the schema definition, then the config loader.
+//
+//	main ← add-config-schema ← add-config-loader
+//
 // This is the bridge between E2E and unit tests: it proves our fakes
 // are honest representations of the real API.
 func TestE2E_RecordAndValidate(t *testing.T) {
@@ -35,27 +40,28 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 		os.RemoveAll(dir + "/.sdf")
 	})
 
-	// --- Run a small lifecycle that exercises key gh commands ---
+	// Run a small lifecycle that exercises key gh commands
 	runGit(t, dir, "checkout", "main")
 	runGit(t, dir, "pull", "origin", "main")
 
 	stackName := prefix
 
-	// init + branch + commit
-	runSDF(t, dir, "init", "--base", "main", "--branch", "rec-a", stackName)
-	writeCommit(t, dir, prefix+"-rec-a.txt", "recording test A\n", "feat: rec A")
+	// Build a config feature stack
+	t.Log("Building config stack: add-config-schema → add-config-loader")
+	runSDF(t, dir, "init", "--base", "main", "--branch", "add-config-schema", stackName)
+	writeCommit(t, dir, prefix+"-config-schema.json", "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"port\": { \"type\": \"integer\" },\n    \"host\": { \"type\": \"string\" }\n  }\n}\n", "feat: add application config JSON schema")
 
-	runSDF(t, dir, "branch", "rec-b")
-	writeCommit(t, dir, prefix+"-rec-b.txt", "recording test B\n", "feat: rec B")
+	runSDF(t, dir, "branch", "add-config-loader")
+	writeCommit(t, dir, prefix+"-config-loader.go", "package config\n\nfunc Load(path string) (*Config, error) { return nil, nil }\n", "feat: add config file loader with validation")
 
-	branchA := stackName + "/rec-a"
-	branchB := stackName + "/rec-b"
+	branchSchema := stackName + "/add-config-schema"
+	branchLoader := stackName + "/add-config-loader"
 
 	// Create PRs (exercises: pr create, pr view)
-	runGit(t, dir, "checkout", branchA)
+	runGit(t, dir, "checkout", branchSchema)
 	runSDF(t, dir, "pr", "--json")
 
-	runGit(t, dir, "checkout", branchB)
+	runGit(t, dir, "checkout", branchLoader)
 	runSDF(t, dir, "pr", "--json")
 
 	// Sync (exercises: pr list, pr edit)
@@ -83,7 +89,7 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 		t.Logf("  [%d] exit=%d args=%q stdout=%q", i, inv.ExitCode, argsSummary, stdoutPreview)
 	}
 
-	// --- Check that expected command types were recorded ---
+	// Check that expected command types were recorded
 	commandsSeen := make(map[string]bool)
 	for _, inv := range recordings {
 		if len(inv.Args) >= 2 {
@@ -98,7 +104,7 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 		}
 	}
 
-	// --- Validate JSON structure of responses ---
+	// Validate JSON structure of responses
 	for _, inv := range recordings {
 		if inv.ExitCode != 0 {
 			continue
@@ -122,13 +128,13 @@ func TestE2E_RecordAndValidate(t *testing.T) {
 		}
 	}
 
-	// --- Cross-validate: convert recordings to fake responses and verify structure ---
+	// Cross-validate: convert recordings to fake responses and verify structure
 	fakeResponses := testutil.RecordingsToFakeResponses(recordings)
 	t.Logf("Generated %d fake response entries from recordings", len(fakeResponses))
 
 	testutil.ValidateFakeAgainstRecordings(t, fakeResponses, recordings)
 
-	// --- Verify specific structural expectations ---
+	// Verify specific structural expectations
 	// Find a pr list response and verify it parses as []PRInfo
 	for _, inv := range recordings {
 		if len(inv.Args) >= 2 && inv.Args[0] == "pr" && inv.Args[1] == "list" && inv.ExitCode == 0 && strings.HasPrefix(strings.TrimSpace(inv.Stdout), "[") {
