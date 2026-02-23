@@ -168,15 +168,12 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 				}
 
 				fmt.Println("\nOpening Claude session for plan refinement...")
-				fmt.Println("(Exit with Ctrl+C or /exit when done)")
+				fmt.Println("(Type /exit when done)")
 				fmt.Println()
 
 				refinePrompt := splitpkg.BuildRefinePrompt(plan)
 				if err := claudepkg.RunInteractiveResume(sessionID, refinePrompt); err != nil {
 					fmt.Fprintf(os.Stderr, "\n%s Claude session exited with error: %v\n", ui.SymWarn, err)
-					fmt.Println("Continuing with the previous plan.")
-					displaySplitPlan(plan, stackName, base, fromBranch)
-					continue
 				}
 
 				fmt.Println("\nRe-reading plan from Claude session...")

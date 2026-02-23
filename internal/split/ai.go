@@ -158,7 +158,7 @@ func BuildRefinePrompt(plan *Plan) string {
 	}
 
 	b.WriteString("Ask the user what they'd like to change. When they're satisfied, they can\n")
-	b.WriteString("exit this session (Ctrl+C or /exit) and sdf will re-read the updated plan.\n\n")
+	b.WriteString("type /exit and sdf will re-read the updated plan.\n\n")
 	b.WriteString("Remember: every changed file must appear in at least one layer, use kebab-case\n")
 	b.WriteString("layer names, and return YAML in the same format when asked.\n")
 
