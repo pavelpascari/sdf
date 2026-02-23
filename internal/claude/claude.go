@@ -51,29 +51,48 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	return output, nil
 }
 
+// StreamResult holds the output of a streaming Claude invocation.
+type StreamResult struct {
+	Result    string // final response text
+	SessionID string // session ID for resumption
+}
+
 // RunPromptStreaming sends a prompt to Claude using stream-json output format
 // with partial messages enabled, displaying text in real-time via display writer
-// while capturing the full response.
-//
-// The stream-json format emits JSON events line-by-line. With --include-partial-messages,
-// "assistant" events arrive incrementally with growing content. We display only the
-// new text since the last event. The "result" event carries the final complete text.
-func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
-	cmd := exec.Command(Binary, "-p", "--verbose",
+// while capturing the full response and session ID.
+func RunPromptStreaming(name, prompt string, display io.Writer) (StreamResult, error) {
+	args := []string{"-p", "--verbose",
 		"--output-format", "stream-json",
 		"--include-partial-messages",
-		prompt)
+		prompt}
+	return runStreaming(name, args, display)
+}
+
+// RunPromptStreamingResume resumes a previous session with a new prompt,
+// streaming output and capturing the response.
+func RunPromptStreamingResume(name, sessionID, prompt string, display io.Writer) (StreamResult, error) {
+	args := []string{"--resume", sessionID,
+		"-p", "--verbose",
+		"--output-format", "stream-json",
+		"--include-partial-messages",
+		prompt}
+	return runStreaming(name, args, display)
+}
+
+// runStreaming is the shared implementation for streaming Claude invocations.
+func runStreaming(name string, args []string, display io.Writer) (StreamResult, error) {
+	cmd := exec.Command(Binary, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", fmt.Errorf("claude %s: %w", name, err)
+		return StreamResult{}, fmt.Errorf("claude %s: %w", name, err)
 	}
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("claude %s: %w", name, err)
+		return StreamResult{}, fmt.Errorf("claude %s: %w", name, err)
 	}
 
-	var result string
+	var sr StreamResult
 	var displayedLen int
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -85,8 +104,9 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 		}
 
 		var event struct {
-			Type    string `json:"type"`
-			Message struct {
+			Type      string `json:"type"`
+			SessionID string `json:"session_id"`
+			Message   struct {
 				Content []struct {
 					Text string `json:"text"`
 				} `json:"content"`
@@ -96,6 +116,11 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 
 		if json.Unmarshal(line, &event) != nil {
 			continue
+		}
+
+		// Capture session_id from any event that has it
+		if event.SessionID != "" && sr.SessionID == "" {
+			sr.SessionID = event.SessionID
 		}
 
 		// Display incremental text from partial assistant messages
@@ -108,16 +133,22 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 		}
 
 		// Capture the final result text
-		if event.Type == "result" && event.Result != "" {
-			result = event.Result
+		if event.Type == "result" {
+			if event.Result != "" {
+				sr.Result = event.Result
+			}
+			if event.SessionID != "" {
+				sr.SessionID = event.SessionID
+			}
 		}
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return result, fmt.Errorf("claude %s: failed", name)
+		return sr, fmt.Errorf("claude %s: failed", name)
 	}
 
-	return strings.TrimSpace(result), nil
+	sr.Result = strings.TrimSpace(sr.Result)
+	return sr, nil
 }
 
 // SanitizeSessionName produces a safe session name from a branch name.
