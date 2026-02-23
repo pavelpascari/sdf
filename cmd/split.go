@@ -190,40 +190,36 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 				shared := splitpkg.SharedFiles(plan)
 				if len(shared) > 0 {
 					fmt.Printf("\n%d file(s) appear in multiple layers — assigning hunks...\n", len(shared))
-					fileDiffs, hunkCounts, err := splitpkg.ParseSharedFileDiffs(base, fromBranch, shared)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "\n%s Could not parse shared file diffs: %v\n", ui.SymWarn, err)
+					dedupeAndContinue := func(reason string) {
+						fmt.Fprintf(os.Stderr, "\n%s %s\n", ui.SymWarn, reason)
 						fmt.Println("Shared files deduplicated — each kept in its first layer.")
 						plan = splitpkg.DeduplicateSharedFiles(plan)
+						splitpkg.SavePlan(planPath, plan)
 						displaySplitPlan(plan, stackName, base, fromBranch)
+					}
+
+					fileDiffs, hunkCounts, err := splitpkg.ParseSharedFileDiffs(base, fromBranch, shared)
+					if err != nil {
+						dedupeAndContinue(fmt.Sprintf("Could not parse shared file diffs: %v", err))
 						continue
 					}
 
 					hunkPrompt := splitpkg.BuildHunkPrompt(shared, fileDiffs)
 					sr, err := claudepkg.RunPromptStreamingResume("split-analysis", sessionID, hunkPrompt, os.Stdout)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "\n%s Hunk assignment failed: %v\n", ui.SymWarn, err)
-						fmt.Println("Shared files deduplicated — each kept in its first layer.")
-						plan = splitpkg.DeduplicateSharedFiles(plan)
-						displaySplitPlan(plan, stackName, base, fromBranch)
+						dedupeAndContinue(fmt.Sprintf("Hunk assignment failed: %v", err))
 						continue
 					}
 
 					resp, err := splitpkg.ParseHunkAssignment(sr.Result)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "\n%s Could not parse hunk assignments: %v\n", ui.SymWarn, err)
-						fmt.Println("Shared files deduplicated — each kept in its first layer.")
-						plan = splitpkg.DeduplicateSharedFiles(plan)
-						displaySplitPlan(plan, stackName, base, fromBranch)
+						dedupeAndContinue(fmt.Sprintf("Could not parse hunk assignments: %v", err))
 						continue
 					}
 
 					validationErrs := splitpkg.ValidateHunkAssignment(resp, shared, hunkCounts)
 					if len(validationErrs) > 0 {
-						fmt.Fprintf(os.Stderr, "\n%s Hunk assignment validation failed\n", ui.SymWarn)
-						fmt.Println("Shared files deduplicated — each kept in its first layer.")
-						plan = splitpkg.DeduplicateSharedFiles(plan)
-						displaySplitPlan(plan, stackName, base, fromBranch)
+						dedupeAndContinue("Hunk assignment validation failed")
 						continue
 					}
 
