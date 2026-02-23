@@ -161,6 +161,12 @@ func TestBuildRefinePrompt(t *testing.T) {
 	if !strings.Contains(prompt, "refine") || !strings.Contains(prompt, "change") {
 		t.Error("prompt should ask user what to change")
 	}
+	if !strings.Contains(prompt, "confirm") {
+		t.Error("prompt should require confirmation before continuing")
+	}
+	if !strings.Contains(prompt, "/exit") {
+		t.Error("prompt should instruct user to type /exit after confirmation")
+	}
 }
 
 func TestBuildReExtractPrompt(t *testing.T) {

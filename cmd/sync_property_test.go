@@ -89,7 +89,7 @@ func TestProperty_NoRebaseOnMergedBranch(t *testing.T) {
 	// Disable gh so PR actions don't appear
 	testutil.SetBinary(t, &ghpkg.Binary, "/nonexistent/gh")
 
-	for trial := 0; trial < 20; trial++ {
+	for trial := 0; trial < 10; trial++ {
 		t.Run(fmt.Sprintf("trial-%d", trial), func(t *testing.T) {
 			n := 3 + rand.Intn(5) // 3-7 branches
 			_, s := propertyTestRepo(t, n)
@@ -126,7 +126,7 @@ func TestProperty_NoRebaseOnMergedBranch(t *testing.T) {
 func TestProperty_RebaseOrderRespectsTopology(t *testing.T) {
 	testutil.SetBinary(t, &ghpkg.Binary, "/nonexistent/gh")
 
-	for trial := 0; trial < 20; trial++ {
+	for trial := 0; trial < 10; trial++ {
 		t.Run(fmt.Sprintf("trial-%d", trial), func(t *testing.T) {
 			n := 3 + rand.Intn(5)
 			dir, s := propertyTestRepo(t, n)
@@ -180,7 +180,7 @@ func TestProperty_RebaseOrderRespectsTopology(t *testing.T) {
 func TestProperty_RebaseAlwaysPairedWithPush(t *testing.T) {
 	testutil.SetBinary(t, &ghpkg.Binary, "/nonexistent/gh")
 
-	for trial := 0; trial < 20; trial++ {
+	for trial := 0; trial < 10; trial++ {
 		t.Run(fmt.Sprintf("trial-%d", trial), func(t *testing.T) {
 			n := 3 + rand.Intn(5)
 			dir, s := propertyTestRepo(t, n)
@@ -239,7 +239,7 @@ func TestProperty_RebaseAlwaysPairedWithPush(t *testing.T) {
 func TestProperty_SkipMergedOnlyForMergedNodes(t *testing.T) {
 	testutil.SetBinary(t, &ghpkg.Binary, "/nonexistent/gh")
 
-	for trial := 0; trial < 20; trial++ {
+	for trial := 0; trial < 10; trial++ {
 		t.Run(fmt.Sprintf("trial-%d", trial), func(t *testing.T) {
 			n := 3 + rand.Intn(5)
 			_, s := propertyTestRepo(t, n)

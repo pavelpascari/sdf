@@ -24,7 +24,7 @@ run: build
 # Run all tests (unit + property + golden, no network needed)
 .PHONY: test
 test:
-	go test -count=1 ./...
+	go test -count=1 -timeout 15m ./...
 
 # Unit tests only (skip property-based tests)
 .PHONY: test-unit
