@@ -206,6 +206,26 @@ func PRMerge(prNumber int, method string) error {
 	return err
 }
 
+// ReleaseInfo holds the tag name and URL of a GitHub release.
+type ReleaseInfo struct {
+	TagName string `json:"tagName"`
+	URL     string `json:"url"`
+}
+
+// LatestRelease returns the latest published release for the current repo.
+func LatestRelease() (*ReleaseInfo, error) {
+	out, err := run("release", "view", "--latest", "--json", "tagName,url")
+	if err != nil {
+		return nil, err
+	}
+
+	var rel ReleaseInfo
+	if err := json.Unmarshal([]byte(out), &rel); err != nil {
+		return nil, fmt.Errorf("cannot parse gh release view output: %w", err)
+	}
+	return &rel, nil
+}
+
 // prStatePriority returns a sort priority for PR states.
 // Higher value = more relevant when multiple PRs exist for the same branch.
 func prStatePriority(state string) int {

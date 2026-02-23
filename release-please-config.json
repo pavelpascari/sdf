@@ -7,12 +7,7 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "extra-files": [
-        "README.md",
-        {
-          "type": "json",
-          "path": "www/public/_/version.json",
-          "jsonpath": "$.version"
-        }
+        "README.md"
       ]
     }
   }

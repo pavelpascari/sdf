@@ -1,9 +1,10 @@
 package version
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"fmt"
 	"testing"
+
+	"github.com/pavelpascari/sdf/internal/gh"
 )
 
 func TestIsNewer(t *testing.T) {
@@ -32,9 +33,9 @@ func TestIsNewer(t *testing.T) {
 
 func TestParseSemver(t *testing.T) {
 	tests := []struct {
-		input                      string
-		major, minor, patch        int
-		ok                         bool
+		input               string
+		major, minor, patch int
+		ok                  bool
 	}{
 		{"0.1.0", 0, 1, 0, true},
 		{"1.2.3", 1, 2, 3, true},
@@ -55,21 +56,24 @@ func TestParseSemver(t *testing.T) {
 	}
 }
 
-func TestCheck_NewerVersionAvailable(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"version":"0.3.0","changelog":"https://github.com/pavelpascari/sdf/blob/main/CHANGELOG.md"}`))
-	}))
-	defer srv.Close()
+func stubRelease(tag, url string) func() {
+	orig := LatestReleaseFunc
+	LatestReleaseFunc = func() (*gh.ReleaseInfo, error) {
+		return &gh.ReleaseInfo{TagName: tag, URL: url}, nil
+	}
+	return func() { LatestReleaseFunc = orig }
+}
 
-	origURL := VersionURL
-	origClient := HTTPClient
-	VersionURL = srv.URL
-	HTTPClient = srv.Client()
-	defer func() {
-		VersionURL = origURL
-		HTTPClient = origClient
-	}()
+func stubReleaseError() func() {
+	orig := LatestReleaseFunc
+	LatestReleaseFunc = func() (*gh.ReleaseInfo, error) {
+		return nil, fmt.Errorf("gh: not found")
+	}
+	return func() { LatestReleaseFunc = orig }
+}
+
+func TestCheck_NewerVersionAvailable(t *testing.T) {
+	defer stubRelease("v0.3.0", "https://github.com/pavelpascari/sdf/releases/tag/v0.3.0")()
 
 	// Should not panic; we just verify it runs without error.
 	// The function prints to stdout — a full assertion would capture stdout,
@@ -78,45 +82,20 @@ func TestCheck_NewerVersionAvailable(t *testing.T) {
 }
 
 func TestCheck_SameVersion(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"version":"0.1.0","changelog":"https://github.com/pavelpascari/sdf/blob/main/CHANGELOG.md"}`))
-	}))
-	defer srv.Close()
-
-	origURL := VersionURL
-	origClient := HTTPClient
-	VersionURL = srv.URL
-	HTTPClient = srv.Client()
-	defer func() {
-		VersionURL = origURL
-		HTTPClient = origClient
-	}()
+	defer stubRelease("v0.1.0", "https://github.com/pavelpascari/sdf/releases/tag/v0.1.0")()
 
 	// Should silently do nothing.
 	Check("0.1.0")
 }
 
 func TestCheck_DevVersion(t *testing.T) {
-	// Should return immediately without making any HTTP request.
+	// Should return immediately without calling gh.
 	Check("dev")
 }
 
-func TestCheck_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer srv.Close()
+func TestCheck_GhError(t *testing.T) {
+	defer stubReleaseError()()
 
-	origURL := VersionURL
-	origClient := HTTPClient
-	VersionURL = srv.URL
-	HTTPClient = srv.Client()
-	defer func() {
-		VersionURL = origURL
-		HTTPClient = origClient
-	}()
-
-	// Should not panic on server error.
+	// Should not panic when gh fails.
 	Check("0.1.0")
 }

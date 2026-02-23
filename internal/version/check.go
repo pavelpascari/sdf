@@ -1,34 +1,22 @@
-// Package version checks for newer SDF releases by querying the
-// version endpoint on sdf-tool.com.
+// Package version checks for newer SDF releases by querying
+// GitHub via the gh CLI.
 package version
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// VersionURL is the endpoint that returns the latest release information.
-// It is a variable so tests can override it.
-var VersionURL = "https://sdf-tool.com/_/version.json"
+// LatestReleaseFunc is the function used to fetch the latest release.
+// Tests can replace it to avoid shelling out to gh.
+var LatestReleaseFunc = gh.LatestRelease
 
-// HTTPClient is the HTTP client used for the version check.
-// Tests can replace it to avoid real network calls.
-var HTTPClient = &http.Client{Timeout: 3 * time.Second}
-
-// response is the JSON shape returned by the version endpoint.
-type response struct {
-	Version   string `json:"version"`
-	Changelog string `json:"changelog"`
-}
-
-// Check fetches the latest version from the remote endpoint and prints
-// an upgrade notice to stdout if the running version is older.
+// Check queries GitHub for the latest release and prints an upgrade
+// notice if the running version is older.
 // Errors are silently ignored — the version check must never block or
 // break normal CLI usage.
 func Check(current string) {
@@ -36,30 +24,21 @@ func Check(current string) {
 		return
 	}
 
-	resp, err := HTTPClient.Get(VersionURL)
+	rel, err := LatestReleaseFunc()
 	if err != nil {
 		return
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	latest := strings.TrimPrefix(rel.TagName, "v")
+	if latest == "" {
 		return
 	}
 
-	var info response
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	if !isNewer(latest, current) {
 		return
 	}
 
-	if info.Version == "" {
-		return
-	}
-
-	if !isNewer(info.Version, current) {
-		return
-	}
-
-	printUpgradeNotice(current, info.Version, info.Changelog)
+	printUpgradeNotice(current, latest, rel.URL)
 }
 
 // isNewer returns true if latest is a higher semver than current.
@@ -110,7 +89,7 @@ func parseSemver(v string) (major, minor, patch int, ok bool) {
 	return major, minor, patch, true
 }
 
-func printUpgradeNotice(current, latest, changelog string) {
+func printUpgradeNotice(current, latest, releaseURL string) {
 	fmt.Println()
 	fmt.Printf("%s A new version of sdf is available: %s → %s\n",
 		ui.SymWarn,
@@ -118,7 +97,7 @@ func printUpgradeNotice(current, latest, changelog string) {
 		ui.Green.Render(latest),
 	)
 	fmt.Printf("  Upgrade: %s\n", ui.Bold.Render("go install github.com/pavelpascari/sdf@latest"))
-	if changelog != "" {
-		fmt.Printf("  Changelog: %s\n", ui.Cyan.Render(changelog))
+	if releaseURL != "" {
+		fmt.Printf("  Release: %s\n", ui.Cyan.Render(releaseURL))
 	}
 }
