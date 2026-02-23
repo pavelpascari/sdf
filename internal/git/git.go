@@ -284,6 +284,29 @@ func FetchBranch(branch string) error {
 	return err
 }
 
+// ShowFiles returns the files changed in a single commit.
+func ShowFiles(sha string) ([]string, error) {
+	out, err := run("diff-tree", "--no-commit-id", "--name-only", "-r", sha)
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// ShowSubject returns the subject line of a single commit.
+func ShowSubject(sha string) (string, error) {
+	return run("log", "-1", "--format=%s", sha)
+}
+
+// DeleteBranch force-deletes a local branch.
+func DeleteBranch(name string) error {
+	_, err := run("branch", "-D", name)
+	return err
+}
+
 // IsRebaseInProgress returns true if a rebase is currently paused
 // (e.g. waiting for conflict resolution).
 func IsRebaseInProgress() bool {
