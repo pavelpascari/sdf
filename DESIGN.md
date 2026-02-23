@@ -2,7 +2,7 @@
 
 ## Overview
 
-`sdf` is a lightweight CLI tool that manages stacked diffs (chains of dependent PRs) in a Git repository. It handles branch topology, cascade rebasing when head PRs merge, and context continuity so Claude can reason across the full stack when resolving conflicts or continuing work.
+`sdf` is a lightweight CLI tool that manages stacked diffs (chains of dependent PRs) in a Git repository. It handles branch topology and cascade rebasing when head PRs merge.
 
 The tool is a thin orchestration layer over three CLIs that developers already have: `git`, `gh`, and `claude`. No external dependencies beyond the Go stdlib.
 
@@ -13,8 +13,6 @@ The tool is a thin orchestration layer over three CLIs that developers already h
 **Stack topology management** — knowing the shape of the stack, persisting that metadata, and updating it as PRs merge.
 
 **Branch synchronization** — when a head PR merges into main, rebasing the next branch onto main, then cascading that rebase down the rest of the stack and updating PR bases in GitHub.
-
-**Context continuity** — ensuring Claude understands not just the current branch but the semantic intent of the whole stack when working on any individual PR, especially during conflict resolution.
 
 -----
 
@@ -37,23 +35,20 @@ sdf init --stack users-feature
 # Layer 1: schema
 sdf branch users/db-schema
 # ... implement migration, User table with id, email, created_at
-sdf context edit            # document: adds users table, pgx v5, AppError pattern
-sdf pr                      # gh pr create, body from context doc
+sdf pr
 
 # Layer 2: repository
 sdf branch users/repository # auto-bases off users/db-schema
 # ... implement UserRepository with FindByID, Create
-sdf context edit            # document: depends on users table schema, returns *User
 sdf pr
 
 # Layer 3: controller + tests
 sdf branch users/controller # auto-bases off users/repository
 # ... implement POST /users, GET /users/:id, integration tests
-sdf context edit            # document: calls repository, response shape, test coverage
 sdf pr
 ```
 
-At this point three PRs exist with correct base chains: `main ← db-schema ← repository ← controller`. All context docs are committed and visible in each PR.
+At this point three PRs exist with correct base chains: `main ← db-schema ← repository ← controller`.
 
 -----
 
@@ -68,7 +63,6 @@ git checkout users/db-schema
 # Add the missing column
 # ... add display_name varchar(255) to migration and User struct
 
-sdf context update          # Claude rewrites context doc to note new column
 git add . && git commit -m "add display_name to users table"
 git push
 
@@ -78,7 +72,7 @@ sdf sync
 
 `sdf sync` detects that `users/db-schema` has new commits since `users/repository` was branched. It rebases `users/repository` onto the new tip of `users/db-schema`, then rebases `users/controller` onto the new tip of `users/repository`, pushing each branch and updating its PR base in GitHub.
 
-If `users/repository` has code that conflicts with the new column (e.g. a `Scan()` call that now has the wrong arity), `sdf sync` invokes Claude with the conflict markers plus the updated context doc — which now documents `display_name` — so the resolution is correct and consistent.
+If `users/repository` has code that conflicts with the new column (e.g. a `Scan()` call that now has the wrong arity), `sdf sync` invokes Claude with the conflict markers plus the upstream diff summary and the PR description for resolution.
 
 After sync, the developer switches to `users/controller` to use the new attribute:
 
@@ -88,12 +82,11 @@ git checkout users/controller
 # The branch is already rebased and has the updated User struct available
 # ... add display_name to the POST /users response payload and test fixture
 
-sdf context update
 git add . && git commit -m "include display_name in user response"
 git push
 ```
 
-No manual rebase commands. No hunting for the right `--onto` incantation. The context docs ensure Claude knows why `display_name` was added and what the expected downstream usage is.
+No manual rebase commands. No hunting for the right `--onto` incantation.
 
 -----
 
@@ -133,7 +126,7 @@ sdf sync
 
 `sdf sync` pauses and constructs a Claude prompt containing:
 
-- The assembled context docs for `users/db-schema` (which now documents `email_address`) and `users/repository` (which documents its dependency on the schema)
+- The PR description for the current branch (fetched from GitHub)
 - A diff summary of what changed in `users/db-schema` during this sync cycle
 - The full content of the conflicted file with conflict markers
 
@@ -143,43 +136,7 @@ If the conflict touches test fixtures or multiple files, Claude handles them all
 
 -----
 
-### Scenario 5: Resuming work with full context
-
-A developer comes back to a branch after a few days away, or a second developer picks up the stack. They need to understand the full picture before making changes.
-
-```
-git checkout users/controller
-
-sdf context show
-```
-
-Output:
-
-```
-=== STACK: users-feature ===
-
-[users/db-schema]
-Intent: adds users table with id, email_address, display_name, created_at.
-Uses pgx v5. Errors follow AppError{Code, Message} pattern.
-Decisions: email stored as-is (no normalisation), display_name nullable.
-
-[users/repository]
-Intent: implements UserRepository with FindByID(ctx, id) and Create(ctx, *User).
-Depends on: users table schema above.
-Decisions: no caching layer, returns ErrNotFound sentinel, Create sets created_at in Go not DB.
-
-[users/controller ← current]
-Intent: implements POST /users and GET /users/:id. Calls UserRepository.
-Response shape: { id, email_address, display_name, created_at }.
-Tests: integration tests against real DB using testcontainers.
-Open: rate limiting not implemented yet.
-```
-
-This output can be piped directly into Claude: `sdf context show | claude` to start a working session with full stack awareness, or used as a briefing document for a code review.
-
------
-
-### Scenario 6: sdf status — at-a-glance stack health
+### Scenario 5: sdf status — at-a-glance stack health
 
 ```
 sdf status
@@ -202,14 +159,11 @@ sdf status
 ```
 sdf init <name>           # initialize stack, auto-detect base branch from origin HEAD
 sdf branch [--no-prefix] <name>  # create branch, register in stack, push tracking branch
-sdf pr                    # gh pr create with body pre-populated from context doc
+sdf pr                    # gh pr create for the current branch
 sdf sync [<stack>]        # detect merged PRs via gh, cascade rebase, push
 sdf status [<stack>]      # show stack topology with PR state
-sdf switch [<branch>]     # checkout a branch, show its stack context
+sdf switch [<branch>]     # checkout a branch
 sdf <branch>              # shorthand for switch
-sdf context show          # print assembled context for the current branch
-sdf context edit          # open context doc in $EDITOR
-sdf context update        # ask Claude to rewrite context doc based on current state
 sdf config show           # display effective (merged) configuration
 sdf config set <key> <val>  # set a value in repo config (or --global)
 ```
@@ -234,18 +188,10 @@ All three dependencies (`git`, `gh`, `claude`) are version-checked at startup.
   stacks/
     auth-overhaul.json    # stack topology, PR numbers, sync state
     billing.json          # multiple stacks can coexist
-  context/
-    auth/db-schema.md
-    auth/session-api.md
-    auth/ui-login.md
   local.json              # ephemeral state (gitignored)
 ```
 
-Stack files and context docs are committed alongside code. This means:
-
-- Stack topology is available on any clone and in CI
-- Context docs appear in PR reviews — reviewers see the intent alongside the diff
-- `git log` on a context doc shows how intent evolved over the life of the PR
+Stack files are committed alongside code, so stack topology is available on any clone and in CI.
 
 The only exception is ephemeral state (active Claude session IDs, in-progress sync state), which lives in `.sdf/local.json` and is gitignored.
 
@@ -280,55 +226,6 @@ The only exception is ephemeral state (active Claude session IDs, in-progress sy
 1. Commit the updated `stacks/<name>.json`
 
 The `gh pr edit --base` step is easy to miss but critical — without it, GitHub shows every commit from `main` in the PR diff after rebasing.
-
------
-
-## Context Documents
-
-Each branch carries a context document at `.sdf/context/<branch-name>.md`. This is the mechanism for maintaining semantic continuity across the stack.
-
-### Structure
-
-```markdown
-# auth/session-api
-
-## Intent
-Implements session management API on top of the DB schema added in auth/db-schema.
-Downstream branches (auth/ui-login) will call POST /sessions and GET /sessions/:id.
-
-## Constraints from upstream
-- Sessions table has columns: id, user_id, token_hash, expires_at, created_at
-- Auth service uses pgx v5, not database/sql
-- Error types follow the pattern in db-schema: AppError with Code field
-
-## Decisions made here
-- Sessions are stored with bcrypt-hashed tokens, not raw
-- Expiry is enforced at the API layer, not the DB (no pg triggers)
-- Rate limiting is deferred to auth/ui-login to handle at the edge
-
-## Open questions / known debt
-- Token rotation not implemented (tracked in issue #89)
-```
-
-### Lifecycle
-
-|Event                |Action                                                                          |
-|---------------------|--------------------------------------------------------------------------------|
-|`sdf branch <name>`  |Creates stub context doc for the new branch                                     |
-|`sdf context edit`   |Opens context doc in `$EDITOR`                                                  |
-|`sdf context update` |Pipes current diff + upstream context to Claude, asks it to rewrite the doc     |
-|`sdf pr`             |Uses the Intent section as the PR description body                              |
-|`sdf sync` (conflict)|Upstream and current context docs are included in the conflict resolution prompt|
-
-### Context Assembly
-
-`sdf context show` walks the stack from base to current branch and concatenates all ancestor context docs, producing a unified view. This is what gets piped to Claude in any operation that needs full stack awareness.
-
-```
-[base context]
-[auth/db-schema context]
-[auth/session-api context]   ← current
-```
 
 -----
 
@@ -380,15 +277,12 @@ When `git rebase` exits non-zero during `sdf sync`, the tool hands off to Claude
 ```
 You are rebasing auth/ui-login onto the updated auth/session-api.
 
-=== STACK CONTEXT ===
-<assembled context docs for all ancestor branches>
-
 === UPSTREAM CHANGE SUMMARY ===
 auth/session-api changed after its own rebase:
   - bcrypt token hashing was changed to argon2id
   - POST /sessions now returns { token, session_id } instead of { token }
 
-=== CURRENT BRANCH INTENT (auth/ui-login) ===
+=== BRANCH PR DESCRIPTION ===
 Implements login UI calling POST /sessions, stores token in localStorage.
 
 === CONFLICTS ===
@@ -410,8 +304,8 @@ func resolveConflicts(stack *Stack, branch string) error {
     conflicted, _ := gitConflictedFiles()
 
     var prompt strings.Builder
-    prompt.WriteString(assembleStackContext(stack, branch))
     prompt.WriteString(buildUpstreamChangeSummary(stack, branch))
+    prompt.WriteString(branchPRDescription(stack, branch))
     for _, f := range conflicted {
         content, _ := os.ReadFile(f)
         fmt.Fprintf(&prompt, "File: %s\n```\n%s\n```\n\n", f, content)
@@ -448,17 +342,10 @@ The session name `conflict-<branch>` is deterministic, so the session can be res
 - `gh` integration for PR state polling
 - `sdf sync` with cascade rebase — error on conflict (no Claude yet)
 
-### Phase 2 — Context Scaffolding
-
-- Context doc creation and stub generation in `sdf branch`
-- `sdf context show/edit/update`
-- Context assembler that produces the unified stack view
-- `sdf pr` using context doc for PR body
-
-### Phase 3 — Claude Integration
+### Phase 2 — Claude Integration
 
 - Conflict resolution via Claude CLI session
-- `sdf context update` using Claude to rewrite docs post-change
+- PR content generation (titles and descriptions)
 - Iterative resolution loop if Claude produces unparseable output
 
 -----
@@ -466,8 +353,6 @@ The session name `conflict-<branch>` is deterministic, so the session can be res
 ## Design Principles
 
 **Shell out, don't reimplement.** `gh` handles GitHub auth, pagination, and API quirks. `git` handles the rebase mechanics. `claude` handles the intelligence. `sdf` is pure orchestration.
-
-**Context is a first-class artifact.** Intent doesn't live in someone's head or a Notion doc — it lives in the repo, versioned, visible in reviews, and available to Claude without reconstruction.
 
 **Fail loudly, recover gracefully.** Sync failures leave the repo in a known state (mid-rebase or pre-rebase). The tool always tells the user what state they're in and how to recover manually if automation fails.
 

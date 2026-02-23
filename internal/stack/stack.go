@@ -300,11 +300,6 @@ func Init(root, stackID, base string) error {
 		return fmt.Errorf("cannot create %s: %w", sdfDir, err)
 	}
 
-	contextDir := filepath.Join(sdfDir, "context")
-	if err := os.MkdirAll(contextDir, 0755); err != nil {
-		return fmt.Errorf("cannot create %s: %w", contextDir, err)
-	}
-
 	stacksDir := filepath.Join(sdfDir, StacksDir)
 	if err := os.MkdirAll(stacksDir, 0755); err != nil {
 		return fmt.Errorf("cannot create %s: %w", stacksDir, err)

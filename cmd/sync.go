@@ -984,7 +984,7 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 	parent := s.ParentBranch(branch)
 	upstreamSummary, _ := gitpkg.DiffSummary(s.FindNode(branch).BaseTip, parent)
 
-	// Use PR description as context (replaces local context docs)
+	// Use PR description as context for conflict resolution
 	var branchDesc string
 	node := s.FindNode(branch)
 	if node != nil && node.PR > 0 && ghpkg.Available() {
@@ -1074,7 +1074,7 @@ func isBlocked(s *stack.Stack, i int, failed map[string]error) bool {
 }
 
 // buildConflictPrompt constructs the conflict resolution prompt for Claude,
-// using upstream changes and the PR description as context.
+// using upstream changes and the PR description for context.
 func buildConflictPrompt(upstreamSummary, branchDescription string, conflictedFiles map[string]string) string {
 	var b strings.Builder
 
