@@ -154,7 +154,7 @@ func runMoveLogic(commits []string) error {
 		// Cherry-pick conflict — abort and restore
 		gitpkg.CherryPickAbort()
 		gitpkg.Checkout(branch)
-		return fmt.Errorf("cherry-pick onto %s failed (conflict): %w\nResolve manually or split into smaller moves.", parent, err)
+		return fmt.Errorf("cherry-pick onto %s failed (conflict): %w", parent, err)
 	}
 
 	newParentTip, err := gitpkg.RevParse(parent)

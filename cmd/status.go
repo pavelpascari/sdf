@@ -140,7 +140,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			marker = ui.Cyan.Render("→")
 		}
 
-		prInfo := ""
+		var prInfo string
 		if node.PR > 0 {
 			prInfo = fmt.Sprintf("PR %-5s", ui.PR(node.PR))
 		} else {

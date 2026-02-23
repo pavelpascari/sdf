@@ -42,9 +42,9 @@ func TestDoctor_AllAvailable(t *testing.T) {
 	}
 
 	checks := []string{
-		"git version 2.45.0",   // from GitCanonicalFakes --version
-		"gh version 2.50.0",    // from GHCanonicalFakes version
-		"claude-code 1.0.0",    // from ClaudeCanonicalFakes --version
+		"git version 2.45.0", // from GitCanonicalFakes --version
+		"gh version 2.50.0",  // from GHCanonicalFakes version
+		"claude-code 1.0.0",  // from ClaudeCanonicalFakes --version
 		"All required dependencies are available.",
 	}
 	for _, check := range checks {

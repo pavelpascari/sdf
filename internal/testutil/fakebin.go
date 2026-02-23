@@ -14,7 +14,7 @@ import (
 // to dir/<name>.log and writes stdout to the caller. Returns the full
 // path to the fake binary.
 //
-// The script behaviour is controlled by responses: a map from a
+// The script behavior is controlled by responses: a map from a
 // sub-command prefix to the stdout it should produce. The first
 // matching prefix wins. If no prefix matches, the script exits 0
 // with empty output.
@@ -37,10 +37,10 @@ func FakeBin(t *testing.T, dir, name string, responses map[string]string) string
 	for prefix, output := range responses {
 		// Escape single quotes in output for safe embedding in shell.
 		escaped := strings.ReplaceAll(output, "'", "'\\''")
-		cases.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&cases,
 			"  *\"%s\"*)\n    cat <<'FAKEEOF'\n%s\nFAKEEOF\n    ;;\n",
 			prefix, escaped,
-		))
+		)
 	}
 
 	script := fmt.Sprintf(`#!/bin/sh
@@ -212,4 +212,3 @@ func GitFakeBinWith(t *testing.T, dir string, overrides map[string]string) strin
 	responses := MustGitFakeResponses(t, overrides)
 	return FakeBin(t, dir, "git", responses)
 }
-

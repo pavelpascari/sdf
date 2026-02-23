@@ -56,10 +56,26 @@ test-e2e: build-spy
 vet:
 	go vet ./...
 
+# Run golangci-lint (install: https://golangci-lint.run/docs/install/)
+.PHONY: lint
+lint:
+	golangci-lint run
+
+# Run govulncheck for known dependency vulnerabilities
+.PHONY: vulncheck
+vulncheck:
+	govulncheck ./...
+
 # Format code
 .PHONY: fmt
 fmt:
 	gofmt -s -w .
+
+# Check that go.mod is tidy
+.PHONY: mod-tidy-check
+mod-tidy-check:
+	go mod tidy
+	@git diff --exit-code go.mod go.sum || (echo "ERROR: go.mod is not tidy. Run 'go mod tidy' and commit." && exit 1)
 
 # Clean build artifacts
 .PHONY: clean
@@ -118,9 +134,12 @@ help:
 	@echo "  make test-golden       Golden file snapshot tests"
 	@echo "  make test-golden-update  Regenerate golden files"
 	@echo "  make test-e2e          E2E tests (needs SDF_E2E_REPO + GH_TOKEN)"
-	@echo "  make vet        Run go vet"
-	@echo "  make fmt        Format code"
-	@echo "  make clean      Remove build artifacts"
+	@echo "  make vet               Run go vet"
+	@echo "  make lint              Run golangci-lint"
+	@echo "  make vulncheck         Check for known vulnerabilities"
+	@echo "  make fmt               Format code"
+	@echo "  make mod-tidy-check    Verify go.mod is tidy"
+	@echo "  make clean             Remove build artifacts"
 	@echo "  make blog-check        Verify dateModified on changed blog posts"
 	@echo "  make docs              Generate CLI reference JSON"
 	@echo "  make docs-check        Check docs freshness and validate references"

@@ -10,13 +10,13 @@ import (
 
 // PRInfo represents pull request information from gh.
 type PRInfo struct {
-	Number        int    `json:"number"`
-	HeadRefName   string `json:"headRefName"`
-	State         string `json:"state"`         // "OPEN", "MERGED", "CLOSED"
-	BaseRefName   string `json:"baseRefName"`
-	URL           string `json:"url"`
-	MergeCommit   string `json:"mergeCommit"`
-	StatusChecks  string `json:"statusCheckRollup"`
+	Number       int    `json:"number"`
+	HeadRefName  string `json:"headRefName"`
+	State        string `json:"state"` // "OPEN", "MERGED", "CLOSED"
+	BaseRefName  string `json:"baseRefName"`
+	URL          string `json:"url"`
+	MergeCommit  string `json:"mergeCommit"`
+	StatusChecks string `json:"statusCheckRollup"`
 }
 
 // Binary is the name (or path) of the gh executable.
