@@ -279,7 +279,9 @@ execute:
 	fmt.Printf("  %s Tree identity verified — split is lossless\n", ui.SymOK)
 
 	// --- Delete plan file (split succeeded) ---
-	splitpkg.DeletePlan(planPath)
+	if err := splitpkg.DeletePlan(planPath); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s could not delete plan: %v\n", ui.SymWarn, err)
+	}
 
 	// --- Save session ID ---
 	if result.SessionID != "" {
