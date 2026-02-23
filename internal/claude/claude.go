@@ -137,10 +137,14 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 		}
 	}
 
+	exitCode := 0
 	if err := cmd.Wait(); err != nil {
+		exitCode = 1
+		recordRun(args, result, exitCode)
 		return result, fmt.Errorf("claude %s: failed", name)
 	}
 
+	recordRun(args, result, exitCode)
 	return strings.TrimSpace(result), nil
 }
 

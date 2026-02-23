@@ -1,7 +1,9 @@
 package claude
 
 import (
+	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/pavelpascari/sdf/internal/testutil"
@@ -72,6 +74,64 @@ func TestRunPrompt_Error(t *testing.T) {
 	_, err := RunPrompt("test-session", "some prompt")
 	if err == nil {
 		t.Fatal("expected error from failing binary")
+	}
+}
+
+func TestRunPromptStreaming_ReturnsFakeResponse(t *testing.T) {
+	dir := t.TempDir()
+	// Use a focused fake that only has stream-json (not -p) to avoid
+	// the shell case statement matching -p first in the streaming args.
+	fake := testutil.FakeBin(t, dir, "claude", map[string]string{
+		"stream-json": testutil.ClaudeCanonicalFakes()["stream-json"].Response,
+	})
+	testutil.SetBinary(t, &Binary, fake)
+
+	var buf bytes.Buffer
+	result, err := RunPromptStreaming("test-stream", "Resolve conflicts", &buf)
+	if err != nil {
+		t.Fatalf("RunPromptStreaming failed: %v", err)
+	}
+
+	// The stream-json canonical fake sends a result event with this text.
+	want := "Resolved conflict in main.go by keeping both changes."
+	if result != want {
+		t.Errorf("result = %q, want %q", result, want)
+	}
+
+	log := testutil.ReadLog(t, dir, "claude")
+	if len(log) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(log))
+	}
+	// Should include streaming flags.
+	if !strings.Contains(log[0], "stream-json") {
+		t.Errorf("expected stream-json in args, got: %s", log[0])
+	}
+}
+
+func TestRunPromptStreamingWithOpts_PassesAllowedTools(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.FakeBin(t, dir, "claude", map[string]string{
+		"stream-json": testutil.ClaudeCanonicalFakes()["stream-json"].Response,
+	})
+	testutil.SetBinary(t, &Binary, fake)
+
+	var buf bytes.Buffer
+	opts := PromptOptions{AllowedTools: []string{"Write", "Read"}}
+	_, err := RunPromptStreamingWithOpts("test-opts", "Do something", &buf, opts)
+	if err != nil {
+		t.Fatalf("RunPromptStreamingWithOpts failed: %v", err)
+	}
+
+	log := testutil.ReadLog(t, dir, "claude")
+	if len(log) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(log))
+	}
+	args := log[0]
+	if !strings.Contains(args, "--allowedTools Write") {
+		t.Errorf("expected --allowedTools Write in args, got: %s", args)
+	}
+	if !strings.Contains(args, "--allowedTools Read") {
+		t.Errorf("expected --allowedTools Read in args, got: %s", args)
 	}
 }
 
