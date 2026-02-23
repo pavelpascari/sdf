@@ -1,6 +1,8 @@
 package split
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -318,5 +320,71 @@ func TestValidateHunkAssignment_WrongLayer(t *testing.T) {
 	errs := ValidateHunkAssignment(resp, shared, hunkCounts)
 	if len(errs) == 0 {
 		t.Fatal("should catch wrong layer")
+	}
+}
+
+func TestSavePlan_WritesValidYAML(t *testing.T) {
+	plan := &Plan{
+		Layers: []Layer{
+			{Name: "db", Description: "schema", Files: []string{"a.go", "b.go"}},
+			{Name: "api", Description: "endpoints", Files: []string{"c.go"},
+				PartialFiles: []PartialFile{{Path: "shared.go", Hunks: []int{0, 2}}}},
+		},
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plan.yaml")
+
+	if err := SavePlan(path, plan); err != nil {
+		t.Fatalf("SavePlan: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	// Round-trip: parse back
+	got, err := ParsePlan(string(data))
+	if err != nil {
+		t.Fatalf("ParsePlan round-trip: %v", err)
+	}
+	if len(got.Layers) != 2 {
+		t.Fatalf("expected 2 layers, got %d", len(got.Layers))
+	}
+	if got.Layers[0].Name != "db" {
+		t.Errorf("layer 0 name: got %q, want %q", got.Layers[0].Name, "db")
+	}
+	if len(got.Layers[1].PartialFiles) != 1 {
+		t.Errorf("layer 1 partial files: got %d, want 1", len(got.Layers[1].PartialFiles))
+	}
+	if got.Layers[1].PartialFiles[0].Path != "shared.go" {
+		t.Errorf("partial file path: got %q, want %q", got.Layers[1].PartialFiles[0].Path, "shared.go")
+	}
+}
+
+func TestPlanPath(t *testing.T) {
+	path := PlanPath("/repo", "my-feature")
+	want := filepath.Join("/repo", ".sdf", "split-plans", "my-feature.yaml")
+	if path != want {
+		t.Errorf("PlanPath: got %q, want %q", path, want)
+	}
+}
+
+func TestDeletePlan(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plan.yaml")
+	os.WriteFile(path, []byte("test"), 0644)
+
+	if err := DeletePlan(path); err != nil {
+		t.Fatalf("DeletePlan existing: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("file should be deleted")
+	}
+
+	// Deleting non-existent file should not error
+	if err := DeletePlan(path); err != nil {
+		t.Errorf("DeletePlan non-existent: %v", err)
 	}
 }

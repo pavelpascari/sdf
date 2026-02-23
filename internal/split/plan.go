@@ -4,9 +4,12 @@ package split
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/pavelpascari/sdf/internal/stack"
 	"gopkg.in/yaml.v3"
 )
 
@@ -44,6 +47,38 @@ type FileHunkAssignment struct {
 type HunkToLayer struct {
 	Hunk  int    `yaml:"hunk"`
 	Layer string `yaml:"layer"`
+}
+
+// SplitPlansDir is the subdirectory for persisted split plans.
+const SplitPlansDir = "split-plans"
+
+// PlanPath returns the file path for a stack's split plan.
+func PlanPath(root, stackName string) string {
+	return filepath.Join(root, stack.SDFDir, SplitPlansDir, stackName+".yaml")
+}
+
+// SavePlan serializes a Plan to YAML and writes it to path.
+// Creates parent directories if needed.
+func SavePlan(path string, plan *Plan) error {
+	data, err := yaml.Marshal(plan)
+	if err != nil {
+		return fmt.Errorf("cannot marshal plan: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("cannot create plan directory: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("cannot write plan: %w", err)
+	}
+	return nil
+}
+
+// DeletePlan removes a plan file. Returns nil if the file doesn't exist.
+func DeletePlan(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cannot delete plan: %w", err)
+	}
+	return nil
 }
 
 // AllFilePaths returns all file paths in the layer (both whole and partial).
