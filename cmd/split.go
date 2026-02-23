@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
+	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
@@ -51,6 +52,7 @@ func init() {
 	splitCmd.Flags().String("stack", "", "name for the new stack (default: branch name)")
 	splitCmd.Flags().String("base", "", "base branch (default: auto-detected)")
 	splitCmd.Flags().IntP("parts", "n", 0, "number of parts to split into (0 = auto)")
+	splitCmd.Flags().Bool("no-push", false, "create branches locally without pushing or creating PRs")
 }
 
 // RunSplit is a compatibility wrapper for tests.
@@ -65,6 +67,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 	stackName, _ := cmd.Flags().GetString("stack")
 	baseFlag, _ := cmd.Flags().GetString("base")
 	parts, _ := cmd.Flags().GetInt("parts")
+	noPush, _ := cmd.Flags().GetBool("no-push")
 
 	// Get current branch
 	branch, err := gitpkg.CurrentBranch()
@@ -185,24 +188,51 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("\n%s Tree identity verified — split is lossless\n", ui.SymOK)
 
+	if noPush {
+		gitpkg.Checkout(branch)
+		fmt.Printf("\n%s Split complete — %d branches created in stack %q (local only)\n",
+			ui.SymOK, len(createdBranches), stackName)
+		fmt.Println("\nNext steps:")
+		fmt.Println("  sdf status           View the new stack")
+		fmt.Println("  sdf pr               Create PRs (run from each branch)")
+		return nil
+	}
+
 	// Push all branches
 	fmt.Println("\nPushing branches to origin...")
+	pushFailed := false
 	for _, b := range createdBranches {
 		if err := gitpkg.PushNew(b); err != nil {
 			fmt.Fprintf(os.Stderr, "  %s could not push %s: %v\n", ui.SymWarn, ui.Branch(b), err)
+			pushFailed = true
 		} else {
 			fmt.Printf("  %s %s\n", ui.SymOK, ui.Branch(b))
 		}
+	}
+
+	// Create PRs (requires gh CLI and successful push)
+	if !pushFailed && ghpkg.Available() {
+		s, err := stack.LoadStack(root, stackName)
+		if err == nil {
+			cfg, _ := cfgpkg.Load(root)
+			fmt.Println("\nCreating pull requests...")
+			if err := createSplitPRs(root, s, cfg, branch, groups); err != nil {
+				fmt.Fprintf(os.Stderr, "  %s could not create PRs: %v\n", ui.SymWarn, err)
+				fmt.Println("  You can create them manually with: sdf pr (from each branch)")
+			}
+		}
+	} else if pushFailed {
+		fmt.Println("\nSkipped PR creation (push failed for some branches).")
+		fmt.Println("Push manually, then create PRs with: sdf pr")
+	} else {
+		fmt.Println("\nSkipped PR creation (gh CLI not available).")
+		fmt.Println("Install gh from https://cli.github.com, then run: sdf pr")
 	}
 
 	// Restore original branch
 	gitpkg.Checkout(branch)
 
 	fmt.Printf("\n%s Split complete — %d branches created in stack %q\n", ui.SymOK, len(createdBranches), stackName)
-	fmt.Println("\nNext steps:")
-	fmt.Println("  sdf status           View the new stack")
-	fmt.Println("  sdf pr               Create PRs (run from each branch)")
-	fmt.Println("  sdf sync             Keep the stack in sync")
 	return nil
 }
 
@@ -455,6 +485,71 @@ func cleanupBranches(branches []string, restoreTo string) {
 	for _, b := range branches {
 		gitpkg.DeleteBranch(b)
 	}
+}
+
+// createSplitPRs creates GitHub PRs for all branches in the split stack.
+// It generates titles from config, builds bodies with split context, and
+// updates stack navigation in all PR descriptions.
+func createSplitPRs(root string, s *stack.Stack, cfg cfgpkg.Config, originalBranch string, groups []splitGroup) error {
+	for i := range s.Nodes {
+		node := &s.Nodes[i]
+		base := s.ParentBranch(node.Branch)
+
+		// Generate title
+		var subjects []string
+		if i < len(groups) {
+			for _, c := range groups[i].Commits {
+				subjects = append(subjects, c.Subject)
+			}
+		}
+		title := cfgpkg.GeneratePRTitle(cfg, s.StackID, node.Branch, subjects)
+
+		// Build body
+		body := buildSplitPRBody(s, i, originalBranch)
+
+		fmt.Printf("  %s %s (base: %s)...\n", ui.SymPlan, title, ui.Branch(base))
+
+		url, err := ghpkg.PRCreate(title, body, base, node.Branch)
+		if err != nil {
+			return fmt.Errorf("PR for %s: %w", node.Branch, err)
+		}
+
+		// Fetch PR details
+		pr, err := ghpkg.PRView(node.Branch)
+		if err == nil {
+			node.PR = pr.Number
+			node.Status = "open"
+		}
+
+		_ = url // displayed by gh
+	}
+
+	if err := stack.Save(root, s); err != nil {
+		return fmt.Errorf("cannot save stack: %w", err)
+	}
+
+	// Update stack navigation in all PR descriptions
+	fmt.Println("Updating stack navigation...")
+	if err := updateStackNavForAllPRs(root, s); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s could not update PR navigation: %v\n", ui.SymWarn, err)
+	}
+
+	return nil
+}
+
+// buildSplitPRBody generates the initial PR body for a split branch.
+// Includes split context and a placeholder for the stack nav section
+// (which gets populated by updateStackNavForAllPRs).
+func buildSplitPRBody(s *stack.Stack, nodeIndex int, originalBranch string) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "Part of stack: **%s**\n\n", s.StackID)
+	fmt.Fprintf(&b, "Split from `%s` — PR %d of %d\n", originalBranch, nodeIndex+1, len(s.Nodes))
+
+	base := s.ParentBranch(s.Nodes[nodeIndex].Branch)
+	fmt.Fprintf(&b, "\nBase: `%s`", base)
+
+	return b.String()
 }
 
 // sanitizeBranchComponent produces a branch-name-safe string.

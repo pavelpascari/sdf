@@ -20,6 +20,7 @@ func resetSplitFlags() {
 	splitCmd.Flags().Set("stack", "")
 	splitCmd.Flags().Set("base", "")
 	splitCmd.Flags().Set("parts", "0")
+	splitCmd.Flags().Set("no-push", "false")
 }
 
 // splitTestRepo sets up a temporary git repo with 6 commits on "big-feature"
@@ -428,6 +429,76 @@ func TestDeriveTitle(t *testing.T) {
 				t.Errorf("deriveTitle() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSplitNoPush(t *testing.T) {
+	resetSplitFlags()
+	dir := splitTestRepo(t)
+
+	err := RunSplit([]string{"-y", "--base", "main", "--stack", "nopush-test", "--no-push"})
+	if err != nil {
+		t.Fatalf("split --no-push: %v", err)
+	}
+
+	// Verify stack was created
+	s, err := stack.LoadStack(dir, "nopush-test")
+	if err != nil {
+		t.Fatalf("cannot load stack: %v", err)
+	}
+
+	if len(s.Nodes) != 3 {
+		t.Fatalf("expected 3 nodes, got %d", len(s.Nodes))
+	}
+
+	// No PRs should be set (no push, no PR creation)
+	for _, node := range s.Nodes {
+		if node.PR != 0 {
+			t.Errorf("branch %q has PR %d, expected 0", node.Branch, node.PR)
+		}
+	}
+
+	// Tree identity should still hold
+	lastBranch := s.Nodes[len(s.Nodes)-1].Branch
+	diff, err := gitpkg.DiffFull("big-feature", lastBranch)
+	if err != nil {
+		t.Fatalf("diff: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("tree differs from original branch:\n%s", diff)
+	}
+
+	// Should be back on original branch
+	current, _ := gitpkg.CurrentBranch()
+	if current != "big-feature" {
+		t.Errorf("expected to be on big-feature, got %s", current)
+	}
+}
+
+func TestBuildSplitPRBody(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "my-feature",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "my-feature/1-schema", Status: "open"},
+			{Branch: "my-feature/2-api", Status: "open"},
+			{Branch: "my-feature/3-ui", Status: "open"},
+		},
+	}
+
+	body := buildSplitPRBody(s, 1, "big-feature")
+
+	if !strings.Contains(body, "my-feature") {
+		t.Error("body should contain stack name")
+	}
+	if !strings.Contains(body, "big-feature") {
+		t.Error("body should reference original branch")
+	}
+	if !strings.Contains(body, "PR 2 of 3") {
+		t.Errorf("body should say PR 2 of 3, got:\n%s", body)
+	}
+	if !strings.Contains(body, "Base: `my-feature/1-schema`") {
+		t.Errorf("body should reference parent branch, got:\n%s", body)
 	}
 }
 
