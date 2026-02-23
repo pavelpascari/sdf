@@ -3,6 +3,7 @@ package split
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
@@ -47,23 +48,50 @@ func Execute(plan *Plan, stackID, base, source, root string) ([]string, error) {
 		}
 		createdBranches = append(createdBranches, branchName)
 
-		// Extract diff for this layer's files
-		patch, err := gitpkg.DiffFiles(base, source, layer.Files)
-		if err != nil {
-			return createdBranches, fmt.Errorf("cannot extract diff for %s: %w", layer.Name, err)
+		// Build the combined patch for this layer
+		var patchParts []string
+
+		// Whole files — extract their full diff
+		if len(layer.Files) > 0 {
+			wholePatch, err := gitpkg.DiffFiles(base, source, layer.Files)
+			if err != nil {
+				return createdBranches, fmt.Errorf("cannot extract diff for %s: %w", layer.Name, err)
+			}
+			if wholePatch != "" {
+				patchParts = append(patchParts, wholePatch)
+			}
 		}
 
-		if patch == "" {
+		// Partial files — extract and filter hunks
+		for _, pf := range layer.PartialFiles {
+			fileDiff, err := gitpkg.DiffFiles(base, source, []string{pf.Path})
+			if err != nil {
+				return createdBranches, fmt.Errorf("cannot extract diff for %s in %s: %w", pf.Path, layer.Name, err)
+			}
+			parsed := ParseDiff(fileDiff)
+			if len(parsed) == 0 {
+				return createdBranches, fmt.Errorf("no diff found for partial file %s in layer %s", pf.Path, layer.Name)
+			}
+			filtered := FilterHunks(parsed[0], pf.Hunks)
+			if filtered != "" {
+				patchParts = append(patchParts, filtered)
+			}
+		}
+
+		if len(patchParts) == 0 {
 			return createdBranches, fmt.Errorf("empty diff for layer %s — no changes to apply", layer.Name)
 		}
+
+		patch := strings.Join(patchParts, "")
 
 		// Apply the patch
 		if err := gitpkg.ApplyPatch(patch); err != nil {
 			return createdBranches, fmt.Errorf("apply failed for %s: %w", layer.Name, err)
 		}
 
-		// Stage and commit
-		if err := gitpkg.Add(layer.Files...); err != nil {
+		// Stage and commit all files (whole + partial)
+		allFiles := layer.AllFilePaths()
+		if err := gitpkg.Add(allFiles...); err != nil {
 			return createdBranches, fmt.Errorf("cannot stage files for %s: %w", layer.Name, err)
 		}
 
