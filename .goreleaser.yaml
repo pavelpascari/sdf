@@ -27,13 +27,13 @@ archives:
 checksum:
   name_template: checksums.txt
 
+release:
+  # Append binaries to the GitHub Release that release-please created.
+  mode: append
+
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
+  # release-please maintains CHANGELOG.md; disable GoReleaser's changelog.
+  disable: true
 
 brews:
   - repository:
