@@ -355,3 +355,39 @@ func parseAndValidatePhase2(result string, shared map[string][]string, hunkCount
 
 	return nil, fmt.Errorf("hunk assignment failed")
 }
+
+// ReExtractPlan resumes a Claude session in print mode to re-extract
+// the plan after an interactive refinement. Returns the parsed plan.
+// changedFiles is used for Phase 1 validation of the re-extracted plan.
+func ReExtractPlan(sessionID, name string, changedFiles []string, display io.Writer) (*Plan, error) {
+	prompt := BuildReExtractPrompt()
+	sr, err := claudepkg.RunPromptStreamingResume(name, sessionID, prompt, display)
+	if err != nil {
+		return nil, fmt.Errorf("plan re-extraction failed: %w", err)
+	}
+
+	plan, err := ParsePlan(sr.Result)
+	if err != nil {
+		// Retry once
+		retryPrompt := fmt.Sprintf("Could not parse your response: %s\n\nPlease return ONLY the YAML plan.", err.Error())
+		sr, err = claudepkg.RunPromptStreamingResume(name, sessionID, retryPrompt, display)
+		if err != nil {
+			return nil, fmt.Errorf("plan re-extraction retry failed: %w", err)
+		}
+		plan, err = ParsePlan(sr.Result)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse re-extracted plan: %w", err)
+		}
+	}
+
+	validationErrs := ValidatePhase1(plan, changedFiles)
+	if len(validationErrs) > 0 {
+		var msgs []string
+		for _, e := range validationErrs {
+			msgs = append(msgs, e.Error())
+		}
+		return nil, fmt.Errorf("re-extracted plan has validation errors:\n  %s", strings.Join(msgs, "\n  "))
+	}
+
+	return plan, nil
+}
