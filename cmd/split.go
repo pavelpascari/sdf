@@ -352,18 +352,3 @@ func printStackChain(s *stack.Stack) {
 	fmt.Printf("\n  %s\n", strings.Join(parts, " ← "))
 }
 
-// sanitizeBranchComponent produces a branch-name-safe string.
-func sanitizeBranchComponent(s string) string {
-	s = strings.ToLower(s)
-	s = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			return r
-		}
-		return '-'
-	}, s)
-	s = strings.Trim(s, "-")
-	if s == "" {
-		s = "changes"
-	}
-	return s
-}

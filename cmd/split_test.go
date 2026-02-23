@@ -168,22 +168,3 @@ func TestBuildSplitPRBody(t *testing.T) {
 	}
 }
 
-func TestSanitizeBranchComponent(t *testing.T) {
-	tests := []struct {
-		input, want string
-	}{
-		{"git", "git"},
-		{"My Feature", "my-feature"},
-		{"internal/git", "internal-git"},
-		{"", "changes"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := sanitizeBranchComponent(tt.input)
-			if got != tt.want {
-				t.Errorf("sanitizeBranchComponent(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
