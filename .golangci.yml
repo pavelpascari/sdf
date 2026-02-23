@@ -1,0 +1,38 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - gosec          # Security-focused linter
+    - errcheck       # Unchecked error returns
+    - gocritic       # Opinionated Go style checks
+    - misspell       # Catches common spelling mistakes
+    - prealloc       # Suggests slice preallocation
+    - unconvert      # Removes unnecessary type conversions
+    - wastedassign   # Finds wasted assignments
+
+  settings:
+    gosec:
+      excludes:
+        - G304  # File path from variable (expected in a CLI tool)
+    misspell:
+      locale: US
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment  # Too noisy for marginal gains
+
+issues:
+  exclude-dirs:
+    - www
+    - docs
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+run:
+  timeout: 5m
