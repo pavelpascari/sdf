@@ -53,8 +53,9 @@ type HunkToLayer struct {
 const SplitPlansDir = "split-plans"
 
 // PlanPath returns the file path for a stack's split plan.
+// Uses filepath.Base to prevent path traversal from stack names.
 func PlanPath(root, stackName string) string {
-	return filepath.Join(root, stack.SDFDir, SplitPlansDir, stackName+".yaml")
+	return filepath.Join(root, stack.SDFDir, SplitPlansDir, filepath.Base(stackName)+".yaml")
 }
 
 // SavePlan serializes a Plan to YAML and writes it to path.
@@ -107,6 +108,28 @@ func SharedFiles(plan *Plan) map[string][]string {
 		}
 	}
 	return shared
+}
+
+// DeduplicateSharedFiles removes duplicate file entries from a Phase 1 plan
+// by keeping each shared file only in the first layer that lists it.
+// This makes the plan executable when hunk assignment is unavailable.
+func DeduplicateSharedFiles(plan *Plan) *Plan {
+	seen := make(map[string]bool)
+	deduped := &Plan{Layers: make([]Layer, len(plan.Layers))}
+	for i, layer := range plan.Layers {
+		deduped.Layers[i] = Layer{
+			Name:        layer.Name,
+			Description: layer.Description,
+		}
+		for _, f := range layer.Files {
+			if !seen[f] {
+				deduped.Layers[i].Files = append(deduped.Layers[i].Files, f)
+				seen[f] = true
+			}
+		}
+		deduped.Layers[i].PartialFiles = layer.PartialFiles
+	}
+	return deduped
 }
 
 // validName matches kebab-case identifiers suitable for branch names.

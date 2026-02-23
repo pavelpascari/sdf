@@ -196,6 +196,43 @@ func TestSharedFiles_OneShared(t *testing.T) {
 	}
 }
 
+func TestDeduplicateSharedFiles(t *testing.T) {
+	plan := &Plan{
+		Layers: []Layer{
+			{Name: "db", Description: "schema", Files: []string{"shared.go", "a.go"}},
+			{Name: "api", Description: "endpoints", Files: []string{"shared.go", "b.go"}},
+		},
+	}
+
+	deduped := DeduplicateSharedFiles(plan)
+
+	// shared.go should only be in the first layer
+	if len(deduped.Layers[0].Files) != 2 {
+		t.Errorf("layer 0 files: got %d, want 2", len(deduped.Layers[0].Files))
+	}
+	if len(deduped.Layers[1].Files) != 1 {
+		t.Errorf("layer 1 files: got %d, want 1", len(deduped.Layers[1].Files))
+	}
+	if deduped.Layers[1].Files[0] != "b.go" {
+		t.Errorf("layer 1 file: got %q, want %q", deduped.Layers[1].Files[0], "b.go")
+	}
+	// Descriptions preserved
+	if deduped.Layers[0].Description != "schema" {
+		t.Errorf("layer 0 description: got %q", deduped.Layers[0].Description)
+	}
+	if deduped.Layers[1].Description != "endpoints" {
+		t.Errorf("layer 1 description: got %q", deduped.Layers[1].Description)
+	}
+}
+
+func TestPlanPath_Sanitized(t *testing.T) {
+	// filepath.Base should prevent path traversal
+	path := PlanPath("/repo", "../../../etc/evil")
+	if filepath.Dir(path) != filepath.Join("/repo", ".sdf", "split-plans") {
+		t.Errorf("PlanPath should sanitize: got dir %q", filepath.Dir(path))
+	}
+}
+
 func TestValidatePhase1_AllowsSharedFiles(t *testing.T) {
 	plan := &Plan{
 		Layers: []Layer{

@@ -193,8 +193,8 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 					fileDiffs, hunkCounts, err := splitpkg.ParseSharedFileDiffs(base, fromBranch, shared)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "\n%s Could not parse shared file diffs: %v\n", ui.SymWarn, err)
-						fmt.Println("Continuing with the previous plan.")
-						plan = result.Plan
+						fmt.Println("Shared files deduplicated — each kept in its first layer.")
+						plan = splitpkg.DeduplicateSharedFiles(plan)
 						displaySplitPlan(plan, stackName, base, fromBranch)
 						continue
 					}
@@ -203,8 +203,8 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 					sr, err := claudepkg.RunPromptStreamingResume("split-analysis", sessionID, hunkPrompt, os.Stdout)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "\n%s Hunk assignment failed: %v\n", ui.SymWarn, err)
-						fmt.Println("Continuing with the previous plan.")
-						plan = result.Plan
+						fmt.Println("Shared files deduplicated — each kept in its first layer.")
+						plan = splitpkg.DeduplicateSharedFiles(plan)
 						displaySplitPlan(plan, stackName, base, fromBranch)
 						continue
 					}
@@ -212,8 +212,8 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 					resp, err := splitpkg.ParseHunkAssignment(sr.Result)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "\n%s Could not parse hunk assignments: %v\n", ui.SymWarn, err)
-						fmt.Println("Continuing with the previous plan.")
-						plan = result.Plan
+						fmt.Println("Shared files deduplicated — each kept in its first layer.")
+						plan = splitpkg.DeduplicateSharedFiles(plan)
 						displaySplitPlan(plan, stackName, base, fromBranch)
 						continue
 					}
@@ -221,8 +221,8 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 					validationErrs := splitpkg.ValidateHunkAssignment(resp, shared, hunkCounts)
 					if len(validationErrs) > 0 {
 						fmt.Fprintf(os.Stderr, "\n%s Hunk assignment validation failed\n", ui.SymWarn)
-						fmt.Println("Continuing with the previous plan.")
-						plan = result.Plan
+						fmt.Println("Shared files deduplicated — each kept in its first layer.")
+						plan = splitpkg.DeduplicateSharedFiles(plan)
 						displaySplitPlan(plan, stackName, base, fromBranch)
 						continue
 					}
