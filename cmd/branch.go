@@ -74,14 +74,15 @@ func runBranch(cmd *cobra.Command, args []string) error {
 
 	// Determine parent based on insertion point
 	var parent string
-	if insertAfterIdx >= 0 {
+	switch {
+	case insertAfterIdx >= 0:
 		// User is on a stack branch — insert after it
 		parent = s.Nodes[insertAfterIdx].Branch
-	} else if len(s.Nodes) > 0 {
+	case len(s.Nodes) > 0:
 		// User is on base or unrelated branch — append to end
 		parent = s.Nodes[len(s.Nodes)-1].Branch
 		insertAfterIdx = len(s.Nodes) - 1
-	} else {
+	default:
 		// Empty stack — first branch
 		parent = s.Base
 		insertAfterIdx = -1

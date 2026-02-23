@@ -28,7 +28,7 @@ func GHCanonicalFakes() map[string]FakeEntry {
 			]`,
 		},
 		"pr view:baseRefName,headRefName,number,state,url": {
-			Kind: "json-object",
+			Kind:     "json-object",
 			Response: `{"number":42,"headRefName":"feat/auth","state":"OPEN","baseRefName":"main","url":"https://github.com/test/repo/pull/42"}`,
 		},
 		"pr view:body": {
@@ -143,23 +143,6 @@ func GHFakeResponses() map[string]string {
 	}
 
 	return responses
-}
-
-// canonicalPrefixToKind maps FakeBin-compatible prefixes to the expected
-// response kind from the canonical registry.
-func canonicalPrefixToKind() map[string]string {
-	kinds := make(map[string]string)
-	for key, fe := range GHCanonicalFakes() {
-		prefix := key
-		if idx := strings.Index(key, ":"); idx >= 0 {
-			prefix = key[:idx]
-		}
-		// Keep the most descriptive kind (json-array > json-object > url > empty).
-		if _, exists := kinds[prefix]; !exists {
-			kinds[prefix] = fe.Kind
-		}
-	}
-	return kinds
 }
 
 // ValidateGHFakeResponse checks that a test's custom response for a given

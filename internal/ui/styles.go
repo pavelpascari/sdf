@@ -10,13 +10,13 @@ import (
 
 // Semantic colors for terminal output.
 var (
-	Green   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))  // success, merged
-	Cyan    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))  // active, current
-	Yellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))  // warning
-	Red     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))  // error, failed
-	Gray    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // muted info
-	Magenta = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))  // PR numbers
-	Bold    = lipgloss.NewStyle().Bold(true)                       // branch names
+	Green   = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // success, merged
+	Cyan    = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // active, current
+	Yellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // warning
+	Red     = lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // error, failed
+	Gray    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // muted info
+	Magenta = lipgloss.NewStyle().Foreground(lipgloss.Color("5")) // PR numbers
+	Bold    = lipgloss.NewStyle().Bold(true)                      // branch names
 )
 
 // Symbols with semantic styling baked in.

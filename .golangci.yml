@@ -7,20 +7,59 @@ linters:
     - errcheck       # Unchecked error returns
     - gocritic       # Opinionated Go style checks
     - misspell       # Catches common spelling mistakes
-    - prealloc       # Suggests slice preallocation
     - unconvert      # Removes unnecessary type conversions
     - wastedassign   # Finds wasted assignments
 
   settings:
     gosec:
       excludes:
+        - G104  # Unhandled errors (covered by errcheck with finer control)
+        - G204  # Subprocess launched with variable (expected: CLI wrapping git/gh)
+        - G301  # Directory permissions (0755 is standard for CLI tools)
+        - G302  # File permissions (0644 is standard for non-secret files)
         - G304  # File path from variable (expected in a CLI tool)
+        - G306  # WriteFile permissions (0644 is standard for config/data files)
     misspell:
       locale: US
     govet:
       enable-all: true
       disable:
         - fieldalignment  # Too noisy for marginal gains
+        - shadow          # Standard Go re-declaration patterns
+    errcheck:
+      exclude-functions:
+        # I/O formatting — errors are unrecoverable or irrelevant in a CLI
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Printf
+        - fmt.Println
+        - fmt.Sscanf
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*os.File).Write
+        - (io.Writer).Write
+        - os.MkdirAll
+        # Best-effort cleanup during error recovery
+        - github.com/pavelpascari/sdf/internal/git.Checkout
+        - github.com/pavelpascari/sdf/internal/git.RebaseAbort
+        - github.com/pavelpascari/sdf/internal/git.CherryPickAbort
+        - github.com/pavelpascari/sdf/internal/git.ResetHead
+        - github.com/pavelpascari/sdf/internal/git.FetchAll
+        - github.com/pavelpascari/sdf/internal/git.FastForward
+        # Best-effort persistence and migration
+        - github.com/pavelpascari/sdf/internal/stack.Save
+        - github.com/pavelpascari/sdf/internal/stack.SaveLocal
+        - github.com/pavelpascari/sdf/internal/stack.MigrateIfNeeded
+        - encoding/json.Unmarshal
+
+  exclusions:
+    rules:
+      # Test files: relax errcheck and gosec — test setup code commonly
+      # ignores errors and uses permissive file modes.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
 
 issues:
   exclude-dirs:

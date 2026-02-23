@@ -28,8 +28,8 @@ var rootCmd = &cobra.Command{
 }
 
 var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version",
+	Use:         "version",
+	Short:       "Print version",
 	Annotations: map[string]string{"category": "utility"},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("sdf %s\n", version)

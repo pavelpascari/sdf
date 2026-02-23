@@ -17,7 +17,7 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// syncOptions holds optional behaviour flags for a sync run.
+// syncOptions holds optional behavior flags for a sync run.
 type syncOptions struct {
 	withContent bool
 	cfg         cfgpkg.Config
@@ -97,16 +97,17 @@ func runSyncContinue(root string) error {
 	}
 	progress := local.SyncProgress
 
-	if gitpkg.IsRebaseInProgress() {
+	switch {
+	case gitpkg.IsRebaseInProgress():
 		fmt.Printf("  rebasing %s (continuing)...\n", ui.Branch(progress.PausedAt))
 		if err := gitpkg.RebaseContinue(); err != nil {
 			return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
 		}
-	} else if gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt) {
+	case gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt):
 		// No rebase in progress but the parent tip is an ancestor of the
 		// paused branch — the user completed the rebase manually.
 		fmt.Printf("  %s %s rebased (completed outside sdf)\n", ui.SymOK, ui.Branch(progress.PausedAt))
-	} else {
+	default:
 		// The parent tip is NOT an ancestor — the rebase was aborted.
 		fmt.Printf("Rebase of %s was aborted. Starting a fresh sync.\n", ui.Branch(progress.PausedAt))
 		local.SyncProgress = nil
@@ -1071,7 +1072,6 @@ func isBlocked(s *stack.Stack, i int, failed map[string]error) bool {
 	}
 	return false
 }
-
 
 // buildConflictPrompt constructs the conflict resolution prompt for Claude,
 // using upstream changes and the PR description as context.

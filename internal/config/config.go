@@ -20,8 +20,8 @@ import (
 // BranchPrefix holds branch prefix enforcement settings.
 type BranchPrefix struct {
 	Enabled   *bool  `json:"enabled,omitempty"`   // nil = unset (defaults true)
-	Prefix    string `json:"prefix,omitempty"`     // empty = use stack_id
-	Separator string `json:"separator,omitempty"`  // empty = default "/"
+	Prefix    string `json:"prefix,omitempty"`    // empty = use stack_id
+	Separator string `json:"separator,omitempty"` // empty = default "/"
 }
 
 // PRTitle holds PR title generation settings.

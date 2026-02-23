@@ -13,12 +13,12 @@ import (
 )
 
 var doctorCmd = &cobra.Command{
-	Use:   "doctor",
-	Short: "Check that dependencies are available",
-	Long:  `Reports the status of git (required), gh (needed for PR operations), and claude (needed for conflict resolution and PR descriptions).`,
-	Example: `  sdf doctor`,
+	Use:         "doctor",
+	Short:       "Check that dependencies are available",
+	Long:        `Reports the status of git (required), gh (needed for PR operations), and claude (needed for conflict resolution and PR descriptions).`,
+	Example:     `  sdf doctor`,
 	Annotations: map[string]string{"category": "utility"},
-	RunE:  runDoctor,
+	RunE:        runDoctor,
 }
 
 func init() {

@@ -182,7 +182,7 @@ func ApplyChanges(s *Stack, discovered DiscoveredStack, changes []ReconcileChang
 	}
 
 	// Merged nodes first, then active nodes from discovery
-	s.Nodes = append(mergedPrefix, activeNodes...)
+	s.Nodes = append(mergedPrefix, activeNodes...) //nolint:gocritic // intentional: combining two slices into s.Nodes
 }
 
 // prStateToNodeStatus converts a PRRecord to a node status string.

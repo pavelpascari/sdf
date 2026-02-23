@@ -432,7 +432,7 @@ func TestReconcileFromPRs_Mixed(t *testing.T) {
 	}
 
 	changes := ReconcileFromPRs(s, prs)
-	assertHasChange(t, changes, "status", "branchA", false)      // merged
+	assertHasChange(t, changes, "status", "branchA", false)       // merged
 	assertHasChange(t, changes, "base-mismatch", "branchB", true) // retargeted
 }
 

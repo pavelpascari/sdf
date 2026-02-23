@@ -47,9 +47,9 @@ type LocalState struct {
 // SyncProgress tracks a paused sync so `sdf sync --continue` can resume.
 type SyncProgress struct {
 	PausedAt       string `json:"paused_at"`       // branch that had conflicts
-	ResumeIndex    int    `json:"resume_index"`     // index in Nodes to resume from
-	OriginalBranch string `json:"original_branch"`  // branch to restore when done
-	ParentTip      string `json:"parent_tip"`       // the parent tip we were rebasing onto
+	ResumeIndex    int    `json:"resume_index"`    // index in Nodes to resume from
+	OriginalBranch string `json:"original_branch"` // branch to restore when done
+	ParentTip      string `json:"parent_tip"`      // the parent tip we were rebasing onto
 }
 
 // LoadLocal reads .sdf/local.json, returning an empty state if it doesn't exist.

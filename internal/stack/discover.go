@@ -13,8 +13,8 @@ type PRRecord struct {
 // DiscoveredStack represents a chain of PRs that form a stack,
 // discovered from the GitHub PR graph.
 type DiscoveredStack struct {
-	Base    string     // root branch (e.g. "main")
-	Chains  []PRRecord // ordered from bottom to top of the stack
+	Base   string     // root branch (e.g. "main")
+	Chains []PRRecord // ordered from bottom to top of the stack
 }
 
 // DiscoverStacks builds a dependency graph from PRs and finds chains
