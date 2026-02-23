@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Binary is the name (or path) of the git executable.
@@ -16,14 +17,16 @@ var Binary = "git"
 // run executes a git command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
 	cmd := exec.Command(Binary, args...)
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
 	output := strings.TrimSpace(string(out))
 
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
 	}
-	recordRun(args, output, exitCode)
+	recordRun(args, output, exitCode, elapsed)
 
 	if err != nil {
 		return output, fmt.Errorf("git %s: %s", strings.Join(args, " "), output)

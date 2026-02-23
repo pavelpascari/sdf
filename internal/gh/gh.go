@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // PRInfo represents pull request information from gh.
@@ -26,14 +27,16 @@ var Binary = "gh"
 // run executes a gh command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
 	cmd := exec.Command(Binary, args...)
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
 	output := strings.TrimSpace(string(out))
 
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
 	}
-	recordRun(args, output, exitCode)
+	recordRun(args, output, exitCode, elapsed)
 
 	if err != nil {
 		return output, fmt.Errorf("gh %s: %s", strings.Join(args, " "), output)
