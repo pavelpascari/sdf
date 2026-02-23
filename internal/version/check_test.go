@@ -58,7 +58,7 @@ func TestParseSemver(t *testing.T) {
 func TestCheck_NewerVersionAvailable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"version":"0.3.0","changelog":"https://sdf-tool.com/blog/v0-3-0"}`))
+		w.Write([]byte(`{"version":"0.3.0","changelog":"https://github.com/pavelpascari/sdf/blob/main/CHANGELOG.md"}`))
 	}))
 	defer srv.Close()
 
@@ -80,7 +80,7 @@ func TestCheck_NewerVersionAvailable(t *testing.T) {
 func TestCheck_SameVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"version":"0.1.0","changelog":"https://sdf-tool.com/blog/v0-1-0"}`))
+		w.Write([]byte(`{"version":"0.1.0","changelog":"https://github.com/pavelpascari/sdf/blob/main/CHANGELOG.md"}`))
 	}))
 	defer srv.Close()
 
