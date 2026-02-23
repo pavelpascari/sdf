@@ -322,3 +322,51 @@ func IsRebaseInProgress() bool {
 	}
 	return false
 }
+
+// DiffNameOnly returns the list of files changed between two refs.
+func DiffNameOnly(from, to string) ([]string, error) {
+	out, err := run("diff", "--name-only", from+"..."+to)
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// DiffFiles returns the diff between two refs for a specific set of files.
+// The result is a patch suitable for git apply.
+func DiffFiles(from, to string, files []string) (string, error) {
+	args := []string{"diff", from + "..." + to, "--"}
+	args = append(args, files...)
+	out, err := run(args...)
+	if err != nil {
+		return "", err
+	}
+	// run() trims trailing whitespace; restore the trailing newline
+	// that git diff produces, which git apply requires.
+	if out != "" {
+		out += "\n"
+	}
+	return out, nil
+}
+
+// ApplyPatch applies a patch string using git apply --3way.
+// The patch is written to a temp file and applied.
+func ApplyPatch(patch string) error {
+	f, err := os.CreateTemp("", "sdf-patch-*.patch")
+	if err != nil {
+		return fmt.Errorf("cannot create temp file: %w", err)
+	}
+	defer os.Remove(f.Name())
+
+	if _, err := f.WriteString(patch); err != nil {
+		f.Close()
+		return fmt.Errorf("cannot write patch: %w", err)
+	}
+	f.Close()
+
+	_, err = run("apply", "--3way", f.Name())
+	return err
+}
