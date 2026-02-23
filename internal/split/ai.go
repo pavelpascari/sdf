@@ -3,6 +3,7 @@ package split
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
@@ -245,6 +246,7 @@ func parseSharedFileDiffs(base, source string, shared map[string][]string) ([]Fi
 	for f := range shared {
 		sharedPaths = append(sharedPaths, f)
 	}
+	sort.Strings(sharedPaths)
 
 	diff, err := gitpkg.DiffFiles(base, source, sharedPaths)
 	if err != nil {

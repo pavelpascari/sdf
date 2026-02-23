@@ -159,7 +159,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 	for i, b := range branches {
 		layer := result.Plan.Layers[i]
 		fmt.Printf("  %s Layer %d: %s — %d files applied\n",
-			ui.SymOK, i+1, ui.Branch(b), len(layer.Files))
+			ui.SymOK, i+1, ui.Branch(b), len(layer.Files)+len(layer.PartialFiles))
 	}
 
 	// --- Validate tree identity ---

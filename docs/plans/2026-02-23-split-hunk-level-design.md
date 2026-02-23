@@ -246,15 +246,9 @@ Note: duplicates are no longer errors — they signal shared files that need Pha
 3. **Valid layers**: each hunk assigned to a layer that listed the file
 4. **Valid indices**: all hunk indices are within range
 
-### Final plan validation (post-merge)
+### Final plan validation (post-merge) *(deferred to iteration 5)*
 
-`ValidateFinalPlan(plan, changedFiles, fileDiffs)`:
-
-1. **Completeness**: every changed file is either a whole file in one layer, or has all hunks assigned via partial_files
-2. **No extras**: no file/hunk references non-existent changes
-3. **No duplicates**: no file appears as both whole and partial; no hunk in multiple layers
-4. **Non-empty layers**: every layer has at least one file or partial file
-5. **Valid names**: kebab-case
+`ValidateFinalPlan` is not yet implemented. The tree identity check at execution time (`git diff source last_layer` must be empty) catches any issues with malformed merged plans. Explicit pre-execution validation would provide clearer error messages and avoid unnecessary branch creation.
 
 ---
 
