@@ -143,6 +143,7 @@ help:
 	@echo "  make blog-check        Verify dateModified on changed blog posts"
 	@echo "  make docs              Generate CLI reference JSON"
 	@echo "  make docs-check        Check docs freshness and validate references"
+	@echo "  make version-json      Generate www/public/_/version.json"
 	@echo "  make release-checklist Verify blog content exists for the release"
 
 # ── Documentation ─────────────────────────────────────────────────
@@ -170,6 +171,13 @@ docs-check:
 .PHONY: blog-check
 blog-check:
 	@scripts/check-blog-updated-at.sh
+
+# ── Version endpoint ─────────────────────────────────────────────
+
+# Generate www/public/_/version.json from .release-please-manifest.json
+.PHONY: version-json
+version-json:
+	@scripts/generate-version-json.sh
 
 # ── Release checklist ────────────────────────────────────────────
 
