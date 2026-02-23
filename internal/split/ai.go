@@ -7,6 +7,7 @@ import (
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"gopkg.in/yaml.v3"
 )
 
 // MaxRetries is the number of times to retry Claude on validation failure.
@@ -32,12 +33,14 @@ Your task:
 4. Return a YAML split plan
 
 Rules:
-- Every changed file must appear in exactly one layer
+- Every changed file must appear in at least one layer
+- A file MAY appear in multiple layers if its changes clearly serve different concerns.
+  When this happens, we'll assign individual hunks in a follow-up step.
+- If all of a file's changes belong to one concern, list it in only one layer
 - Order layers so earlier layers don't depend on later ones
 - Aim for <500 lines of diff per layer when practical
 - Group test files with the production code they test
 - Use short, descriptive kebab-case layer names
-- A file can only belong to one layer. If a file has changes for multiple concerns, put it in the earliest layer that needs it
 
 Return ONLY this YAML (wrapped in `+"`"+`yaml fences):
 
@@ -54,6 +57,85 @@ layers:
 // BuildRetryPrompt constructs a follow-up prompt describing validation errors.
 func BuildRetryPrompt(errs []error) string {
 	return ValidationSummary(errs)
+}
+
+// BuildHunkPrompt constructs the Phase 2 prompt for hunk assignment.
+// sharedFiles maps file path to layer names that listed it.
+// fileDiffs contains the parsed diffs for shared files.
+func BuildHunkPrompt(sharedFiles map[string][]string, fileDiffs []FileDiff) string {
+	var b strings.Builder
+	b.WriteString("Some files in your plan appear in multiple layers. Assign each hunk to exactly one layer.\n\n")
+
+	for _, fd := range fileDiffs {
+		layers, ok := sharedFiles[fd.Path]
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(&b, "## %s\n", fd.Path)
+		fmt.Fprintf(&b, "Layers: %s\n\n", strings.Join(layers, ", "))
+		b.WriteString(FormatNumberedHunks(fd))
+		b.WriteString("---\n\n")
+	}
+
+	b.WriteString("Return ONLY this YAML (wrapped in ```yaml fences):\n\n")
+	b.WriteString("```yaml\nhunk_assignments:\n  - file: <filepath>\n    assignments:\n      - hunk: 0\n        layer: <layer-name>\n      - hunk: 1\n        layer: <layer-name>\n```")
+
+	return b.String()
+}
+
+// ParseHunkAssignment extracts and parses a HunkAssignmentResponse from Claude's response.
+func ParseHunkAssignment(text string) (*HunkAssignmentResponse, error) {
+	yamlStr := extractYAML(text)
+	var resp HunkAssignmentResponse
+	if err := yaml.Unmarshal([]byte(yamlStr), &resp); err != nil {
+		return nil, fmt.Errorf("cannot parse hunk assignment YAML: %w", err)
+	}
+	if len(resp.HunkAssignments) == 0 {
+		return nil, fmt.Errorf("no hunk assignments in response")
+	}
+	return &resp, nil
+}
+
+// MergePlan combines a Phase 1 plan with Phase 2 hunk assignments into a final plan.
+// Shared files are moved from Files to PartialFiles with their assigned hunk indices.
+func MergePlan(plan *Plan, resp *HunkAssignmentResponse) *Plan {
+	// Build lookup: file -> layer -> hunk indices
+	layerHunks := make(map[string]map[string][]int) // file -> layer -> hunks
+	for _, fa := range resp.HunkAssignments {
+		if layerHunks[fa.File] == nil {
+			layerHunks[fa.File] = make(map[string][]int)
+		}
+		for _, a := range fa.Assignments {
+			layerHunks[fa.File][a.Layer] = append(layerHunks[fa.File][a.Layer], a.Hunk)
+		}
+	}
+
+	sharedSet := make(map[string]bool)
+	for file := range layerHunks {
+		sharedSet[file] = true
+	}
+
+	merged := &Plan{Layers: make([]Layer, len(plan.Layers))}
+
+	for i, layer := range plan.Layers {
+		merged.Layers[i] = Layer{
+			Name:        layer.Name,
+			Description: layer.Description,
+		}
+
+		for _, f := range layer.Files {
+			if sharedSet[f] {
+				if hunks, ok := layerHunks[f][layer.Name]; ok {
+					merged.Layers[i].PartialFiles = append(merged.Layers[i].PartialFiles,
+						PartialFile{Path: f, Hunks: hunks})
+				}
+			} else {
+				merged.Layers[i].Files = append(merged.Layers[i].Files, f)
+			}
+		}
+	}
+
+	return merged
 }
 
 // Analyze invokes Claude to analyze a branch and produce a split plan.
