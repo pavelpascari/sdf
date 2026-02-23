@@ -53,6 +53,9 @@ linters:
         - encoding/json.Unmarshal
 
   exclusions:
+    paths:
+      - www
+      - docs
     rules:
       # Test files: relax errcheck and gosec — test setup code commonly
       # ignores errors and uses permissive file modes.
@@ -62,9 +65,6 @@ linters:
           - gosec
 
 issues:
-  exclude-dirs:
-    - www
-    - docs
   max-issues-per-linter: 0
   max-same-issues: 0
 
