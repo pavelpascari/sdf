@@ -1,25 +1,24 @@
 # sdf — Stacked Diffs Flow
 
-A lightweight CLI that manages stacked diffs (chains of dependent pull requests) in Git repositories. It orchestrates `git`, `gh`, and `claude` to handle stack topology, cascade rebasing, and semantic context continuity across branches.
+A lightweight CLI that manages stacked diffs (chains of dependent pull requests) in Git repositories. It orchestrates `git`, `gh`, and `claude` to handle stack topology and cascade rebasing across branches.
 
 ## Why
 
-Large features rarely fit in a single PR. Splitting work into a chain of dependent PRs keeps reviews focused, but the maintenance burden is real: rebasing cascades when upstream changes, PR bases drift after merges, and context about *why* each layer exists lives only in someone's head. `sdf` eliminates that overhead.
+Large features rarely fit in a single PR. Splitting work into a chain of dependent PRs keeps reviews focused, but the maintenance burden is real: rebasing cascades when upstream changes and PR bases drift after merges. `sdf` eliminates that overhead.
 
 ## What it does
 
 - **Stack topology** — tracks branch ordering and PR metadata in `.sdf/stacks/<name>.json`, committed alongside code
 - **Multiple stacks** — a single repo can have several independent stacks, each with its own base branch
 - **Cascade rebase** — when a head PR merges or an earlier branch is amended, `sdf sync` rebases every downstream branch, force-pushes, and updates PR bases in GitHub
-- **Context documents** — each branch carries a Markdown doc (`.sdf/context/<branch>.md`) describing intent, upstream constraints, decisions, and open questions
-- **AI conflict resolution** — when rebase conflicts occur, Claude receives the full assembled stack context plus the conflicted files and resolves them in-place
-- **PR creation** — `sdf pr` creates a GitHub PR with the context doc as the body, so reviewers see intent alongside the diff
+- **AI conflict resolution** — when rebase conflicts occur, Claude receives the PR description and upstream diff summary plus the conflicted files and resolves them in-place
+- **PR creation** — `sdf pr` creates a GitHub PR for the current branch
 
 ## Prerequisites
 
 - [git](https://git-scm.com/)
 - [gh](https://cli.github.com/) — GitHub CLI (required for PR operations)
-- [claude](https://docs.anthropic.com/en/docs/claude-code) — Claude CLI (optional, for conflict resolution and context updates)
+- [claude](https://docs.anthropic.com/en/docs/claude-code) — Claude CLI (optional, for conflict resolution and PR content generation)
 
 Run `sdf doctor` to verify all dependencies are available.
 
@@ -81,19 +80,16 @@ make install
 # Initialize a stack and create the first branch in one step
 sdf init users-feature --branch db-schema
 # ... write code ...
-sdf context edit          # document intent, decisions, constraints
-sdf pr                    # create PR with context doc as body
+sdf pr                    # create PR
 
 # Stack another branch on top
 sdf branch repository
 # ... write code ...
-sdf context edit
 sdf pr
 
 # Add a third layer
 sdf branch controller
 # ... write code ...
-sdf context edit
 sdf pr
 ```
 
@@ -124,7 +120,7 @@ sdf sync auth-feature
 # Check status of a specific stack
 sdf status billing-feature
 
-# Switch between branches (shows stack context)
+# Switch between branches
 sdf switch auth/db-schema
 # or just:
 sdf auth/db-schema
@@ -145,13 +141,8 @@ Stack commands:
   pr                                 Create a GitHub PR for the current branch
 
 Navigation:
-  switch [<branch>]                  Switch to a branch (shows stack context)
+  switch [<branch>]                  Switch to a branch
   <branch>                           Shorthand for switch <branch>
-
-Context commands:
-  context show              Print assembled context for current branch
-  context edit              Open context doc in $EDITOR
-  context update            Ask Claude to rewrite context doc
 
 Config commands:
   config show               Display effective (merged) configuration
@@ -171,7 +162,7 @@ Other:
 sdf init <name> [--base <branch>] [--branch <name>] [--json]
 ```
 
-- **Stack + branch** — creates the `.sdf/` metadata, a git branch, a context doc stub, and pushes to origin
+- **Stack + branch** — creates the `.sdf/` metadata, a git branch, and pushes to origin
 - **Branch name** defaults to the stack name. Override with `--branch <name>`
 - **Base branch** is auto-detected from `origin/HEAD`. Override with `--base <branch>`
 - **Branch prefix** is applied automatically (e.g. `sdf init users --branch db-schema` creates `users/db-schema`)
@@ -190,7 +181,6 @@ sdf init my-feature --json
   "stack": "my-feature",
   "base": "main",
   "branch": "my-feature/my-feature",
-  "context_doc": ".sdf/context/my-feature/my-feature.md",
   "pushed": true
 }
 ```
@@ -200,7 +190,7 @@ sdf init my-feature --json
 1. Polls GitHub for PR state via `gh`
 2. Walks merged nodes from the bottom of the stack upward
 3. Rebases each unmerged branch onto its new base
-4. If conflicts arise, invokes Claude with assembled stack context for resolution
+4. If conflicts arise, invokes Claude with the PR description and upstream diff for resolution
 5. Force-pushes updated branches and runs `gh pr edit --base` to fix PR diffs
 6. Updates `.sdf/stacks/<name>.json`
 
@@ -257,18 +247,10 @@ Use `sdf config show` to see the effective (merged) configuration and the file p
   stacks/
     users-feature.json      # stack topology, PR numbers, sync state
     auth-feature.json       # a second independent stack
-  context/
-    users/db-schema.md
-    users/repository.md
-    auth/db-schema.md
   local.json                # ephemeral state (gitignored)
 ```
 
-Both stack files and context docs are committed alongside code. This means:
-
-- Stack topology is available on any clone and in CI
-- Context docs appear in PR reviews — reviewers see the intent alongside the diff
-- `git log` on a context doc shows how intent evolved over the life of the PR
+Stack files are committed alongside code. This means stack topology is available on any clone and in CI.
 
 ## License
 

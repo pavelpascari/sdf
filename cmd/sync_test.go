@@ -65,7 +65,6 @@ func syncTestRepo(t *testing.T) (repoDir string) {
 	git("config", "commit.gpgsign", "false")
 
 	// Initial commit on main
-	os.MkdirAll(filepath.Join(dir, ".sdf", "context"), 0755)
 	writeFile("README.md", "# test\n")
 	git("add", "README.md")
 	git("commit", "-m", "initial")
