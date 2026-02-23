@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	verpkg "github.com/pavelpascari/sdf/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,7 @@ var versionCmd = &cobra.Command{
 	Annotations: map[string]string{"category": "utility"},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("sdf %s\n", version)
+		verpkg.Check(version)
 	},
 }
 
