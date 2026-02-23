@@ -249,27 +249,54 @@ func displaySplitPlan(plan *splitpkg.Plan, stackName, base, source string) {
 	fmt.Println(strings.Repeat("─", 50))
 
 	totalFiles := 0
+	totalPartial := 0
 	for i, layer := range plan.Layers {
-		fileCount := len(layer.Files)
+		fileCount := len(layer.Files) + len(layer.PartialFiles)
 		totalFiles += fileCount
+		totalPartial += len(layer.PartialFiles)
 
 		// Try to get line stats for this layer
 		lineInfo := ""
-		diff, err := gitpkg.DiffFiles(base, source, layer.Files)
-		if err == nil {
-			adds, dels := countDiffLines(diff)
-			if adds > 0 || dels > 0 {
-				lineInfo = fmt.Sprintf(", +%d -%d", adds, dels)
+		allPaths := layer.AllFilePaths()
+		if len(allPaths) > 0 {
+			diff, err := gitpkg.DiffFiles(base, source, allPaths)
+			if err == nil {
+				adds, dels := countDiffLines(diff)
+				if adds > 0 || dels > 0 {
+					lineInfo = fmt.Sprintf(", +%d -%d", adds, dels)
+				}
 			}
 		}
 
 		fmt.Printf("\n  Layer %d: %s (%d files%s)\n",
 			i+1, ui.Bold.Render(layer.Name), fileCount, lineInfo)
 		fmt.Printf("    %s\n", layer.Description)
+
+		for _, pf := range layer.PartialFiles {
+			fmt.Printf("    Shared: %s (hunks %s)\n", pf.Path, formatHunkIndices(pf.Hunks))
+		}
 	}
 
-	fmt.Printf("\n  Total: %d files across %d layers\n\n",
-		totalFiles, len(plan.Layers))
+	summary := fmt.Sprintf("  Total: %d files across %d layers", totalFiles, len(plan.Layers))
+	if totalPartial > 0 {
+		seen := make(map[string]bool)
+		for _, layer := range plan.Layers {
+			for _, pf := range layer.PartialFiles {
+				seen[pf.Path] = true
+			}
+		}
+		summary += fmt.Sprintf(" (%d file(s) split at hunk level)", len(seen))
+	}
+	fmt.Printf("\n%s\n\n", summary)
+}
+
+// formatHunkIndices formats a slice of ints as a comma-separated string.
+func formatHunkIndices(hunks []int) string {
+	parts := make([]string, len(hunks))
+	for i, h := range hunks {
+		parts[i] = fmt.Sprintf("%d", h)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // countDiffLines counts added and removed lines in a diff string.
