@@ -64,7 +64,6 @@ func testRepo(t *testing.T) (repoDir string, shas map[string]string) {
 	writeFile("README.md", "# test\n")
 	writeFile(".gitignore", ".sdf/\n")
 	sdfDir := filepath.Join(dir, ".sdf")
-	os.MkdirAll(filepath.Join(sdfDir, "context"), 0755)
 	os.MkdirAll(filepath.Join(sdfDir, "stacks"), 0755)
 	git("add", "README.md", ".gitignore")
 	git("commit", "-m", "initial")

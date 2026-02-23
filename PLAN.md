@@ -5,7 +5,7 @@
 
 ## Problem
 
-Running `sdf init status` creates the stack file but leaves the user on `main` with no branch, no context doc, and unclear next steps. The gap between init and productive work is too wide.
+Running `sdf init status` creates the stack file but leaves the user on `main` with no branch and unclear next steps. The gap between init and productive work is too wide.
 
 ## Design
 
@@ -23,8 +23,7 @@ sdf init <stack-name> [--base <branch>] [--branch <name>] [--json]
 4. Apply branch prefix (respecting config, same as `RunBranch`)
 5. Create git branch and checkout
 6. Register node in stack, save
-7. Create context doc stub
-8. Push tracking branch to origin
+7. Push tracking branch to origin
 9. Print summary + next steps (or JSON if `--json`)
 
 ### Implementation (Stacked Diffs — init-dx)

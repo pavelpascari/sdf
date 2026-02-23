@@ -80,7 +80,7 @@ type Remote interface {
 
 3. **Test conflict resolution flow.** With a mock claude client, verify that:
    - Conflicted files are detected
-   - The right prompt is constructed (with context docs)
+   - The right prompt is constructed (with PR description and upstream diff)
    - Resolved files are staged and rebase continues
    - Failed resolution triggers abort
 

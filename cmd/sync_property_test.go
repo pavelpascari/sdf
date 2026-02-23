@@ -47,7 +47,6 @@ func propertyTestRepo(t *testing.T, n int) (string, *stack.Stack) {
 	git("config", "user.name", "Test")
 	git("config", "commit.gpgsign", "false")
 
-	os.MkdirAll(filepath.Join(dir, ".sdf", "context"), 0755)
 	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test\n"), 0644)
 	git("add", "README.md")
 	git("commit", "-m", "initial")

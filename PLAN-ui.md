@@ -72,7 +72,7 @@ The **Charm ecosystem** (charmbracelet) is the clear winner for sdf because:
 | **lipgloss** | Consistent styling: colors, borders, padding for all output |
 | **bubbles** | Spinner (during fetch/push), progress bar (sync), table (status) |
 | **huh** | Interactive prompts (conflict resolution, confirmations, branch selection) |
-| **glamour** | Rendering PR descriptions/context docs in terminal |
+| **glamour** | Rendering PR descriptions in terminal |
 
 #### What NOT to adopt (yet):
 
