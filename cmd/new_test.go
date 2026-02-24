@@ -11,9 +11,9 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
-// initTestRepo sets up a minimal git repo with a main branch for testing
-// RunInit. The caller is chdir'd into the repo.
-func initTestRepo(t *testing.T) string {
+// newTestRepo sets up a minimal git repo with a main branch for testing
+// RunNew. The caller is chdir'd into the repo.
+func newTestRepo(t *testing.T) string {
 	t.Helper()
 
 	origDir, err := os.Getwd()
@@ -63,10 +63,10 @@ func currentBranch(t *testing.T, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func TestInit_CreatesBranchWithStackName(t *testing.T) {
-	dir := initTestRepo(t)
+func TestNew_CreatesBranchWithStackName(t *testing.T) {
+	dir := newTestRepo(t)
 
-	if err := RunInit([]string{"--base", "main", "my-feature"}); err != nil {
+	if err := RunNew([]string{"--base", "main", "my-feature"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,10 +100,10 @@ func TestInit_CreatesBranchWithStackName(t *testing.T) {
 	}
 }
 
-func TestInit_CreatesBranchWithCustomName(t *testing.T) {
-	dir := initTestRepo(t)
+func TestNew_CreatesBranchWithCustomName(t *testing.T) {
+	dir := newTestRepo(t)
 
-	if err := RunInit([]string{"--base", "main", "--branch", "db-schema", "my-feature"}); err != nil {
+	if err := RunNew([]string{"--base", "main", "--branch", "db-schema", "my-feature"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,15 +125,15 @@ func TestInit_CreatesBranchWithCustomName(t *testing.T) {
 	}
 }
 
-func TestInit_RejectsExistingStack(t *testing.T) {
-	initTestRepo(t)
+func TestNew_RejectsExistingStack(t *testing.T) {
+	newTestRepo(t)
 
-	if err := RunInit([]string{"--base", "main", "my-feature"}); err != nil {
+	if err := RunNew([]string{"--base", "main", "my-feature"}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Second init with same name should fail
-	err := RunInit([]string{"--base", "main", "my-feature"})
+	// Second new with same name should fail
+	err := RunNew([]string{"--base", "main", "my-feature"})
 	if err == nil {
 		t.Fatal("expected error for duplicate stack name")
 	}
@@ -142,15 +142,15 @@ func TestInit_RejectsExistingStack(t *testing.T) {
 	}
 }
 
-func TestInit_JSONOutput(t *testing.T) {
-	initTestRepo(t)
+func TestNew_JSONOutput(t *testing.T) {
+	newTestRepo(t)
 
-	output, err := RunInitWithOutput([]string{"--base", "main", "--json", "my-feature"})
+	output, err := RunNewWithOutput([]string{"--base", "main", "--json", "my-feature"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var result InitResult
+	var result NewResult
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("expected valid JSON, got parse error: %v\noutput: %s", err, output)
 	}
@@ -166,15 +166,15 @@ func TestInit_JSONOutput(t *testing.T) {
 	}
 }
 
-func TestInit_JSONOutputWithCustomBranch(t *testing.T) {
-	initTestRepo(t)
+func TestNew_JSONOutputWithCustomBranch(t *testing.T) {
+	newTestRepo(t)
 
-	output, err := RunInitWithOutput([]string{"--base", "main", "--branch", "db-schema", "--json", "my-feature"})
+	output, err := RunNewWithOutput([]string{"--base", "main", "--branch", "db-schema", "--json", "my-feature"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var result InitResult
+	var result NewResult
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("expected valid JSON, got parse error: %v\noutput: %s", err, output)
 	}
@@ -184,10 +184,10 @@ func TestInit_JSONOutputWithCustomBranch(t *testing.T) {
 	}
 }
 
-func TestInit_PreservesExistingConfig(t *testing.T) {
-	dir := initTestRepo(t)
+func TestNew_PreservesExistingConfig(t *testing.T) {
+	dir := newTestRepo(t)
 
-	// Pre-create .sdf directory and a custom config before running init.
+	// Pre-create .sdf directory and a custom config before running new.
 	sdfDir := filepath.Join(dir, ".sdf")
 	if err := os.MkdirAll(sdfDir, 0755); err != nil {
 		t.Fatal(err)
@@ -205,16 +205,16 @@ func TestInit_PreservesExistingConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run init via runInitCore directly (avoids cobra flag state leaking
+	// Run new via runNewCore directly (avoids cobra flag state leaking
 	// between tests via the global rootCmd).
-	if _, err := runInitCore("my-feature", "main", "", false); err != nil {
+	if _, err := runNewCore("my-feature", "main", "", false); err != nil {
 		t.Fatal(err)
 	}
 
 	// Read back the config and verify it was preserved.
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
-		t.Fatalf("cannot read config after init: %v", err)
+		t.Fatalf("cannot read config after new: %v", err)
 	}
 
 	var got struct {
@@ -225,7 +225,7 @@ func TestInit_PreservesExistingConfig(t *testing.T) {
 		} `json:"branch_prefix"`
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("cannot parse config after init: %v", err)
+		t.Fatalf("cannot parse config after new: %v", err)
 	}
 
 	if got.BranchPrefix.Enabled == nil || *got.BranchPrefix.Enabled != false {
@@ -245,16 +245,16 @@ func TestInit_PreservesExistingConfig(t *testing.T) {
 	}
 }
 
-func TestInit_JSONOutputNotPushed(t *testing.T) {
+func TestNew_JSONOutputNotPushed(t *testing.T) {
 	// Test repo has no origin, so pushed should be false
-	initTestRepo(t)
+	newTestRepo(t)
 
-	output, err := RunInitWithOutput([]string{"--base", "main", "--json", "my-feature"})
+	output, err := RunNewWithOutput([]string{"--base", "main", "--json", "my-feature"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var result InitResult
+	var result NewResult
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("expected valid JSON: %v", err)
 	}

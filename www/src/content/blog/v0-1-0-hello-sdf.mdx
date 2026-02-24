@@ -29,7 +29,7 @@ SDF is the tool I kept wanting to exist. It understands the full lifecycle of a 
 
 The commands map to how you already think about stacked work:
 
-- **`sdf init`** and **`sdf branch`** — create a stack and add branches to it
+- **`sdf new`** and **`sdf branch`** — create a stack and add branches to it
 - **`sdf status`** — see where every branch and PR stands at a glance
 - **`sdf pr`** — open GitHub PRs with correct bases and stack navigation injected into descriptions
 - **`sdf sync`** — the core: after an upstream PR merges, cascade-rebase every downstream branch, update PR bases, and refresh descriptions — all in one command
@@ -61,7 +61,7 @@ This is especially useful deep in a stack, where conflicts are often mechanical 
 ```bash
 brew install pavelpascari/tap/sdf
 sdf doctor          # verify git, gh, and optional Claude CLI
-sdf init --branch db-schema my-feature
+sdf new --branch db-schema my-feature
 ```
 
 Read the full [Getting Started guide](/docs/getting-started) for a complete walkthrough.

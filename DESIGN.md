@@ -30,7 +30,7 @@ The canonical use case. A feature is too large for one PR, so it's split into la
 # Start from main
 git checkout main
 
-sdf init --stack users-feature
+sdf new --stack users-feature
 
 # Layer 1: schema
 sdf branch users/db-schema
@@ -157,7 +157,7 @@ sdf status
 ## Command Surface
 
 ```
-sdf init <name>           # initialize stack, auto-detect base branch from origin HEAD
+sdf new <name>            # create stack, auto-detect base branch from origin HEAD
 sdf branch [--no-prefix] <name>  # create branch, register in stack, push tracking branch
 sdf pr                    # gh pr create for the current branch
 sdf sync [<stack>]        # detect merged PRs via gh, cascade rebase, push
@@ -172,7 +172,7 @@ Commands that operate on a stack (sync, status, branch) auto-detect which stack
 to use from the current branch. When multiple stacks exist and the current branch
 is ambiguous, pass `--stack <name>` or use a positional argument.
 
-`sdf init` always roots the stack at the base branch (auto-detected from
+`sdf new` always roots the stack at the base branch (auto-detected from
 `origin/HEAD`, or specified with `--base`). Your current branch doesn't matter —
 the stack is defined by its base, not by where you run the command.
 
@@ -260,7 +260,7 @@ When `sdf branch <name>` creates a branch, it auto-prefixes the name with the st
 
 For example, in a stack with `stack_id = "auth"`, `sdf branch db-schema` creates `auth/db-schema`. The `--no-prefix` flag on `sdf branch` skips prefixing for a single invocation without changing config.
 
-`sdf init` and `sdf register` create a default `.sdf/config.json` so the file is discoverable immediately.
+`sdf new` and `sdf register` create a default `.sdf/config.json` so the file is discoverable immediately.
 
 ### Merge Semantics
 
@@ -337,7 +337,7 @@ The session name `conflict-<branch>` is deterministic, so the session can be res
 
 ### Phase 1 — Stack Plumbing
 
-- `sdf init`, `sdf branch`, `sdf status`
+- `sdf new`, `sdf branch`, `sdf status`
 - `stacks/<name>.json` management
 - `gh` integration for PR state polling
 - `sdf sync` with cascade rebase — error on conflict (no Claude yet)

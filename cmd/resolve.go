@@ -41,7 +41,7 @@ func resolveStack(root string, stackName string) (*stack.Stack, error) {
 	}
 
 	if len(names) == 0 {
-		return nil, fmt.Errorf("no stacks found — run `sdf init <name>` to create one")
+		return nil, fmt.Errorf("no stacks found — run `sdf new <name>` to create one")
 	}
 
 	return nil, fmt.Errorf("multiple stacks found — specify with --stack <name>:\n  %s", strings.Join(names, "\n  "))

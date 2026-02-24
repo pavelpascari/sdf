@@ -1,20 +1,20 @@
-# Improve `sdf init` DX
+# Improve `sdf new` DX (formerly `sdf init`)
 
 **Date:** 2026-02-19
 **Status:** Implemented (PRs #16, #17, #18)
 
 ## Problem
 
-Running `sdf init status` creates the stack file but leaves the user on `main` with no branch and unclear next steps. The gap between init and productive work is too wide.
+Running `sdf new` (formerly `sdf init`) creates the stack file but leaves the user on `main` with no branch and unclear next steps. The gap between creating a stack and productive work is too wide.
 
 ## Design
 
-`sdf init` becomes a single-step operation that creates the stack AND the first branch.
+`sdf new` becomes a single-step operation that creates the stack AND the first branch.
 
 ### New behavior
 
 ```
-sdf init <stack-name> [--base <branch>] [--branch <name>] [--json]
+sdf new <stack-name> [--base <branch>] [--branch <name>] [--json]
 ```
 
 1. Create `.sdf/` structure + stack file (existing)

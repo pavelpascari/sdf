@@ -11,13 +11,13 @@ export const cmd = (name) => cliRef.commands.find(c => c.name === name);
 
 # Commands
 
-All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf init` or `sdf fetch`).
+All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf new` or `sdf fetch`).
 
 ---
 
 ## Stack management
 
-<CommandRef command={cmd('init')} />
+<CommandRef command={cmd('new')} />
 
 <CommandRef command={cmd('fetch')} />
 

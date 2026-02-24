@@ -77,8 +77,8 @@ make install
 ## Quick start
 
 ```sh
-# Initialize a stack and create the first branch in one step
-sdf init users-feature --branch db-schema
+# Create a stack and its first branch in one step
+sdf new users-feature --branch db-schema
 # ... write code ...
 sdf pr                    # create PR
 
@@ -108,10 +108,10 @@ This rebases the remaining branches onto `main`, pushes them, and updates their 
 You can have multiple independent stacks in the same repo:
 
 ```sh
-sdf init auth-feature --branch login
+sdf new auth-feature --branch login
 # ... work on auth ...
 
-sdf init billing-feature --branch models
+sdf new billing-feature --branch models
 # ... work on billing ...
 
 # Sync a specific stack
@@ -132,7 +132,7 @@ When you're on a branch that belongs to a stack, commands like `sdf sync`, `sdf 
 
 ```
 Stack commands:
-  init [flags] <name>                Initialize a stack and create the first branch
+  new [flags] <name>                 Create a new stack and its first branch
   register                           Discover and register existing PR stacks
   branch [--no-prefix] <name>        Add another branch to the stack
   status [--stack <name>]            Show stack topology and sync state
@@ -154,26 +154,28 @@ Other:
   help                      Show this help
 ```
 
-## How `sdf init` works
+## How `sdf new` works
 
-`sdf init <name>` creates a stack and its first branch in one step:
+`sdf new <name>` creates a stack and its first branch in one step:
 
 ```
-sdf init <name> [--base <branch>] [--branch <name>] [--json]
+sdf new <name> [--base <branch>] [--branch <name>] [--json]
 ```
 
 - **Stack + branch** — creates the `.sdf/` metadata, a git branch, and pushes to origin
 - **Branch name** defaults to the stack name. Override with `--branch <name>`
 - **Base branch** is auto-detected from `origin/HEAD`. Override with `--base <branch>`
-- **Branch prefix** is applied automatically (e.g. `sdf init users --branch db-schema` creates `users/db-schema`)
-- **Your current branch doesn't matter** — the stack is always rooted at the base branch. After init, you're checked out on the new branch
+- **Branch prefix** is applied automatically (e.g. `sdf new users --branch db-schema` creates `users/db-schema`)
+- **Your current branch doesn't matter** — the stack is always rooted at the base branch. After `sdf new`, you're checked out on the new branch
+
+> **Note:** `sdf init` still works as a backward-compatible alias but `sdf new` is the recommended command.
 
 ### Machine-readable output
 
 Use `--json` for scripting or AI agent integration:
 
 ```sh
-sdf init my-feature --json
+sdf new my-feature --json
 ```
 
 ```json

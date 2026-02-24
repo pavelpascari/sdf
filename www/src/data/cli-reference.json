@@ -94,12 +94,12 @@
       ]
     },
     {
-      "name": "init",
+      "name": "new",
       "category": "stack",
-      "use": "init [stack-name]",
+      "use": "new [stack-name]",
       "short": "Create a new stack and its first branch",
-      "long": "The stack name can be provided as a positional argument or via the --stack flag.\nIf --branch is omitted, the first branch is named after the stack. The base branch\nis auto-detected from origin HEAD if not specified.",
-      "example": "  sdf init my-feature                                # positional stack name\n  sdf init --stack my-feature                        # explicit flag\n  sdf init my-feature --branch db-schema             # custom first branch name\n  sdf init my-feature --base develop                 # custom base branch\n  sdf init my-feature --json                         # machine-readable output",
+      "long": "The stack name can be provided as a positional argument or via the --stack flag.\nIf --branch is omitted, the first branch is named after the stack. The base branch\nis auto-detected from origin HEAD if not specified.\n\nNote: `sdf init` still works as a backward-compatible alias.",
+      "example": "  sdf new my-feature                                # positional stack name\n  sdf new --stack my-feature                        # explicit flag\n  sdf new my-feature --branch db-schema             # custom first branch name\n  sdf new my-feature --base develop                 # custom base branch\n  sdf new my-feature --json                         # machine-readable output",
       "flags": [
         {
           "name": "base",

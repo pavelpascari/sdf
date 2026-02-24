@@ -77,7 +77,7 @@ func runFetchLogic(stackName, base string) error {
 
 	if len(prs) == 0 {
 		fmt.Println("No open PRs found for your user.")
-		fmt.Println("Use `sdf init <name>` to create a new stack from scratch.")
+		fmt.Println("Use `sdf new <name>` to create a new stack from scratch.")
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func runFetchLogic(stackName, base string) error {
 		}
 		fmt.Println()
 		fmt.Println("A stack requires PRs to chain: A → main, B → A, C → B, etc.")
-		fmt.Println("Use `sdf init <name>` to create a new stack from scratch.")
+		fmt.Println("Use `sdf new <name>` to create a new stack from scratch.")
 		return nil
 	}
 
