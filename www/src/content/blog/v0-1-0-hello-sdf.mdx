@@ -29,7 +29,7 @@ SDF is the tool I kept wanting to exist. It understands the full lifecycle of a 
 
 The commands map to how you already think about stacked work:
 
-- **`sdf new`** and **`sdf branch`** — create a stack and add branches to it
+- **`sdf init`** and **`sdf branch`** — create a stack and add branches to it
 - **`sdf status`** — see where every branch and PR stands at a glance
 - **`sdf pr`** — open GitHub PRs with correct bases and stack navigation injected into descriptions
 - **`sdf sync`** — the core: after an upstream PR merges, cascade-rebase every downstream branch, update PR bases, and refresh descriptions — all in one command
@@ -61,7 +61,7 @@ This is especially useful deep in a stack, where conflicts are often mechanical 
 ```bash
 brew install pavelpascari/tap/sdf
 sdf doctor          # verify git, gh, and optional Claude CLI
-sdf new --branch db-schema my-feature
+sdf init --branch db-schema my-feature
 ```
 
 Read the full [Getting Started guide](/docs/getting-started) for a complete walkthrough.
@@ -73,3 +73,7 @@ This is v0.1.0 — the foundation. The core workflow is solid, and I'm using it 
 **Update:** [SDF v0.2.0](/blog/v0-2-0-ship-it) is now available — with `sdf merge`, `sdf fetch`, drift detection, polished terminal UI, and more.
 
 If stacked PRs are part of your workflow, I'd love for you to give SDF a try. Feedback, bug reports, and contributions are all welcome on the [GitHub repo](https://github.com/pavelpascari/sdf).
+
+---
+
+*Post updated on 2026-02-24: `sdf init` has been renamed to `sdf new`. The old command still works as a backward-compatible alias. Code examples in this post reflect the original v0.1.0 interface.*

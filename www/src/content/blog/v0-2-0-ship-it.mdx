@@ -70,7 +70,7 @@ The UI is deliberately restrained. SDF is a command-and-exit CLI, not an interac
 A lot of smaller improvements shipped alongside the headline features:
 
 - **PR title generation** — `sdf pr` auto-generates titles from branch names, with optional conventional commit detection from your commit history
-- **`--json` output** — `sdf pr --json` and `sdf new --json` return structured output for scripting and AI agent integration
+- **`--json` output** — `sdf pr --json` and `sdf init --json` return structured output for scripting and AI agent integration
 - **Branch insertion** — `sdf branch` inserts at your current checkout position in the stack, so new work slots in where it makes sense
 - **`sdf move`** — move commits from the current branch to its parent when you realize work landed on the wrong layer
 - **`sdf register`** — register existing PR chains as SDF stacks without recreating branches
@@ -87,3 +87,7 @@ sdf doctor
 If you're already working with stacked PRs and manual rebasing, try `sdf fetch` to import your existing PR chains. If you're starting fresh, the [Getting Started guide](/docs/getting-started) walks through the full workflow.
 
 SDF is fully open source. Feedback and bug reports are welcome on the [GitHub repo](https://github.com/pavelpascari/sdf).
+
+---
+
+*Post updated on 2026-02-24: `sdf init` has been renamed to `sdf new`. The old command still works as a backward-compatible alias. Code examples in this post reflect the original v0.2.0 interface.*

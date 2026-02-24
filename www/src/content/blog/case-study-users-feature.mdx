@@ -21,7 +21,7 @@ The feature broke down into four layers:
 4. **frontend** — React components for the user settings page
 
 ```bash
-sdf new --branch db-schema users-feature
+sdf init --branch db-schema users-feature
 # commit migration work...
 sdf pr
 
@@ -91,3 +91,7 @@ The team chose Claude, which resolved the conflict correctly. The sync continued
 - **AI conflict resolution works well for mechanical changes.** Signature changes, import updates, and structural refactors are exactly the kind of conflicts Claude handles reliably.
 
 Ready to try it? Start with the [Getting Started guide](/docs/getting-started).
+
+---
+
+*Post updated on 2026-02-24: `sdf init` has been renamed to `sdf new`. The old command still works as a backward-compatible alias. Code examples in this post reflect the original interface.*
