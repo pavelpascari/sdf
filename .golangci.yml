@@ -19,6 +19,8 @@ linters:
         - G302  # File permissions (0644 is standard for non-secret files)
         - G304  # File path from variable (expected in a CLI tool)
         - G306  # WriteFile permissions (0644 is standard for config/data files)
+        - G702  # Command injection via taint (expected: CLI wrapping git/gh/claude)
+        - G703  # Path traversal via taint (expected: CLI tool works with user paths)
     misspell:
       locale: US
     govet:
