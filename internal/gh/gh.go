@@ -63,11 +63,33 @@ func Version() (string, error) {
 }
 
 // PRList returns PR information for the given branches.
+// It uses GitHub search qualifiers to scope the query to only the requested
+// branches, avoiding a full scan of all repository PRs.
 func PRList(branches []string) ([]PRInfo, error) {
+	if len(branches) == 0 {
+		return nil, nil
+	}
+
+	// Build a search query that scopes to only the branches we need.
+	// GitHub search supports: head:branch1 OR head:branch2 ...
+	searchParts := make([]string, len(branches))
+	for i, b := range branches {
+		searchParts[i] = "head:" + b
+	}
+	searchQuery := strings.Join(searchParts, " ")
+
+	// Use a limit proportional to the number of branches (with headroom for
+	// duplicate PRs per branch, e.g. closed + reopened).
+	limit := len(branches) * 3
+	if limit < 10 {
+		limit = 10
+	}
+
 	out, err := run("pr", "list",
 		"--state", "all",
 		"--json", "number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft",
-		"--limit", "100",
+		"--search", searchQuery,
+		"--limit", fmt.Sprintf("%d", limit),
 	)
 	if err != nil {
 		return nil, err
@@ -78,7 +100,8 @@ func PRList(branches []string) ([]PRInfo, error) {
 		return nil, fmt.Errorf("cannot parse gh pr list output: %w", err)
 	}
 
-	// Filter to only branches we care about
+	// Filter to only branches we care about (safety net — the search query
+	// should already scope results, but GitHub search can be fuzzy).
 	branchSet := make(map[string]bool)
 	for _, b := range branches {
 		branchSet[b] = true

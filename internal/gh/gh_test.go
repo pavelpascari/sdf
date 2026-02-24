@@ -32,8 +32,10 @@ func TestPRList_ParsesJSON(t *testing.T) {
 	if len(log) != 1 {
 		t.Fatalf("expected 1 invocation, got %d", len(log))
 	}
-	if log[0] != "pr list --state all --json number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft --limit 100" {
-		t.Errorf("unexpected arguments: %s", log[0])
+	// Should use --search with head: qualifiers to scope the query
+	expected := "pr list --state all --json number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft --search head:feat/a head:feat/b head:feat/c --limit 10"
+	if log[0] != expected {
+		t.Errorf("unexpected arguments:\n  got:  %s\n  want: %s", log[0], expected)
 	}
 
 	// Check parsed data
@@ -92,6 +94,25 @@ func TestPRList_KeepsBestState(t *testing.T) {
 	}
 	if prs[0].Number != 2 {
 		t.Errorf("expected PR #2 (OPEN wins over CLOSED), got #%d", prs[0].Number)
+	}
+}
+
+func TestPRList_EmptyBranches(t *testing.T) {
+	// PRList with no branches should return nil without calling gh
+	prs, err := PRList(nil)
+	if err != nil {
+		t.Fatalf("PRList(nil) failed: %v", err)
+	}
+	if prs != nil {
+		t.Fatalf("expected nil, got %v", prs)
+	}
+
+	prs, err = PRList([]string{})
+	if err != nil {
+		t.Fatalf("PRList([]) failed: %v", err)
+	}
+	if prs != nil {
+		t.Fatalf("expected nil, got %v", prs)
 	}
 }
 
