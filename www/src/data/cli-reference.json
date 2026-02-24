@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-21T00:02:46Z",
+  "generated": "2026-02-24T19:19:23Z",
   "commands": [
     {
       "name": "branch",
@@ -175,6 +175,53 @@
       "use": "register",
       "short": "Discover and sync PR stacks from GitHub",
       "deprecated": "use `sdf fetch` instead"
+    },
+    {
+      "name": "split",
+      "category": "stack",
+      "use": "split",
+      "short": "Split a branch into a stack of smaller PRs",
+      "long": "Uses an AI agent to analyze a branch and decompose it into a chain of\nfocused, reviewable PRs managed as an sdf stack.\n\nRequires the Claude CLI to be installed. The original branch is never modified.",
+      "example": "  sdf split --from feature/big-change --stack my-feature\n  sdf split --from feature/big-change --stack my-feature --dry-run\n  sdf split --from feature/big-change --stack my-feature --base main -y",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string",
+          "default": "",
+          "description": "base branch (default: auto-detected)"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false",
+          "description": "show the split plan without executing"
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "default": "",
+          "description": "source branch to split (required)"
+        },
+        {
+          "name": "no-push",
+          "type": "bool",
+          "default": "false",
+          "description": "create branches locally without pushing or creating PRs"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "name for the new stack (required)"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "description": "skip confirmation prompt"
+        }
+      ]
     },
     {
       "name": "status",

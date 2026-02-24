@@ -240,7 +240,7 @@ func Analyze(fromBranch, base string, display io.Writer) (*AnalysisResult, error
 
 // parseAndValidatePhase1 parses and validates Phase 1 with retries.
 func parseAndValidatePhase1(result string, changedFiles []string, sessionID, name string, display io.Writer) (*Plan, error) {
-	sr := claudepkg.StreamResult{Result: result, SessionID: sessionID}
+	sr := claudepkg.StreamResult{Result: result}
 
 	for attempt := 0; attempt <= MaxRetries; attempt++ {
 		plan, parseErr := ParsePlan(sr.Result)
@@ -313,7 +313,7 @@ func ParseSharedFileDiffs(base, source string, shared map[string][]string) ([]Fi
 
 // parseAndValidatePhase2 parses and validates Phase 2 hunk assignments with retries.
 func parseAndValidatePhase2(result string, shared map[string][]string, hunkCounts map[string]int, sessionID, name string, display io.Writer) (*HunkAssignmentResponse, error) {
-	sr := claudepkg.StreamResult{Result: result, SessionID: sessionID}
+	sr := claudepkg.StreamResult{Result: result}
 
 	for attempt := 0; attempt <= MaxRetries; attempt++ {
 		resp, parseErr := ParseHunkAssignment(sr.Result)

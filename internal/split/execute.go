@@ -135,8 +135,8 @@ func ValidateTree(source, lastBranch string) error {
 func Cleanup(branches []string, restoreTo, root, stackID string) {
 	gitpkg.Checkout(restoreTo)
 	for _, b := range branches {
-		gitpkg.DeleteBranch(b)
+		_ = gitpkg.DeleteBranch(b)
 	}
 	// Remove the stack file created during Init
-	os.Remove(stack.StackPath(root, stackID))
+	_ = os.Remove(stack.StackPath(root, stackID))
 }

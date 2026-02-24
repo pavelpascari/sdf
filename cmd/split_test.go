@@ -167,4 +167,3 @@ func TestBuildSplitPRBody(t *testing.T) {
 		t.Errorf("body should say PR 2 of 3, got:\n%s", body)
 	}
 }
-

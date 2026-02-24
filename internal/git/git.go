@@ -359,7 +359,7 @@ func ApplyPatch(patch string) error {
 	if err != nil {
 		return fmt.Errorf("cannot create temp file: %w", err)
 	}
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 
 	if _, err := f.WriteString(patch); err != nil {
 		f.Close()
