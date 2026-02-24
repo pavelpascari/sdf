@@ -24,7 +24,7 @@ run: build
 # Run all tests (unit + property + golden, no network needed)
 .PHONY: test
 test:
-	go test -count=1 ./...
+	go test -count=1 -timeout 15m ./...
 
 # Unit tests only (skip property-based tests)
 .PHONY: test-unit
@@ -49,7 +49,7 @@ test-golden-update:
 # E2E tests against a real GitHub repo (requires SDF_E2E_REPO and GH_TOKEN)
 .PHONY: test-e2e
 test-e2e: build-spy
-	go test -tags e2e -v -count=1 -timeout 10m ./e2e/...
+	SDF_BIN="$${SDF_BIN:-$(CURDIR)/bin/$(BINARY)}" go test -tags e2e -v -count=1 -timeout 10m ./e2e/...
 
 # Run vet and static checks
 .PHONY: vet

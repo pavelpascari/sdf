@@ -38,5 +38,5 @@ e2e/testdata/recordings/
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
