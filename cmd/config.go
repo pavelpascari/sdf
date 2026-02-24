@@ -97,7 +97,70 @@ func runConfigSetCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Set %s = %s in %s\n", key, value, path)
+
+	warnPrefixMismatch(key)
+
 	return nil
+}
+
+// warnPrefixMismatch prints a warning if existing stack branches do not match
+// the updated branch prefix configuration. Only fires for branch_prefix.* keys
+// and only when we're inside a repo with live stacks.
+func warnPrefixMismatch(key string) {
+	if !strings.HasPrefix(key, "branch_prefix.") {
+		return
+	}
+
+	root, err := stack.FindRoot()
+	if err != nil {
+		return // not in a repo — nothing to check
+	}
+
+	cfg, err := cfgpkg.Load(root)
+	if err != nil {
+		return
+	}
+
+	if !cfg.IsEnabled() {
+		return // prefix enforcement disabled — no mismatch to report
+	}
+
+	stacks, err := stack.LoadAll(root)
+	if err != nil || len(stacks) == 0 {
+		return
+	}
+
+	type mismatchInfo struct {
+		stackID  string
+		branches []string
+	}
+	var mismatches []mismatchInfo
+
+	for _, s := range stacks {
+		var bad []string
+		for _, n := range s.Nodes {
+			if !cfgpkg.HasPrefix(cfg, s.StackID, n.Branch) {
+				bad = append(bad, n.Branch)
+			}
+		}
+		if len(bad) > 0 {
+			mismatches = append(mismatches, mismatchInfo{stackID: s.StackID, branches: bad})
+		}
+	}
+
+	if len(mismatches) == 0 {
+		return
+	}
+
+	fmt.Fprintln(os.Stderr)
+	for _, m := range mismatches {
+		fmt.Fprintf(os.Stderr, "Warning: stack %q has %d branch(es) that do not match the updated prefix:\n", m.stackID, len(m.branches))
+		for _, b := range m.branches {
+			fmt.Fprintf(os.Stderr, "    %s\n", b)
+		}
+	}
+	fmt.Fprintln(os.Stderr, "The new setting only applies to branches created from now on.")
+	fmt.Fprintln(os.Stderr, "Existing branches are unchanged.")
 }
 
 // RunConfig is a compatibility wrapper for callers that use the old interface.
