@@ -124,17 +124,19 @@ func runInitCore(stackName, base, branchFlag string, jsonFlag bool) (string, err
 		return "", err
 	}
 
-	// Create default config file so it's discoverable
-	cfg := cfgpkg.Defaults()
+	// Create default config file only if one doesn't already exist,
+	// so we never overwrite user-customised settings.
 	cfgPath := cfgpkg.RepoPath(root)
-	if err := cfgpkg.Save(cfgPath, cfg); err != nil {
-		if !jsonFlag {
-			fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+	if _, statErr := os.Stat(cfgPath); os.IsNotExist(statErr) {
+		if err := cfgpkg.Save(cfgPath, cfgpkg.Defaults()); err != nil {
+			if !jsonFlag {
+				fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+			}
 		}
 	}
 
-	// Load the config (may already exist with custom settings)
-	cfg, err = cfgpkg.Load(root)
+	// Load the config (merges global + repo, applies defaults for unset fields)
+	cfg, err := cfgpkg.Load(root)
 	if err != nil {
 		cfg = cfgpkg.Defaults()
 	}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -285,6 +286,77 @@ func TestRegisterStack_ParentBranchRelationships(t *testing.T) {
 	}
 	if parent := s.ParentBranch("feat/ui"); parent != "feat/api" {
 		t.Errorf("parent of feat/ui should be 'feat/api', got %q", parent)
+	}
+}
+
+func TestRegisterStack_PreservesExistingConfig(t *testing.T) {
+	dir, _ := registerTestRepo(t)
+
+	// Pre-create .sdf directory and a custom config before registering.
+	sdfDir := filepath.Join(dir, ".sdf")
+	if err := os.MkdirAll(sdfDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	customCfg := `{
+  "branch_prefix": {
+    "enabled": false,
+    "scope": "custom",
+    "separator": "-"
+  },
+  "pr_title": {
+    "conventional_commits": true
+  }
+}
+`
+	cfgPath := filepath.Join(sdfDir, "config.json")
+	if err := os.WriteFile(cfgPath, []byte(customCfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ds := stack.DiscoveredStack{
+		Base: "main",
+		Chains: []stack.PRRecord{
+			{Number: 10, HeadRefName: "feat/schema", BaseRefName: "main"},
+			{Number: 11, HeadRefName: "feat/api", BaseRefName: "feat/schema"},
+		},
+	}
+
+	if err := RegisterStack(dir, "feat", ds); err != nil {
+		t.Fatalf("RegisterStack failed: %v", err)
+	}
+
+	// Read back the config and verify it was preserved.
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("cannot read config after register: %v", err)
+	}
+
+	type cfgShape struct {
+		BranchPrefix struct {
+			Enabled   *bool  `json:"enabled"`
+			Scope     string `json:"scope"`
+			Separator string `json:"separator"`
+		} `json:"branch_prefix"`
+		PRTitle struct {
+			ConventionalCommits *bool `json:"conventional_commits"`
+		} `json:"pr_title"`
+	}
+	var got cfgShape
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("cannot parse config after register: %v", err)
+	}
+
+	if got.BranchPrefix.Enabled == nil || *got.BranchPrefix.Enabled != false {
+		t.Error("expected enabled=false to be preserved")
+	}
+	if got.BranchPrefix.Scope != "custom" {
+		t.Errorf("expected scope 'custom' to be preserved, got %q", got.BranchPrefix.Scope)
+	}
+	if got.BranchPrefix.Separator != "-" {
+		t.Errorf("expected separator '-' to be preserved, got %q", got.BranchPrefix.Separator)
+	}
+	if got.PRTitle.ConventionalCommits == nil || !*got.PRTitle.ConventionalCommits {
+		t.Error("expected conventional_commits=true to be preserved")
 	}
 }
 

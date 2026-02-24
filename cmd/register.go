@@ -75,14 +75,18 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 		return err
 	}
 
-	// Infer prefix config from registered branch names
-	cfg := cfgpkg.Defaults()
-	if prefix, sep := inferBranchPrefix(nodes, name); prefix != "" {
-		cfg.BranchPrefix.Scope = prefix
-		cfg.BranchPrefix.Separator = sep
-	}
-	if err := cfgpkg.Save(cfgpkg.RepoPath(root), cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+	// Create default config (with inferred prefix) only if one doesn't
+	// already exist, so we never overwrite user-customised settings.
+	cfgPath := cfgpkg.RepoPath(root)
+	if _, statErr := os.Stat(cfgPath); os.IsNotExist(statErr) {
+		cfg := cfgpkg.Defaults()
+		if prefix, sep := inferBranchPrefix(nodes, name); prefix != "" {
+			cfg.BranchPrefix.Scope = prefix
+			cfg.BranchPrefix.Separator = sep
+		}
+		if err := cfgpkg.Save(cfgPath, cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not create config: %v\n", err)
+		}
 	}
 
 	fmt.Printf("\nRegistered stack %q with %d branches (base: %s)\n\n", name, len(nodes), ui.Branch(ds.Base))

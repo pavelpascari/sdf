@@ -184,6 +184,67 @@ func TestInit_JSONOutputWithCustomBranch(t *testing.T) {
 	}
 }
 
+func TestInit_PreservesExistingConfig(t *testing.T) {
+	dir := initTestRepo(t)
+
+	// Pre-create .sdf directory and a custom config before running init.
+	sdfDir := filepath.Join(dir, ".sdf")
+	if err := os.MkdirAll(sdfDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	customCfg := `{
+  "branch_prefix": {
+    "enabled": false,
+    "scope": "custom",
+    "separator": "-"
+  }
+}
+`
+	cfgPath := filepath.Join(sdfDir, "config.json")
+	if err := os.WriteFile(cfgPath, []byte(customCfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run init via runInitCore directly (avoids cobra flag state leaking
+	// between tests via the global rootCmd).
+	if _, err := runInitCore("my-feature", "main", "", false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read back the config and verify it was preserved.
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("cannot read config after init: %v", err)
+	}
+
+	var got struct {
+		BranchPrefix struct {
+			Enabled   *bool  `json:"enabled"`
+			Scope     string `json:"scope"`
+			Separator string `json:"separator"`
+		} `json:"branch_prefix"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("cannot parse config after init: %v", err)
+	}
+
+	if got.BranchPrefix.Enabled == nil || *got.BranchPrefix.Enabled != false {
+		t.Error("expected enabled=false to be preserved, got overwritten")
+	}
+	if got.BranchPrefix.Scope != "custom" {
+		t.Errorf("expected scope 'custom' to be preserved, got %q", got.BranchPrefix.Scope)
+	}
+	if got.BranchPrefix.Separator != "-" {
+		t.Errorf("expected separator '-' to be preserved, got %q", got.BranchPrefix.Separator)
+	}
+
+	// With prefix disabled, branch name should be bare (no prefix applied).
+	branch := currentBranch(t, dir)
+	if branch != "my-feature" {
+		t.Errorf("expected bare branch 'my-feature' (prefix disabled), got %s", branch)
+	}
+}
+
 func TestInit_JSONOutputNotPushed(t *testing.T) {
 	// Test repo has no origin, so pushed should be false
 	initTestRepo(t)
