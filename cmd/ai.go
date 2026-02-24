@@ -6,14 +6,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	"github.com/pavelpascari/sdf/internal/ai"
+	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 var aiCmd = &cobra.Command{
-	Use:   "ai",
-	Short: "AI assistant integration commands",
+	Use:         "ai",
+	Short:       "AI assistant integration commands",
 	Annotations: map[string]string{"category": "utility"},
 }
 
@@ -24,7 +24,7 @@ var aiIntroCmd = &cobra.Command{
 workflows), and asks Claude to create a skill file so it remembers how
 to use SDF in future sessions. Claude's output streams to the terminal.`,
 	Annotations: map[string]string{"category": "utility"},
-	RunE: runAIIntro,
+	RunE:        runAIIntro,
 }
 
 var aiSetupCmd = &cobra.Command{
@@ -33,7 +33,7 @@ var aiSetupCmd = &cobra.Command{
 	Long: `Like intro, but also asks Claude to create a rules file and
 configure session hooks for automatic SDF awareness.`,
 	Annotations: map[string]string{"category": "utility"},
-	RunE: runAISetup,
+	RunE:        runAISetup,
 }
 
 func init() {

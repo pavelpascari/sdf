@@ -1,6 +1,28 @@
 {
-  "generated": "2026-02-21T00:02:46Z",
+  "generated": "2026-02-24T19:06:15Z",
   "commands": [
+    {
+      "name": "ai",
+      "category": "utility",
+      "use": "ai",
+      "short": "AI assistant integration commands",
+      "subcommands": [
+        {
+          "name": "intro",
+          "category": "utility",
+          "use": "intro",
+          "short": "Teach Claude about SDF and save a skill for future sessions",
+          "long": "Spawns Claude as a child process, introduces SDF (rules, commands,\nworkflows), and asks Claude to create a skill file so it remembers how\nto use SDF in future sessions. Claude's output streams to the terminal."
+        },
+        {
+          "name": "setup",
+          "category": "utility",
+          "use": "setup",
+          "short": "Full Claude Code integration — skill, rules, and hooks",
+          "long": "Like intro, but also asks Claude to create a rules file and\nconfigure session hooks for automatic SDF awareness."
+        }
+      ]
+    },
     {
       "name": "branch",
       "category": "stack",
