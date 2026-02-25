@@ -9,10 +9,10 @@ import (
 
 // initCmd is a backward-compatible alias for "sdf new".
 var initCmd = &cobra.Command{
-	Use:        "init [stack-name]",
-	Short:      "Create a new stack and its first branch (use \"sdf new\" instead)",
-	Hidden:     true,
-	Deprecated: "use `sdf new` instead",
+	Use:         "init [stack-name]",
+	Short:       "Create a new stack and its first branch (use \"sdf new\" instead)",
+	Hidden:      true,
+	Deprecated:  "use `sdf new` instead",
 	Annotations: map[string]string{"category": "stack"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "note: `sdf init` has been renamed to `sdf new` — please use `sdf new` going forward")
