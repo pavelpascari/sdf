@@ -175,17 +175,62 @@ func TestExtractTicket_EmptyPattern(t *testing.T) {
 	}
 }
 
-func TestDetectCommitType_Empty(t *testing.T) {
-	typ := detectCommitType(nil)
-	if typ != "feat" {
-		t.Errorf("expected 'feat' default, got %q", typ)
+func TestDetectCommitType(t *testing.T) {
+	tests := []struct {
+		name     string
+		subjects []string
+		want     string
+	}{
+		{"nil input defaults to feat", nil, "feat"},
+		{"empty slice defaults to feat", []string{}, "feat"},
+		{"no conventional prefixes defaults to feat", []string{"add feature", "update readme", "fix stuff"}, "feat"},
+		{"single fix commit", []string{"fix: null pointer in handler"}, "fix"},
+		{"single feat commit", []string{"feat: add user login"}, "feat"},
+		{"single docs commit", []string{"docs: update README"}, "docs"},
+		{"single refactor commit", []string{"refactor: simplify auth flow"}, "refactor"},
+		{"single perf commit", []string{"perf: optimize query"}, "perf"},
+		{"single test commit", []string{"test: add unit tests for parser"}, "test"},
+		{"single build commit", []string{"build: update go version"}, "build"},
+		{"single ci commit", []string{"ci: add lint step"}, "ci"},
+		{"single chore commit", []string{"chore: bump dependencies"}, "chore"},
+		{"single revert commit", []string{"revert: undo auth change"}, "revert"},
+		{"single style commit", []string{"style: format imports"}, "style"},
+		{"scoped commit detected", []string{"fix(auth): handle expired tokens"}, "fix"},
+		{"most common wins feat over fix", []string{
+			"feat: add endpoint",
+			"fix: typo",
+			"feat: add validation",
+			"feat: add tests",
+		}, "feat"},
+		{"most common wins fix over feat", []string{
+			"fix: null pointer",
+			"feat: add logging",
+			"fix: race condition",
+			"fix: off-by-one",
+		}, "fix"},
+		{"mixed with non-conventional ignored", []string{
+			"fix: handle timeout",
+			"update readme",
+			"fix: retry logic",
+			"WIP save",
+		}, "fix"},
+		{"scoped commits counted correctly", []string{
+			"refactor(auth): simplify token validation",
+			"refactor(auth): extract middleware",
+			"feat: add logging",
+		}, "refactor"},
+		{"tie broken by iteration order but both valid", []string{
+			"feat: add endpoint",
+			"fix: null pointer",
+		}, "feat"}, // map iteration, but both are valid conventional types
 	}
-}
 
-func TestDetectCommitType_NoConventional(t *testing.T) {
-	subjects := []string{"add feature", "update readme", "fix stuff"}
-	typ := detectCommitType(subjects)
-	if typ != "feat" {
-		t.Errorf("expected 'feat' default, got %q", typ)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectCommitType(tt.subjects)
+			if got != tt.want {
+				t.Errorf("detectCommitType() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
