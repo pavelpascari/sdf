@@ -1,6 +1,21 @@
 {
-  "generated": "2026-02-21T00:02:46Z",
+  "generated": "2026-02-25T22:20:36Z",
   "commands": [
+    {
+      "name": "ai",
+      "category": "utility",
+      "use": "ai",
+      "short": "AI assistant integration commands",
+      "subcommands": [
+        {
+          "name": "intro",
+          "category": "utility",
+          "use": "intro",
+          "short": "Teach Claude about SDF and save a skill for future sessions",
+          "long": "Spawns Claude as a child process, introduces SDF (rules, commands,\nworkflows), and asks Claude to create a skill file so it remembers how\nto use SDF in future sessions. Claude's output streams to the terminal."
+        }
+      ]
+    },
     {
       "name": "branch",
       "category": "stack",

@@ -51,6 +51,11 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 	return output, nil
 }
 
+// PromptOptions configures optional flags for Claude CLI invocations.
+type PromptOptions struct {
+	AllowedTools []string // Tools Claude may use without prompting (e.g. "Write", "Read")
+}
+
 // RunPromptStreaming sends a prompt to Claude using stream-json output format
 // with partial messages enabled, displaying text in real-time via display writer
 // while capturing the full response.
@@ -59,10 +64,22 @@ func RunPrompt(sessionName, prompt string) (string, error) {
 // "assistant" events arrive incrementally with growing content. We display only the
 // new text since the last event. The "result" event carries the final complete text.
 func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
-	cmd := exec.Command(Binary, "-p", "--verbose",
+	return RunPromptStreamingWithOpts(name, prompt, display, PromptOptions{})
+}
+
+// RunPromptStreamingWithOpts is like RunPromptStreaming but accepts PromptOptions
+// to configure additional CLI flags such as allowed tools.
+func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts PromptOptions) (string, error) {
+	args := []string{"-p", "--verbose",
 		"--output-format", "stream-json",
 		"--include-partial-messages",
-		prompt)
+	}
+	for _, tool := range opts.AllowedTools {
+		args = append(args, "--allowedTools", tool)
+	}
+	args = append(args, prompt)
+
+	cmd := exec.Command(Binary, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", fmt.Errorf("claude %s: %w", name, err)
@@ -86,6 +103,7 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 
 		var event struct {
 			Type    string `json:"type"`
+			Name    string `json:"name"`
 			Message struct {
 				Content []struct {
 					Text string `json:"text"`
@@ -107,16 +125,26 @@ func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) 
 			}
 		}
 
+		// Show tool usage and reset displayed length for the next assistant text
+		if event.Type == "tool_use" {
+			fmt.Fprintf(display, "\n[Using tool: %s]\n", event.Name)
+			displayedLen = 0
+		}
+
 		// Capture the final result text
 		if event.Type == "result" && event.Result != "" {
 			result = event.Result
 		}
 	}
 
+	exitCode := 0
 	if err := cmd.Wait(); err != nil {
+		exitCode = 1
+		recordRun(args, result, exitCode)
 		return result, fmt.Errorf("claude %s: failed", name)
 	}
 
+	recordRun(args, result, exitCode)
 	return strings.TrimSpace(result), nil
 }
 

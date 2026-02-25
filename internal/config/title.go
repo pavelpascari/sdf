@@ -95,7 +95,8 @@ func detectCommitType(subjects []string) string {
 
 	best := ""
 	bestCount := 0
-	for t, c := range counts {
+	for _, t := range conventionalTypes {
+		c := counts[t]
 		if c > bestCount {
 			best = t
 			bestCount = c
