@@ -27,19 +27,9 @@ to use SDF in future sessions. Claude's output streams to the terminal.`,
 	RunE:        runAIIntro,
 }
 
-var aiSetupCmd = &cobra.Command{
-	Use:   "setup",
-	Short: "Full Claude Code integration — skill, rules, and hooks",
-	Long: `Like intro, but also asks Claude to create a rules file and
-configure session hooks for automatic SDF awareness.`,
-	Annotations: map[string]string{"category": "utility"},
-	RunE:        runAISetup,
-}
-
 func init() {
 	rootCmd.AddCommand(aiCmd)
 	aiCmd.AddCommand(aiIntroCmd)
-	aiCmd.AddCommand(aiSetupCmd)
 }
 
 func runAIIntro(cmd *cobra.Command, args []string) error {
@@ -66,26 +56,3 @@ func runAIIntro(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runAISetup(cmd *cobra.Command, args []string) error {
-	if !claudepkg.Available() {
-		return fmt.Errorf("claude CLI is not installed (run sdf doctor)")
-	}
-
-	prompt := ai.BuildSetupPrompt()
-	opts := claudepkg.PromptOptions{
-		AllowedTools: []string{"Write", "Read", "Edit", "Bash(mkdir *)"},
-	}
-
-	fmt.Println()
-	fmt.Printf("  %s Setting up full SDF integration for Claude Code...\n", ui.SymPlan)
-	fmt.Println()
-
-	_, err := claudepkg.RunPromptStreamingWithOpts("ai-setup", prompt, os.Stdout, opts)
-	if err != nil {
-		return fmt.Errorf("claude failed: %w", err)
-	}
-
-	fmt.Println()
-	fmt.Printf("  %s Integration complete — skill, rules, and hooks configured.\n", ui.SymOK)
-	return nil
-}

@@ -46,34 +46,8 @@ When working in a repository that uses SDF, follow these rules for any branch th
 
 Create a Claude Code skill file at ` + bt + `.claude/skills/sdf/SKILL.md` + bt + ` that captures all of the above — rules, commands, and "when to run what" — so you remember how to work with SDF in every future session in this repo. Use whatever skill format and frontmatter Claude Code currently expects.`
 
-var setupSuffix = `
-
-## Additional Setup (beyond the skill)
-
-### Rules File
-
-Also create ` + bt + `.claude/rules/sdf.md` + bt + ` containing the rules and command reference from above. This ensures the rules load automatically every session even if the skill doesn't fire.
-
-### Hooks
-
-Set up the following hooks in ` + bt + `.claude/settings.json` + bt + `:
-
-1. A SessionStart hook that runs:
-   ` + bt + `if command -v sdf >/dev/null 2>&1 && [ -d .sdf ]; then sdf ls 2>/dev/null; fi` + bt + `
-   This shows tracked stacks at the start of every session.
-
-2. A PreToolUse hook on Bash commands that checks whether the command is ` + bt + `git checkout -b` + bt + `, ` + bt + `git rebase` + bt + `, ` + bt + `gh pr create` + bt + `, or ` + bt + `gh pr merge` + bt + ` while the current branch is part of an SDF stack. If so, block it with a message suggesting the SDF equivalent. Only block when the branch IS in a stack — allow these commands for non-stack branches.
-
-If ` + bt + `.claude/settings.json` + bt + ` already exists, merge the hooks with existing configuration — don't overwrite other hooks.`
-
 // BuildIntroPrompt returns the intro prompt that teaches Claude about SDF and
 // asks it to create a skill file.
 func BuildIntroPrompt() string {
 	return introPrompt
-}
-
-// BuildSetupPrompt returns everything from BuildIntroPrompt, plus additional
-// instructions for Claude to create a rules file and configure hooks.
-func BuildSetupPrompt() string {
-	return BuildIntroPrompt() + setupSuffix
 }

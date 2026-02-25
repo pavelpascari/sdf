@@ -69,39 +69,3 @@ func TestE2E_AIIntro_SpyRecording(t *testing.T) {
 	t.Log("Claude spy recording validated — ai intro invocation captured correctly")
 }
 
-// TestE2E_AISetup_SpyRecording runs `sdf ai setup` and verifies the Claude
-// spy captures the invocation with setup-specific arguments (Edit tool, hooks).
-func TestE2E_AISetup_SpyRecording(t *testing.T) {
-	if !*withClaude {
-		t.Skip("-with-claude not set — skipping Claude-dependent test")
-	}
-
-	dir := e2eRepo(t)
-	setupRecording(t)
-
-	output := runSDF(t, dir, "ai", "setup")
-	t.Logf("sdf ai setup output (first 200 chars): %.200s", output)
-
-	recordingPath := filepath.Join(recordingsBaseDir(), runID, t.Name(), "claude_sdf.jsonl")
-	recordings := testutil.ReadRecordings(t, recordingPath)
-
-	t.Logf("Captured %d claude invocations", len(recordings))
-	if len(recordings) == 0 {
-		t.Fatal("expected at least 1 recorded claude invocation, got 0")
-	}
-
-	inv := recordings[0]
-	argsStr := strings.Join(inv.Args, " ")
-
-	// Setup adds Edit to allowed tools (intro only has Write, Read, Bash).
-	if !strings.Contains(argsStr, "Edit") {
-		t.Error("expected Edit in allowed tools for ai setup")
-	}
-
-	// Setup prompt includes hooks/settings.json content.
-	if !strings.Contains(argsStr, "settings.json") {
-		t.Error("expected settings.json in setup prompt")
-	}
-
-	t.Log("Claude spy recording validated — ai setup invocation captured correctly")
-}

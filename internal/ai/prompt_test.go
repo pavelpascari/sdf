@@ -39,36 +39,3 @@ func TestBuildIntroPrompt(t *testing.T) {
 	}
 }
 
-func TestBuildSetupPrompt(t *testing.T) {
-	intro := BuildIntroPrompt()
-	setup := BuildSetupPrompt()
-
-	// Setup prompt must contain everything from intro
-	if !strings.Contains(setup, intro) {
-		t.Error("setup prompt does not contain the full intro prompt")
-	}
-
-	// Setup prompt must be longer than intro
-	if len(setup) <= len(intro) {
-		t.Error("setup prompt should be longer than intro prompt")
-	}
-
-	checks := []struct {
-		name     string
-		contains string
-	}{
-		{"has rules file section", ".claude/rules/sdf.md"},
-		{"has hooks section", ".claude/settings.json"},
-		{"has SessionStart hook", "SessionStart"},
-		{"has PreToolUse hook", "PreToolUse"},
-		{"mentions sdf ls in hook", "sdf ls"},
-	}
-
-	for _, c := range checks {
-		t.Run(c.name, func(t *testing.T) {
-			if !strings.Contains(setup, c.contains) {
-				t.Errorf("setup prompt missing %q", c.contains)
-			}
-		})
-	}
-}
