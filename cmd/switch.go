@@ -109,7 +109,7 @@ func listStackBranches() error {
 	}
 
 	if len(stacks) == 0 {
-		fmt.Println("No stacks found. Run `sdf init <name>` to create one.")
+		fmt.Println("No stacks found. Run `sdf new <name>` to create one.")
 		return nil
 	}
 

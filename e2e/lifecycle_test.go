@@ -11,7 +11,7 @@ import (
 
 // TestE2E_FullStackLifecycle exercises the complete sdf workflow:
 //
-//	sdf init → sdf branch (x2) → commit on each → sdf pr (x3) →
+//	sdf new → sdf branch (x2) → commit on each → sdf pr (x3) →
 //	verify PRs on GitHub → sdf sync (should be in sync) →
 //	verify stack state
 //
@@ -37,9 +37,9 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 
 	stackName := prefix
 
-	// --- Step 1: sdf init ---
-	t.Log("Step 1: sdf init")
-	output := runSDF(t, dir, "init", "--base", "main", "--branch", "db-schema", stackName)
+	// --- Step 1: sdf new ---
+	t.Log("Step 1: sdf new")
+	output := runSDF(t, dir, "new", "--base", "main", "--branch", "db-schema", stackName)
 	t.Log(output)
 
 	// Verify we're on the new branch
