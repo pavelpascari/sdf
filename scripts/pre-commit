@@ -1,6 +1,7 @@
 #!/bin/sh
-# Auto-format staged .go files with gofmt before committing.
-# Only touches files that are already staged, preserving unstaged changes.
+# Pre-commit hook:
+#   1. Auto-format staged .go files with gofmt
+#   2. Regenerate CLI reference docs when command definitions change
 
 staged_go_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
 
@@ -8,6 +9,7 @@ if [ -z "$staged_go_files" ]; then
     exit 0
 fi
 
+# ── gofmt ────────────────────────────────────────────────────────
 echo "Running gofmt on staged Go files..."
 
 for file in $staged_go_files; do
@@ -16,3 +18,14 @@ for file in $staged_go_files; do
         git add "$file"
     fi
 done
+
+# ── CLI reference docs ───────────────────────────────────────────
+# Regenerate when cmd/ or internal/config/ files change (these define
+# commands, flags, and config keys that feed the CLI reference JSON).
+docs_relevant=$(echo "$staged_go_files" | grep -E '^(cmd/|internal/config/)' || true)
+
+if [ -n "$docs_relevant" ]; then
+    echo "Regenerating CLI reference docs..."
+    go run ./cmd/docgen > www/src/data/cli-reference.json
+    git add www/src/data/cli-reference.json
+fi
