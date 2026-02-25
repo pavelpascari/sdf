@@ -37,7 +37,7 @@ func runAIIntro(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("claude CLI is not installed (run sdf doctor)")
 	}
 
-	prompt := ai.BuildIntroPrompt()
+	prompt := ai.BuildIntroPrompt(rootCmd)
 	opts := claudepkg.PromptOptions{
 		AllowedTools: []string{"Write", "Read", "Bash(mkdir *)"},
 	}
