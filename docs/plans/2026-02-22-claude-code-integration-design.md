@@ -46,7 +46,7 @@ What happens:
 
 #### The prompt
 
-The prompt is fully static — no dynamic stack state embedded. It teaches Claude to run `sdf ls` and `sdf status` itself.
+The prompt has no dynamic stack state embedded — it teaches Claude to run `sdf ls` and `sdf status` itself. The `## Commands` table is generated dynamically from the cobra command tree so it stays current as commands are added or renamed. The rest of the prompt (intro, rules, "when to run what", task) is static.
 
 ```
 You are being asked to set up a Claude Code skill so that you remember how
@@ -214,10 +214,10 @@ func init() {
 
 ### `internal/ai/prompt.go`
 
-Pure string templates. No dynamic state.
+Static header/footer templates with a dynamic command table generated from the cobra tree. `BuildIntroPrompt` accepts `*cobra.Command` and walks its children to build the `## Commands` markdown table, skipping hidden, `ai`, and `version` commands.
 
 ```go
-func BuildIntroPrompt() string { /* static template */ }
+func BuildIntroPrompt(root *cobra.Command) string
 ```
 
 ### `internal/claude/claude.go`
