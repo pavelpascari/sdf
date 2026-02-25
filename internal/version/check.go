@@ -96,8 +96,9 @@ func printUpgradeNotice(current, latest, releaseURL string) {
 		ui.Gray.Render(current),
 		ui.Green.Render(latest),
 	)
-	fmt.Printf("  Upgrade: %s\n", ui.Bold.Render("go install github.com/pavelpascari/sdf@latest"))
+	fmt.Printf("  Homebrew:\n    %s\n\n", ui.Bold.Render("brew upgrade pavelpascari/tap/sdf"))
+	fmt.Printf("  Go:\n    %s\n", ui.Bold.Render("go install github.com/pavelpascari/sdf@latest"))
 	if releaseURL != "" {
-		fmt.Printf("  Release: %s\n", ui.Cyan.Render(releaseURL))
+		fmt.Printf("  Release:   %s\n", ui.Cyan.Render(releaseURL))
 	}
 }
