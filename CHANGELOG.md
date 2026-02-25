@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/pavelpascari/sdf/compare/v0.2.2...v0.2.3) (2026-02-25)
+
+
+### Features
+
+* add sdf ai intro command ([#37](https://github.com/pavelpascari/sdf/issues/37)) ([559e94e](https://github.com/pavelpascari/sdf/commit/559e94e55382db5e27c87e94801f389cb12d5cea))
+
 ## [0.2.2](https://github.com/pavelpascari/sdf/compare/v0.2.1...v0.2.2) (2026-02-25)
 
 
