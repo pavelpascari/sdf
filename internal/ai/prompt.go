@@ -60,7 +60,7 @@ func buildCommandTable(root *cobra.Command) string {
 		if c.Name() == "ai" || c.Name() == "version" {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("\n| `sdf %s` | %s |", c.Use, c.Short))
+		fmt.Fprintf(&b, "\n| `sdf %s` | %s |", c.Use, c.Short)
 	}
 	return b.String()
 }
