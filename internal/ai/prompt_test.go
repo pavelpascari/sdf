@@ -38,4 +38,3 @@ func TestBuildIntroPrompt(t *testing.T) {
 		})
 	}
 }
-

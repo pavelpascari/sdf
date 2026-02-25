@@ -55,4 +55,3 @@ func runAIIntro(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  %s Skill created. Claude Code will load SDF knowledge in future sessions.\n", ui.SymOK)
 	return nil
 }
-

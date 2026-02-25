@@ -85,4 +85,3 @@ func TestAIIntro_ClaudeNotAvailable(t *testing.T) {
 		t.Errorf("expected 'not installed' error, got: %v", err)
 	}
 }
-
