@@ -39,9 +39,9 @@ Whether branch prefix enforcement is active.
 - Type: `boolean`
 - Default: `true`
 
-#### `branch_prefix.prefix`
+#### `branch_prefix.scope`
 
-The prefix text prepended to branch names. When empty, falls back to the stack ID.
+The scope used as both the branch prefix and the conventional commit scope. When empty, falls back to the stack ID.
 
 - Type: `string`
 - Default: `""` (uses stack ID)
@@ -57,7 +57,7 @@ The character placed between the prefix and the branch name.
 {
   "branch_prefix": {
     "enabled": true,
-    "prefix": "team-name",
+    "scope": "team-name",
     "separator": "/"
   }
 }
@@ -73,10 +73,10 @@ Controls how PR titles are generated. This is a nested object with two sub-field
 
 #### `pr_title.conventional_commits`
 
-When enabled, PR titles follow the [Conventional Commits](https://www.conventionalcommits.org/) style (e.g., `feat: add logging`).
+PR titles follow the [Conventional Commits](https://www.conventionalcommits.org/) style, using the scope as the conventional commit scope (e.g., `feat(auth): add logging`).
 
 - Type: `boolean`
-- Default: `false`
+- Default: `true`
 
 #### `pr_title.ticket_pattern`
 
@@ -124,15 +124,14 @@ Use `sdf config set` to update individual keys. Valid keys are dot-separated pat
 ```bash
 # Set in repo config (.sdf/config.json)
 sdf config set branch_prefix.enabled true
-sdf config set branch_prefix.prefix team-name
+sdf config set branch_prefix.scope team-name
 sdf config set branch_prefix.separator /
-sdf config set pr_title.conventional_commits true
+sdf config set pr_title.conventional_commits false
 sdf config set pr_title.ticket_pattern "[A-Z]+-[0-9]+"
 sdf config set sync.with_content true
 
 # Set in global config (~/.config/sdf/config.json)
-sdf config set --global branch_prefix.prefix my-username
-sdf config set --global pr_title.conventional_commits false
+sdf config set --global branch_prefix.scope my-username
 ```
 
 Or edit the JSON files directly — they are plain JSON with no schema enforcement beyond what SDF reads.
@@ -149,7 +148,7 @@ Or edit the JSON files directly — they are plain JSON with no schema enforceme
 {
   "branch_prefix": {
     "enabled": true,
-    "prefix": "team-name",
+    "scope": "team-name",
     "separator": "/"
   },
   "pr_title": {

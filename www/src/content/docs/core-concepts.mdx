@@ -79,11 +79,11 @@ Repo config takes precedence over global config on a field-by-field basis. Run `
 {
   "branch_prefix": {
     "enabled": true,
-    "prefix": "users-feature",
+    "scope": "users-feature",
     "separator": "/"
   },
   "pr_title": {
-    "conventional_commits": false,
+    "conventional_commits": true,
     "ticket_pattern": ""
   },
   "sync": {
@@ -95,9 +95,9 @@ Repo config takes precedence over global config on a field-by-field basis. Run `
 | Field | Type | Description |
 |---|---|---|
 | `branch_prefix.enabled` | bool | Whether new branches are auto-prefixed with the stack ID (default `true`). |
-| `branch_prefix.prefix` | string | Custom prefix. If empty, falls back to the stack ID. |
+| `branch_prefix.scope` | string | Scope used as branch prefix and conventional commit scope. If empty, falls back to the stack ID. |
 | `branch_prefix.separator` | string | Character between prefix and branch name (default `"/"`). |
-| `pr_title.conventional_commits` | bool | Generate PR titles from conventional commit messages (default `false`). |
+| `pr_title.conventional_commits` | bool | Generate PR titles with conventional commit format using scope (default `true`). |
 | `pr_title.ticket_pattern` | string | Regex to extract a ticket ID from the branch name for PR titles. |
 | `sync.with_content` | bool | Whether `sdf sync` updates PR titles and descriptions (default `false`). |
 

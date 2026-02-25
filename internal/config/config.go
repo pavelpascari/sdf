@@ -20,13 +20,13 @@ import (
 // BranchPrefix holds branch prefix enforcement settings.
 type BranchPrefix struct {
 	Enabled   *bool  `json:"enabled,omitempty"`   // nil = unset (defaults true)
-	Prefix    string `json:"prefix,omitempty"`    // empty = use stack_id
+	Scope     string `json:"scope,omitempty"`     // empty = use stack_id
 	Separator string `json:"separator,omitempty"` // empty = default "/"
 }
 
 // PRTitle holds PR title generation settings.
 type PRTitle struct {
-	ConventionalCommits *bool  `json:"conventional_commits,omitempty"` // nil = unset (defaults false)
+	ConventionalCommits *bool  `json:"conventional_commits,omitempty"` // nil = unset (defaults true)
 	TicketPattern       string `json:"ticket_pattern,omitempty"`       // regex to extract ticket ID from branch name
 }
 
@@ -53,7 +53,7 @@ func Defaults() Config {
 	return Config{
 		BranchPrefix: BranchPrefix{
 			Enabled:   boolPtr(true),
-			Prefix:    "",
+			Scope:     "",
 			Separator: "/",
 		},
 	}
@@ -124,8 +124,8 @@ func (c Config) IsEnabled() bool {
 // EffectivePrefix returns the resolved prefix string.
 // If Prefix is empty, falls back to stackID.
 func (c Config) EffectivePrefix(stackID string) string {
-	if c.BranchPrefix.Prefix != "" {
-		return c.BranchPrefix.Prefix
+	if c.BranchPrefix.Scope != "" {
+		return c.BranchPrefix.Scope
 	}
 	return stackID
 }
@@ -140,10 +140,10 @@ func (c Config) EffectiveSeparator() string {
 }
 
 // ConventionalCommitsEnabled returns whether conventional commit PR titles are enabled.
-// Defaults to false if unset.
+// Defaults to true if unset.
 func (c Config) ConventionalCommitsEnabled() bool {
 	if c.PRTitle.ConventionalCommits == nil {
-		return false
+		return true
 	}
 	return *c.PRTitle.ConventionalCommits
 }
@@ -168,9 +168,9 @@ type ConfigKeyMeta struct {
 func ConfigKeys() []ConfigKeyMeta {
 	return []ConfigKeyMeta{
 		{"branch_prefix.enabled", "bool", "true", "Enable/disable branch prefix enforcement"},
-		{"branch_prefix.prefix", "string", "", "Prefix string prepended to branch names (empty = use stack ID)"},
+		{"branch_prefix.scope", "string", "", "Scope string used as branch prefix and conventional commit scope (empty = use stack ID)"},
 		{"branch_prefix.separator", "string", "/", "Separator character between prefix and branch name"},
-		{"pr_title.conventional_commits", "bool", "false", "Enable conventional commit prefixes in PR titles"},
+		{"pr_title.conventional_commits", "bool", "true", "Enable conventional commit prefixes in PR titles"},
 		{"pr_title.ticket_pattern", "string", "", "Regex to extract ticket ID from branch name for PR titles"},
 		{"sync.with_content", "bool", "false", "Auto-update PR titles and descriptions during sync"},
 	}
@@ -202,8 +202,8 @@ func merge(global, repo Config) Config {
 	if repo.BranchPrefix.Enabled != nil {
 		result.BranchPrefix.Enabled = repo.BranchPrefix.Enabled
 	}
-	if repo.BranchPrefix.Prefix != "" {
-		result.BranchPrefix.Prefix = repo.BranchPrefix.Prefix
+	if repo.BranchPrefix.Scope != "" {
+		result.BranchPrefix.Scope = repo.BranchPrefix.Scope
 	}
 	if repo.BranchPrefix.Separator != "" {
 		result.BranchPrefix.Separator = repo.BranchPrefix.Separator

@@ -217,7 +217,7 @@ This keeps branches organized and namespaced to their stack. The behavior is con
 | Key | Default | Description |
 |-----|---------|-------------|
 | `branch_prefix.enabled` | `true` | Whether to auto-prefix branch names |
-| `branch_prefix.prefix` | (stack ID) | Custom prefix string (empty = use stack ID) |
+| `branch_prefix.scope` | (stack ID) | Scope used as branch prefix and conventional commit scope (empty = use stack ID) |
 | `branch_prefix.separator` | `/` | Character between prefix and branch name |
 
 ```sh
@@ -225,7 +225,7 @@ This keeps branches organized and namespaced to their stack. The behavior is con
 sdf config set branch_prefix.enabled false
 
 # Use a custom prefix instead of stack ID
-sdf config set branch_prefix.prefix feat
+sdf config set branch_prefix.scope feat
 
 # Change separator (e.g. feat-db-schema instead of feat/db-schema)
 sdf config set branch_prefix.separator -

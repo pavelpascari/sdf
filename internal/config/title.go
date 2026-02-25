@@ -27,16 +27,21 @@ func GeneratePRTitle(cfg Config, stackID, branch string, commitSubjects []string
 	ticket := extractTicket(cfg, branch)
 	desc := humanizeBranch(cfg, stackID, stripTicket(cfg, branch))
 
-	if ticket != "" {
-		return commitType + "(" + ticket + "): " + desc
+	scope := ticket
+	if scope == "" {
+		scope = cfg.EffectivePrefix(stackID)
+	}
+
+	if scope != "" {
+		return commitType + "(" + scope + "): " + desc
 	}
 	return commitType + ": " + desc
 }
 
 // TitlePrefix returns the conventional commit prefix for a title
-// (e.g. "feat: ", "fix(PROJ-123): "). Returns empty string if
+// (e.g. "feat(auth): ", "fix(PROJ-123): "). Returns empty string if
 // conventional commits are disabled.
-func TitlePrefix(cfg Config, branch string, commitSubjects []string) string {
+func TitlePrefix(cfg Config, stackID, branch string, commitSubjects []string) string {
 	if !cfg.ConventionalCommitsEnabled() {
 		return ""
 	}
@@ -44,8 +49,13 @@ func TitlePrefix(cfg Config, branch string, commitSubjects []string) string {
 	commitType := detectCommitType(commitSubjects)
 	ticket := extractTicket(cfg, branch)
 
-	if ticket != "" {
-		return commitType + "(" + ticket + "): "
+	scope := ticket
+	if scope == "" {
+		scope = cfg.EffectivePrefix(stackID)
+	}
+
+	if scope != "" {
+		return commitType + "(" + scope + "): "
 	}
 	return commitType + ": "
 }

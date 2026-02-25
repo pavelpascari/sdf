@@ -248,10 +248,10 @@
       "description": "Enable/disable branch prefix enforcement"
     },
     {
-      "key": "branch_prefix.prefix",
+      "key": "branch_prefix.scope",
       "type": "string",
       "default": "",
-      "description": "Prefix string prepended to branch names (empty = use stack ID)"
+      "description": "Scope string used as branch prefix and conventional commit scope (empty = use stack ID)"
     },
     {
       "key": "branch_prefix.separator",
@@ -262,7 +262,7 @@
     {
       "key": "pr_title.conventional_commits",
       "type": "bool",
-      "default": "false",
+      "default": "true",
       "description": "Enable conventional commit prefixes in PR titles"
     },
     {

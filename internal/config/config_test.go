@@ -15,8 +15,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.BranchPrefix.Separator != "/" {
 		t.Errorf("default Separator should be '/', got %q", cfg.BranchPrefix.Separator)
 	}
-	if cfg.BranchPrefix.Prefix != "" {
-		t.Errorf("default Prefix should be empty, got %q", cfg.BranchPrefix.Prefix)
+	if cfg.BranchPrefix.Scope != "" {
+		t.Errorf("default Scope should be empty, got %q", cfg.BranchPrefix.Scope)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestEffectivePrefix_Empty(t *testing.T) {
 }
 
 func TestEffectivePrefix_Custom(t *testing.T) {
-	cfg := Config{BranchPrefix: BranchPrefix{Prefix: "feat"}}
+	cfg := Config{BranchPrefix: BranchPrefix{Scope: "feat"}}
 	if got := cfg.EffectivePrefix("my-stack"); got != "feat" {
 		t.Errorf("expected 'feat', got %q", got)
 	}
@@ -73,14 +73,14 @@ func TestMerge_RepoOverridesGlobal(t *testing.T) {
 	global := Config{
 		BranchPrefix: BranchPrefix{
 			Enabled:   boolPtr(true),
-			Prefix:    "global-prefix",
+			Scope:     "global-prefix",
 			Separator: "/",
 		},
 	}
 	repo := Config{
 		BranchPrefix: BranchPrefix{
 			Enabled:   boolPtr(false),
-			Prefix:    "repo-prefix",
+			Scope:     "repo-prefix",
 			Separator: "-",
 		},
 	}
@@ -90,8 +90,8 @@ func TestMerge_RepoOverridesGlobal(t *testing.T) {
 	if result.BranchPrefix.Enabled == nil || *result.BranchPrefix.Enabled {
 		t.Error("repo Enabled=false should override global Enabled=true")
 	}
-	if result.BranchPrefix.Prefix != "repo-prefix" {
-		t.Errorf("expected 'repo-prefix', got %q", result.BranchPrefix.Prefix)
+	if result.BranchPrefix.Scope != "repo-prefix" {
+		t.Errorf("expected 'repo-prefix', got %q", result.BranchPrefix.Scope)
 	}
 	if result.BranchPrefix.Separator != "-" {
 		t.Errorf("expected '-', got %q", result.BranchPrefix.Separator)
@@ -102,7 +102,7 @@ func TestMerge_GlobalFallback(t *testing.T) {
 	global := Config{
 		BranchPrefix: BranchPrefix{
 			Enabled:   boolPtr(true),
-			Prefix:    "global-prefix",
+			Scope:     "global-prefix",
 			Separator: "-",
 		},
 	}
@@ -113,8 +113,8 @@ func TestMerge_GlobalFallback(t *testing.T) {
 	if result.BranchPrefix.Enabled == nil || !*result.BranchPrefix.Enabled {
 		t.Error("should fall back to global Enabled=true")
 	}
-	if result.BranchPrefix.Prefix != "global-prefix" {
-		t.Errorf("should fall back to global prefix, got %q", result.BranchPrefix.Prefix)
+	if result.BranchPrefix.Scope != "global-prefix" {
+		t.Errorf("should fall back to global prefix, got %q", result.BranchPrefix.Scope)
 	}
 	if result.BranchPrefix.Separator != "-" {
 		t.Errorf("should fall back to global separator, got %q", result.BranchPrefix.Separator)
@@ -157,7 +157,7 @@ func TestLoadFile_InvalidJSON(t *testing.T) {
 func TestLoadFile_Valid(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	os.WriteFile(path, []byte(`{"branch_prefix":{"enabled":false,"prefix":"feat","separator":"-"}}`), 0644)
+	os.WriteFile(path, []byte(`{"branch_prefix":{"enabled":false,"scope":"feat","separator":"-"}}`), 0644)
 
 	cfg, err := loadFile(path)
 	if err != nil {
@@ -166,8 +166,8 @@ func TestLoadFile_Valid(t *testing.T) {
 	if cfg.BranchPrefix.Enabled == nil || *cfg.BranchPrefix.Enabled {
 		t.Error("expected Enabled=false")
 	}
-	if cfg.BranchPrefix.Prefix != "feat" {
-		t.Errorf("expected prefix 'feat', got %q", cfg.BranchPrefix.Prefix)
+	if cfg.BranchPrefix.Scope != "feat" {
+		t.Errorf("expected prefix 'feat', got %q", cfg.BranchPrefix.Scope)
 	}
 	if cfg.BranchPrefix.Separator != "-" {
 		t.Errorf("expected separator '-', got %q", cfg.BranchPrefix.Separator)
@@ -179,7 +179,7 @@ func TestSaveAndLoad(t *testing.T) {
 	path := filepath.Join(dir, "sub", "config.json")
 
 	cfg := Defaults()
-	cfg.BranchPrefix.Prefix = "my-prefix"
+	cfg.BranchPrefix.Scope = "my-prefix"
 
 	if err := Save(path, cfg); err != nil {
 		t.Fatalf("Save failed: %v", err)
@@ -190,8 +190,8 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatalf("loadFile failed: %v", err)
 	}
 
-	if loaded.BranchPrefix.Prefix != "my-prefix" {
-		t.Errorf("expected 'my-prefix', got %q", loaded.BranchPrefix.Prefix)
+	if loaded.BranchPrefix.Scope != "my-prefix" {
+		t.Errorf("expected 'my-prefix', got %q", loaded.BranchPrefix.Scope)
 	}
 	if loaded.BranchPrefix.Enabled == nil || !*loaded.BranchPrefix.Enabled {
 		t.Error("expected Enabled=true after round-trip")

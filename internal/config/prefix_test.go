@@ -40,7 +40,7 @@ func TestApplyPrefix_CustomSeparator(t *testing.T) {
 func TestApplyPrefix_CustomPrefix(t *testing.T) {
 	cfg := Config{BranchPrefix: BranchPrefix{
 		Enabled:   boolPtr(true),
-		Prefix:    "feat",
+		Scope:     "feat",
 		Separator: "/",
 	}}
 	got := ApplyPrefix(cfg, "users-feature", "db-schema")
@@ -106,7 +106,7 @@ func TestStripPrefix_CustomSeparator(t *testing.T) {
 	cfg := Config{BranchPrefix: BranchPrefix{
 		Enabled:   boolPtr(true),
 		Separator: "-",
-		Prefix:    "feat",
+		Scope:     "feat",
 	}}
 	got := StripPrefix(cfg, "stack", "feat-db-schema")
 	if got != "db-schema" {

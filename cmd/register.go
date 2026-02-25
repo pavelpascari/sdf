@@ -78,7 +78,7 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 	// Infer prefix config from registered branch names
 	cfg := cfgpkg.Defaults()
 	if prefix, sep := inferBranchPrefix(nodes, name); prefix != "" {
-		cfg.BranchPrefix.Prefix = prefix
+		cfg.BranchPrefix.Scope = prefix
 		cfg.BranchPrefix.Separator = sep
 	}
 	if err := cfgpkg.Save(cfgpkg.RepoPath(root), cfg); err != nil {
