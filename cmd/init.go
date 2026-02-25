@@ -125,7 +125,7 @@ func runInitCore(stackName, base, branchFlag string, jsonFlag bool) (string, err
 	}
 
 	// Create default config file only if one doesn't already exist,
-	// so we never overwrite user-customised settings.
+	// so we never overwrite user-customized settings.
 	cfgPath := cfgpkg.RepoPath(root)
 	if _, statErr := os.Stat(cfgPath); os.IsNotExist(statErr) {
 		if err := cfgpkg.Save(cfgPath, cfgpkg.Defaults()); err != nil {
