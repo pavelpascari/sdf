@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-25T22:20:36Z",
+  "generated": "2026-02-25T23:55:07Z",
   "commands": [
     {
       "name": "ai",
@@ -94,40 +94,6 @@
       ]
     },
     {
-      "name": "new",
-      "category": "stack",
-      "use": "new [stack-name]",
-      "short": "Create a new stack and its first branch",
-      "long": "The stack name can be provided as a positional argument or via the --stack flag.\nIf --branch is omitted, the first branch is named after the stack. The base branch\nis auto-detected from origin HEAD if not specified.\n\nNote: `sdf init` still works as a backward-compatible alias.",
-      "example": "  sdf new my-feature                                # positional stack name\n  sdf new --stack my-feature                        # explicit flag\n  sdf new my-feature --branch db-schema             # custom first branch name\n  sdf new my-feature --base develop                 # custom base branch\n  sdf new my-feature --json                         # machine-readable output",
-      "flags": [
-        {
-          "name": "base",
-          "type": "string",
-          "default": "",
-          "description": "base branch (default: auto-detected from origin HEAD)"
-        },
-        {
-          "name": "branch",
-          "type": "string",
-          "default": "",
-          "description": "name for the first branch (default: stack name)"
-        },
-        {
-          "name": "json",
-          "type": "bool",
-          "default": "false",
-          "description": "output machine-readable JSON"
-        },
-        {
-          "name": "stack",
-          "type": "string",
-          "default": "",
-          "description": "name for the stack (alternative to positional arg)"
-        }
-      ]
-    },
-    {
       "name": "merge",
       "category": "stack",
       "use": "merge",
@@ -163,6 +129,40 @@
       "short": "Move commits from current branch to parent",
       "long": "Cherry-picks listed commits onto the parent branch, strips them from the\ncurrent branch via rebase, and cascade-rebases downstream branches.",
       "example": "  sdf move abc1234                   # move one commit\n  sdf move abc1234 def5678           # move multiple commits"
+    },
+    {
+      "name": "new",
+      "category": "stack",
+      "use": "new [stack-name]",
+      "short": "Create a new stack and its first branch",
+      "long": "The stack name can be provided as a positional argument or via the --stack flag.\nIf --branch is omitted, the first branch is named after the stack. The base branch\nis auto-detected from origin HEAD if not specified.",
+      "example": "  sdf new my-feature                                # positional stack name\n  sdf new --stack my-feature                        # explicit flag\n  sdf new my-feature --branch db-schema             # custom first branch name\n  sdf new my-feature --base develop                 # custom base branch\n  sdf new my-feature --json                         # machine-readable output",
+      "flags": [
+        {
+          "name": "base",
+          "type": "string",
+          "default": "",
+          "description": "base branch (default: auto-detected from origin HEAD)"
+        },
+        {
+          "name": "branch",
+          "type": "string",
+          "default": "",
+          "description": "name for the first branch (default: stack name)"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output machine-readable JSON"
+        },
+        {
+          "name": "stack",
+          "type": "string",
+          "default": "",
+          "description": "name for the stack (alternative to positional arg)"
+        }
+      ]
     },
     {
       "name": "pr",
