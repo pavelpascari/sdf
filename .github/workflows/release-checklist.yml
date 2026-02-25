@@ -11,16 +11,45 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
     runs-on: ubuntu-latest
     steps:
-      - name: Skip if label present
-        if: contains(github.event.pull_request.labels.*.name, 'skip-blog-check')
-        run: |
-          echo "SKIP — 'skip-blog-check' label is present, bypassing release checklist."
-          exit 0
-
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if dependency-only release
+        id: deps-check
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [[ -z "$LAST_TAG" ]]; then
+            echo "deps_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          # Get unique non-merge commit authors between last tag and the base branch
+          AUTHORS=$(git log "${LAST_TAG}..${BASE_SHA}" --no-merges --format='%an' | sort -u)
+          if [[ -z "$AUTHORS" ]]; then
+            echo "deps_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DEPS_ONLY=true
+          while IFS= read -r author; do
+            if [[ -z "$author" ]]; then
+              continue
+            fi
+            if [[ "$author" != "dependabot[bot]" ]]; then
+              DEPS_ONLY=false
+              break
+            fi
+          done <<< "$AUTHORS"
+          echo "deps_only=$DEPS_ONLY" >> "$GITHUB_OUTPUT"
+          if [[ "$DEPS_ONLY" == "true" ]]; then
+            echo "SKIP — all commits since $LAST_TAG are from dependabot; blog post not required."
+          fi
 
       - name: Extract version from PR title
         id: version
+        if: >-
+          !contains(github.event.pull_request.labels.*.name, 'skip-blog-check') &&
+          steps.deps-check.outputs.deps_only != 'true'
         run: |
           TITLE="${{ github.event.pull_request.title }}"
           VERSION=$(echo "$TITLE" | grep -oP '\d+\.\d+\.\d+' || true)
@@ -31,5 +60,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Release checklist
-        if: "!contains(github.event.pull_request.labels.*.name, 'skip-blog-check')"
+        if: >-
+          !contains(github.event.pull_request.labels.*.name, 'skip-blog-check') &&
+          steps.deps-check.outputs.deps_only != 'true'
         run: make release-checklist RELEASE_VERSION="v${{ steps.version.outputs.version }}"
