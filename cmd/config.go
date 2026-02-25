@@ -76,8 +76,8 @@ func runConfigSetCmd(cmd *cobra.Command, args []string) error {
 	case "branch_prefix.enabled":
 		val := strings.ToLower(value) == "true"
 		cfg.BranchPrefix.Enabled = &val
-	case "branch_prefix.prefix":
-		cfg.BranchPrefix.Prefix = value
+	case "branch_prefix.scope":
+		cfg.BranchPrefix.Scope = value
 	case "branch_prefix.separator":
 		cfg.BranchPrefix.Separator = value
 	case "pr_title.conventional_commits":

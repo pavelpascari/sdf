@@ -4,7 +4,8 @@ import "testing"
 
 func TestGeneratePRTitle_SimpleHumanize(t *testing.T) {
 	cfg := Defaults()
-	// conventional commits off by default
+	cfg.PRTitle.ConventionalCommits = boolPtr(false)
+
 	title := GeneratePRTitle(cfg, "my-stack", "my-stack/add-user-auth", nil)
 	if title != "add user auth" {
 		t.Errorf("expected 'add user auth', got %q", title)
@@ -13,6 +14,8 @@ func TestGeneratePRTitle_SimpleHumanize(t *testing.T) {
 
 func TestGeneratePRTitle_HumanizeUnderscores(t *testing.T) {
 	cfg := Defaults()
+	cfg.PRTitle.ConventionalCommits = boolPtr(false)
+
 	title := GeneratePRTitle(cfg, "feat", "feat/db_schema_update", nil)
 	if title != "db schema update" {
 		t.Errorf("expected 'db schema update', got %q", title)
@@ -21,25 +24,25 @@ func TestGeneratePRTitle_HumanizeUnderscores(t *testing.T) {
 
 func TestGeneratePRTitle_NoPrefixMatch(t *testing.T) {
 	cfg := Defaults()
+	cfg.PRTitle.ConventionalCommits = boolPtr(false)
+
 	title := GeneratePRTitle(cfg, "my-stack", "some-other-branch", nil)
 	if title != "some other branch" {
 		t.Errorf("expected 'some other branch', got %q", title)
 	}
 }
 
-func TestGeneratePRTitle_ConventionalCommits_FeatDefault(t *testing.T) {
+func TestGeneratePRTitle_DefaultUsesConventionalWithScope(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 
 	title := GeneratePRTitle(cfg, "my-stack", "my-stack/add-auth", nil)
-	if title != "feat: add auth" {
-		t.Errorf("expected 'feat: add auth', got %q", title)
+	if title != "feat(my-stack): add auth" {
+		t.Errorf("expected 'feat(my-stack): add auth', got %q", title)
 	}
 }
 
 func TestGeneratePRTitle_ConventionalCommits_DetectFix(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 
 	subjects := []string{
 		"fix: correct null pointer in handler",
@@ -48,14 +51,13 @@ func TestGeneratePRTitle_ConventionalCommits_DetectFix(t *testing.T) {
 	}
 
 	title := GeneratePRTitle(cfg, "my-stack", "my-stack/null-fix", subjects)
-	if title != "fix: null fix" {
-		t.Errorf("expected 'fix: null fix', got %q", title)
+	if title != "fix(my-stack): null fix" {
+		t.Errorf("expected 'fix(my-stack): null fix', got %q", title)
 	}
 }
 
 func TestGeneratePRTitle_ConventionalCommits_DetectFromScoped(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 
 	subjects := []string{
 		"refactor(auth): simplify token validation",
@@ -63,14 +65,13 @@ func TestGeneratePRTitle_ConventionalCommits_DetectFromScoped(t *testing.T) {
 	}
 
 	title := GeneratePRTitle(cfg, "stack", "stack/auth-cleanup", subjects)
-	if title != "refactor: auth cleanup" {
-		t.Errorf("expected 'refactor: auth cleanup', got %q", title)
+	if title != "refactor(stack): auth cleanup" {
+		t.Errorf("expected 'refactor(stack): auth cleanup', got %q", title)
 	}
 }
 
 func TestGeneratePRTitle_ConventionalCommits_MostCommonWins(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 
 	subjects := []string{
 		"feat: add endpoint",
@@ -80,14 +81,23 @@ func TestGeneratePRTitle_ConventionalCommits_MostCommonWins(t *testing.T) {
 	}
 
 	title := GeneratePRTitle(cfg, "s", "s/api-layer", subjects)
-	if title != "feat: api layer" {
-		t.Errorf("expected 'feat: api layer', got %q", title)
+	if title != "feat(s): api layer" {
+		t.Errorf("expected 'feat(s): api layer', got %q", title)
+	}
+}
+
+func TestGeneratePRTitle_CustomScope(t *testing.T) {
+	cfg := Defaults()
+	cfg.BranchPrefix.Scope = "api"
+
+	title := GeneratePRTitle(cfg, "my-stack", "api/add-login", nil)
+	if title != "feat(api): add login" {
+		t.Errorf("expected 'feat(api): add login', got %q", title)
 	}
 }
 
 func TestGeneratePRTitle_WithTicket(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 	cfg.PRTitle.TicketPattern = `([A-Z]+-\d+)`
 
 	title := GeneratePRTitle(cfg, "proj", "proj/PROJ-123-add-auth", nil)
@@ -98,7 +108,6 @@ func TestGeneratePRTitle_WithTicket(t *testing.T) {
 
 func TestGeneratePRTitle_WithTicketAndType(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 	cfg.PRTitle.TicketPattern = `([A-Z]+-\d+)`
 
 	subjects := []string{"fix: resolve deadlock in worker"}
@@ -109,26 +118,32 @@ func TestGeneratePRTitle_WithTicketAndType(t *testing.T) {
 	}
 }
 
-func TestGeneratePRTitle_TicketNoMatch(t *testing.T) {
+func TestGeneratePRTitle_TicketNoMatch_FallsBackToScope(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 	cfg.PRTitle.TicketPattern = `([A-Z]+-\d+)`
 
 	title := GeneratePRTitle(cfg, "feat", "feat/add-login", nil)
-	if title != "feat: add login" {
-		t.Errorf("expected 'feat: add login', got %q", title)
+	if title != "feat(feat): add login" {
+		t.Errorf("expected 'feat(feat): add login', got %q", title)
 	}
 }
 
-func TestGeneratePRTitle_InvalidTicketRegex(t *testing.T) {
+func TestGeneratePRTitle_InvalidTicketRegex_FallsBackToScope(t *testing.T) {
 	cfg := Defaults()
-	cfg.PRTitle.ConventionalCommits = boolPtr(true)
 	cfg.PRTitle.TicketPattern = `([invalid` // bad regex
 
 	title := GeneratePRTitle(cfg, "s", "s/feature", nil)
-	// Should fall back to no ticket
-	if title != "feat: feature" {
-		t.Errorf("expected 'feat: feature', got %q", title)
+	if title != "feat(s): feature" {
+		t.Errorf("expected 'feat(s): feature', got %q", title)
+	}
+}
+
+func TestGeneratePRTitle_EmptyStackID_NoScope(t *testing.T) {
+	cfg := Defaults()
+
+	title := GeneratePRTitle(cfg, "", "some-branch", nil)
+	if title != "feat: some branch" {
+		t.Errorf("expected 'feat: some branch', got %q", title)
 	}
 }
 
@@ -160,17 +175,62 @@ func TestExtractTicket_EmptyPattern(t *testing.T) {
 	}
 }
 
-func TestDetectCommitType_Empty(t *testing.T) {
-	typ := detectCommitType(nil)
-	if typ != "feat" {
-		t.Errorf("expected 'feat' default, got %q", typ)
+func TestDetectCommitType(t *testing.T) {
+	tests := []struct {
+		name     string
+		subjects []string
+		want     string
+	}{
+		{"nil input defaults to feat", nil, "feat"},
+		{"empty slice defaults to feat", []string{}, "feat"},
+		{"no conventional prefixes defaults to feat", []string{"add feature", "update readme", "fix stuff"}, "feat"},
+		{"single fix commit", []string{"fix: null pointer in handler"}, "fix"},
+		{"single feat commit", []string{"feat: add user login"}, "feat"},
+		{"single docs commit", []string{"docs: update README"}, "docs"},
+		{"single refactor commit", []string{"refactor: simplify auth flow"}, "refactor"},
+		{"single perf commit", []string{"perf: optimize query"}, "perf"},
+		{"single test commit", []string{"test: add unit tests for parser"}, "test"},
+		{"single build commit", []string{"build: update go version"}, "build"},
+		{"single ci commit", []string{"ci: add lint step"}, "ci"},
+		{"single chore commit", []string{"chore: bump dependencies"}, "chore"},
+		{"single revert commit", []string{"revert: undo auth change"}, "revert"},
+		{"single style commit", []string{"style: format imports"}, "style"},
+		{"scoped commit detected", []string{"fix(auth): handle expired tokens"}, "fix"},
+		{"most common wins feat over fix", []string{
+			"feat: add endpoint",
+			"fix: typo",
+			"feat: add validation",
+			"feat: add tests",
+		}, "feat"},
+		{"most common wins fix over feat", []string{
+			"fix: null pointer",
+			"feat: add logging",
+			"fix: race condition",
+			"fix: off-by-one",
+		}, "fix"},
+		{"mixed with non-conventional ignored", []string{
+			"fix: handle timeout",
+			"update readme",
+			"fix: retry logic",
+			"WIP save",
+		}, "fix"},
+		{"scoped commits counted correctly", []string{
+			"refactor(auth): simplify token validation",
+			"refactor(auth): extract middleware",
+			"feat: add logging",
+		}, "refactor"},
+		{"tie broken by iteration order but both valid", []string{
+			"feat: add endpoint",
+			"fix: null pointer",
+		}, "feat"}, // map iteration, but both are valid conventional types
 	}
-}
 
-func TestDetectCommitType_NoConventional(t *testing.T) {
-	subjects := []string{"add feature", "update readme", "fix stuff"}
-	typ := detectCommitType(subjects)
-	if typ != "feat" {
-		t.Errorf("expected 'feat' default, got %q", typ)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectCommitType(tt.subjects)
+			if got != tt.want {
+				t.Errorf("detectCommitType() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
