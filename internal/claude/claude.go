@@ -77,9 +77,9 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 	for _, tool := range opts.AllowedTools {
 		args = append(args, "--allowedTools", tool)
 	}
-	args = append(args, prompt)
 
 	cmd := exec.Command(Binary, args...)
+	cmd.Stdin = strings.NewReader(prompt)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", fmt.Errorf("claude %s: %w", name, err)
@@ -137,14 +137,17 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 		}
 	}
 
+	recordArgs := make([]string, len(args)+1)
+	copy(recordArgs, args)
+	recordArgs[len(args)] = prompt
 	exitCode := 0
 	if err := cmd.Wait(); err != nil {
 		exitCode = 1
-		recordRun(args, result, exitCode)
+		recordRun(recordArgs, result, exitCode)
 		return result, fmt.Errorf("claude %s: failed", name)
 	}
 
-	recordRun(args, result, exitCode)
+	recordRun(recordArgs, result, exitCode)
 	return strings.TrimSpace(result), nil
 }
 

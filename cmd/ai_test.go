@@ -63,10 +63,8 @@ func TestAIIntro_InvokesClaude(t *testing.T) {
 		t.Errorf("expected --allowedTools Read in args")
 	}
 
-	// Verify the prompt contains SDF info
-	if !strings.Contains(args, "SDF") {
-		t.Errorf("expected prompt to mention SDF")
-	}
+	// Prompt content is verified in internal/ai/prompt_test.go.
+	// Here we only check that the CLI flags are correct.
 
 	// Verify output contains status messages
 	if !strings.Contains(output, "Skill created") {
