@@ -76,7 +76,7 @@ func RegisterStack(root, name string, ds stack.DiscoveredStack) error {
 	}
 
 	// Create default config (with inferred prefix) only if one doesn't
-	// already exist, so we never overwrite user-customised settings.
+	// already exist, so we never overwrite user-customized settings.
 	cfgPath := cfgpkg.RepoPath(root)
 	if _, statErr := os.Stat(cfgPath); os.IsNotExist(statErr) {
 		cfg := cfgpkg.Defaults()
