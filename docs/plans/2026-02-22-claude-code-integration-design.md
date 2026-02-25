@@ -1,7 +1,8 @@
 # Teaching Claude How to Use SDF
 
 **Date:** 2026-02-22
-**Status:** Design (revised)
+**Updated:** 2026-02-25
+**Status:** Implemented
 
 ## Problem
 
@@ -15,18 +16,17 @@ Instead: **SDF spawns Claude as a child process, tells it about SDF, and asks it
 
 ## Design
 
-### The `sdf ai` Command Family
+### The `sdf ai` Command
 
 ```
 sdf ai intro           Spawn Claude and ask it to save a skill teaching itself about SDF
-sdf ai setup           Spawn Claude and ask it to set up full integration (skill + hooks + rules)
 ```
 
-That's it. Two commands.
+That's it. One command.
 
 There are no AI wrappers around existing commands. Claude can run `sdf ls` and `sdf status` directly — the intro prompt teaches it which commands to run and when.
 
-These commands spawn `claude` as a child process, stream its output to the terminal so the developer can watch it work, and let it create files using its own tools.
+The command spawns `claude` as a child process, streams its output to the terminal so the developer can watch it work, and lets it create files using its own tools.
 
 ---
 
@@ -173,49 +173,17 @@ This gives the developer visibility into what Claude is doing without dumping ra
 
 ---
 
-### `sdf ai setup` — Full Integration
+### Dropped: `sdf ai setup`
 
-```
-$ sdf ai setup
-```
+Originally planned as a superset of `intro` that also created a `.claude/rules/sdf.md` file (redundant with the skill), a SessionStart hook (`sdf ls`), and a PreToolUse hook blocking `git checkout -b`/`git rebase`/`gh pr create`/`gh pr merge` on stack branches.
 
-Same mechanism as `intro`, but the prompt additionally asks Claude to:
+**Why it was dropped:**
 
-1. **Create a skill** (same as `intro`)
-2. **Create `.claude/rules/sdf.md`** — rules load every session without needing the skill to fire
-3. **Set up a SessionStart hook** in `.claude/settings.json` that runs `sdf ls` at session start
-4. **Set up a PreToolUse hook** that guards against raw git/gh commands on stack branches
+- **Rules file is redundant.** The skill already teaches Claude the same rules and commands. If the skill description is good, it fires whenever it matters.
+- **PreToolUse guard is too restrictive.** We don't want to block Claude from using git. Clear instructions explaining *why* to use SDF commands are better than guard rails that prevent git usage. Claude should understand the intent, not be fenced in.
+- **SessionStart hook is unnecessary.** The skill's "when to run what" section already teaches Claude to run `sdf ls` at session start.
 
-The prompt tells Claude what behavior each hook should have. Claude decides the exact JSON format for `.claude/settings.json`.
-
-#### The extra section in the setup prompt
-
-```
-## Additional Setup (beyond the skill)
-
-### Rules File
-
-Also create `.claude/rules/sdf.md` containing the rules and command reference
-from above. This ensures the rules load automatically every session even
-if the skill doesn't fire.
-
-### Hooks
-
-Set up the following hooks in `.claude/settings.json`:
-
-1. A SessionStart hook that runs:
-   `if command -v sdf >/dev/null 2>&1 && [ -d .sdf ]; then sdf ls 2>/dev/null; fi`
-   This shows tracked stacks at the start of every session.
-
-2. A PreToolUse hook on Bash commands that checks whether the command
-   is `git checkout -b`, `git rebase`, `gh pr create`, or `gh pr merge`
-   while the current branch is part of an SDF stack. If so, block it
-   with a message suggesting the SDF equivalent. Only block when the
-   branch IS in a stack — allow these commands for non-stack branches.
-
-If `.claude/settings.json` already exists, merge the hooks with existing
-configuration — don't overwrite other hooks.
-```
+With the restrictive hook dropped and the other pieces redundant with the skill, `setup` added no value over `intro`.
 
 ---
 
@@ -238,18 +206,9 @@ to use SDF in future sessions. Claude's output streams to the terminal.`,
     RunE: runAIIntro,
 }
 
-var aiSetupCmd = &cobra.Command{
-    Use:   "setup",
-    Short: "Full Claude Code integration — skill, rules, and hooks",
-    Long:  `Like intro, but also asks Claude to create a rules file and
-configure session hooks for automatic SDF awareness.`,
-    RunE: runAISetup,
-}
-
 func init() {
     rootCmd.AddCommand(aiCmd)
     aiCmd.AddCommand(aiIntroCmd)
-    aiCmd.AddCommand(aiSetupCmd)
 }
 ```
 
@@ -259,7 +218,6 @@ Pure string templates. No dynamic state.
 
 ```go
 func BuildIntroPrompt() string { /* static template */ }
-func BuildSetupPrompt() string { /* intro + hooks/rules instructions */ }
 ```
 
 ### `internal/claude/claude.go`
@@ -309,7 +267,7 @@ func runAIIntro(cmd *cobra.Command, args []string) error {
 
 ### What we gain
 
-- **Zero coupling to Claude Code internals.** SDF doesn't need to know SKILL.md format, settings.json schema, or hook configuration syntax. Claude knows its own formats.
+- **Zero coupling to Claude Code internals.** SDF doesn't need to know SKILL.md format or settings.json schema. Claude knows its own formats.
 - **Trivial implementation.** A prompt template + one new `--allowedTools` parameter on the existing streaming function.
 - **Great UX.** One command, no copy-paste, streamed output so the developer sees progress.
 - **No stale state.** The prompt teaches Claude to run `sdf ls` and `sdf status` itself rather than embedding a snapshot.
@@ -318,62 +276,40 @@ func runAIIntro(cmd *cobra.Command, args []string) error {
 ### What we lose
 
 - **Requires `claude` CLI.** Unlike a print-to-stdout approach, this only works with Claude. But SDF already depends on Claude for conflict resolution — this is consistent.
-- **Non-deterministic output.** Claude might format the skill file differently each time. For teams wanting exact files, the export fallback exists.
+- **Non-deterministic output.** Claude might format the skill file differently each time.
 - **Network dependency.** Spawning Claude requires API access. A developer offline can't run `sdf ai intro`. Mitigation: it's a one-time setup, not part of the daily workflow.
 
 ---
 
-## Optional: Deterministic Fallback
+## Future: MCP Server
 
-For teams who want committed, deterministic integration files without invoking Claude:
-
-```
-sdf ai export-rules      # Print a .claude/rules/sdf.md to stdout
-sdf ai export-skill      # Print a .claude/skills/sdf/SKILL.md to stdout
-```
-
-These print files the developer can redirect and commit. This is the only path where SDF needs to know Claude Code file formats, and it's opt-in.
+An MCP server remains a valid future enhancement, orthogonal to this approach. When implemented, `sdf ai intro` could include an instruction for Claude to configure `.mcp.json`.
 
 ---
 
-## Optional: MCP Server (Future)
+## Implementation Status
 
-An MCP server remains a valid future enhancement, orthogonal to this approach. When implemented, `sdf ai setup` can include an instruction for Claude to configure `.mcp.json`.
+### Done
 
----
+1. `internal/ai/prompt.go` — `BuildIntroPrompt()` with static prompt template
+2. `internal/claude/claude.go` — `PromptOptions` struct, `RunPromptStreamingWithOpts` with `--allowedTools`
+3. `cmd/ai.go` — `ai intro` subcommand
+4. Stream parser displays `tool_use` events (`[Using tool: <name>]`)
+5. Unit tests (`cmd/ai_test.go`, `internal/ai/prompt_test.go`, `internal/claude/claude_test.go`)
+6. E2E tests (`e2e/ai_test.go`, gated behind `-with-claude`)
 
-## Implementation Plan
+### Dropped
 
-### Phase 1: `sdf ai intro`
-
-1. Create `internal/ai/prompt.go` with `BuildIntroPrompt()`
-2. Extend `internal/claude/claude.go` — add `PromptOptions` with `AllowedTools` field
-3. Create `cmd/ai.go` with `ai intro` subcommand
-4. Test: verify Claude is spawned with the right flags, prompt content is correct
-
-### Phase 2: `sdf ai setup`
-
-1. Add `BuildSetupPrompt()` to `internal/ai/prompt.go`
-2. Add `ai setup` subcommand to `cmd/ai.go`
-3. Test: verify setup prompt includes hook and rules instructions
-
-### Phase 3: Stream UX polish (Optional)
-
-1. Parse `tool_use` events in the stream to display "Writing <file>..." messages
-2. Add a completion summary ("Skill created at .claude/skills/sdf/SKILL.md")
-3. Handle error cases gracefully (Claude unavailable, API failure, partial writes)
-
-### Phase 4: Hook subcommands (Optional)
-
-1. Implement `sdf hook guard-git` for the PreToolUse hook that `sdf ai setup` configures
-2. Hidden subcommand, called by the hook, not by the user
+- **`sdf ai setup`** — redundant with intro (see "Dropped" section above)
+- **Phase 4: Hook subcommands** — PreToolUse guard was too restrictive. Good instructions beat guard rails.
+- **Deterministic fallback** (`sdf ai export-rules`/`export-skill`) — not needed yet
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Naming: `sdf ai` vs `sdf claude` vs `sdf assist`?** `ai` is generic (works with any assistant). `claude` is specific (SDF already has a Claude dependency). Recommendation: `sdf ai` — keeps the door open, and the commands already require `claude` CLI anyway.
+1. **Naming:** `sdf ai` — generic, keeps the door open even though it requires `claude` CLI.
 
-2. **What `--allowedTools` should `sdf ai intro` grant?** Minimum: `Write` (to create the skill file). Probably also `Read` (to check existing files before writing) and `Bash(mkdir *)` (to create the `.claude/skills/sdf/` directory). Should NOT grant broad Bash access.
+2. **Allowed tools:** `Write`, `Read`, `Bash(mkdir *)`. Enough to create the skill file and its directory. No broad Bash access.
 
-3. **Should `sdf ai intro` be idempotent?** If a skill already exists, should Claude overwrite it, skip it, or merge? Recommendation: let Claude decide — the prompt can say "create or update the skill file."
+3. **Idempotency:** Left to Claude — it can overwrite or update the skill file as it sees fit.
