@@ -133,10 +133,10 @@ func ValidateTree(source, lastBranch string) error {
 // Cleanup deletes created branches, removes the stack file, and restores
 // the original branch. Safe to call with empty branches or missing stack.
 func Cleanup(branches []string, restoreTo, root, stackID string) {
-	gitpkg.Checkout(restoreTo)
+	_ = gitpkg.Checkout(restoreTo)
 	for _, b := range branches {
-		gitpkg.DeleteBranch(b)
+		_ = gitpkg.DeleteBranch(b)
 	}
 	// Remove the stack file created during Init
-	os.Remove(stack.StackPath(root, stackID))
+	_ = os.Remove(stack.StackPath(root, stackID))
 }
