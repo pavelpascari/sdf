@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.4](https://github.com/pavelpascari/sdf/compare/v0.2.3...v0.2.4) (2026-02-26)
+
+
+### Features
+
+* rename `sdf init` to `sdf new` with backward-compatible alias ([#85](https://github.com/pavelpascari/sdf/issues/85)) ([58147a5](https://github.com/pavelpascari/sdf/commit/58147a5724f953c1223cfba41cb78abbb8471047))
+
+
+### Bug Fixes
+
+* pass prompt via stdin in RunPromptStreamingWithOpts ([#83](https://github.com/pavelpascari/sdf/issues/83)) ([975782b](https://github.com/pavelpascari/sdf/commit/975782b5e8f60ca5e35e217b9554f0193a4540c3))
+
 ## [0.2.3](https://github.com/pavelpascari/sdf/compare/v0.2.2...v0.2.3) (2026-02-25)
 
 
