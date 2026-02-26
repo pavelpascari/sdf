@@ -2,6 +2,7 @@
 # Pre-commit hook:
 #   1. Auto-format staged .go files with gofmt
 #   2. Regenerate CLI reference docs when command definitions change
+#   3. Run golangci-lint
 
 staged_go_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
 
@@ -29,3 +30,7 @@ if [ -n "$docs_relevant" ]; then
     go run ./cmd/docgen > www/src/data/cli-reference.json
     git add www/src/data/cli-reference.json
 fi
+
+# ── golangci-lint ────────────────────────────────────────────────
+echo "Running golangci-lint..."
+golangci-lint run ./...
