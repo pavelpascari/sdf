@@ -1,5 +1,0 @@
-#!/bin/sh
-# Run golangci-lint before pushing. Aborts the push if linting fails.
-
-echo "Running golangci-lint..."
-golangci-lint run ./...

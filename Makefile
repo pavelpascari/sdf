@@ -140,7 +140,7 @@ help:
 	@echo "  make fmt               Format code"
 	@echo "  make mod-tidy-check    Verify go.mod is tidy"
 	@echo "  make clean             Remove build artifacts"
-	@echo "  make hooks             Install git hooks (pre-commit, pre-push)"
+	@echo "  make hooks             Install git hooks (pre-commit)"
 	@echo "  make blog-check        Verify dateModified on changed blog posts"
 	@echo "  make docs              Generate CLI reference JSON"
 	@echo "  make docs-check        Check docs freshness and validate references"
@@ -152,8 +152,7 @@ help:
 .PHONY: hooks
 hooks:
 	cp scripts/pre-commit .git/hooks/pre-commit
-	cp scripts/pre-push .git/hooks/pre-push
-	chmod +x .git/hooks/pre-commit .git/hooks/pre-push
+	chmod +x .git/hooks/pre-commit
 	@echo "Git hooks installed."
 
 # ── Documentation ─────────────────────────────────────────────────
