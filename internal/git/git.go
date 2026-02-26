@@ -301,6 +301,18 @@ func ShowSubject(sha string) (string, error) {
 	return run("log", "-1", "--format=%s", sha)
 }
 
+// ListBranches returns all local branch names.
+func ListBranches() ([]string, error) {
+	out, err := run("branch", "--format=%(refname:short)")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // DeleteBranch force-deletes a local branch.
 func DeleteBranch(name string) error {
 	_, err := run("branch", "-D", name)

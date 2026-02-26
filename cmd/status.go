@@ -21,6 +21,8 @@ var statusCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().String("stack", "", "stack to show (default: auto-detect)")
+	statusCmd.ValidArgsFunction = completeStackNames
+	statusCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
 // RunStatus is a compatibility wrapper for callers that use the old interface.

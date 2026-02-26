@@ -24,6 +24,7 @@ func init() {
 	rootCmd.AddCommand(branchCmd)
 	branchCmd.Flags().String("stack", "", "stack to add the branch to (default: auto-detect)")
 	branchCmd.Flags().Bool("no-prefix", false, "create branch without applying the configured prefix")
+	branchCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
 // RunBranch is a compatibility wrapper for tests.

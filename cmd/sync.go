@@ -54,6 +54,8 @@ func init() {
 	syncCmd.Flags().Bool("continue", false, "resume after manual conflict resolution")
 	syncCmd.Flags().String("stack", "", "stack to sync (default: auto-detect)")
 	syncCmd.Flags().Bool("with-content", false, "update PR titles and descriptions")
+	syncCmd.ValidArgsFunction = completeStackNames
+	syncCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
 func runSyncCmd(cmd *cobra.Command, args []string) error {

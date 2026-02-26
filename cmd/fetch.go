@@ -29,6 +29,8 @@ func init() {
 	rootCmd.AddCommand(fetchCmd)
 	fetchCmd.Flags().String("stack", "", "name for the stack (default: auto-generated from branches)")
 	fetchCmd.Flags().String("base", "", "base branch (default: auto-detected)")
+	fetchCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
+	fetchCmd.RegisterFlagCompletionFunc("base", completeAllBranches)
 }
 
 func runFetchCmd(cmd *cobra.Command, args []string) error {

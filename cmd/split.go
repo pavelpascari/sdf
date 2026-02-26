@@ -41,6 +41,8 @@ func init() {
 	splitCmd.Flags().Bool("no-push", false, "create branches locally without pushing or creating PRs")
 	_ = splitCmd.MarkFlagRequired("from")
 	_ = splitCmd.MarkFlagRequired("stack")
+	splitCmd.RegisterFlagCompletionFunc("from", completeAllBranches)
+	splitCmd.RegisterFlagCompletionFunc("base", completeAllBranches)
 }
 
 // RunSplit is a compatibility wrapper for tests.

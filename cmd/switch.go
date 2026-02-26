@@ -22,6 +22,7 @@ With a branch name, checks it out and shows its stack position.`,
 
 func init() {
 	rootCmd.AddCommand(switchCmd)
+	switchCmd.ValidArgsFunction = completeAllBranches
 }
 
 func runSwitchCmd(cmd *cobra.Command, args []string) error {

@@ -38,6 +38,7 @@ func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configSetCmd)
 	configSetCmd.Flags().Bool("global", false, "set value in global config (~/.config/sdf/config.json)")
+	configSetCmd.ValidArgsFunction = completeConfigSetArgs
 }
 
 func runConfigShowCmd(cmd *cobra.Command, args []string) error {

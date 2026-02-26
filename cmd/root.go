@@ -17,6 +17,8 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Args:          cobra.ArbitraryArgs,
+	// Suggest stack branch names for `sdf <branch>` tab-completion
+	ValidArgsFunction: completeStackBranches,
 	// Handle `sdf <branch>` as shorthand for `sdf switch <branch>`
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
@@ -39,6 +41,7 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	// Hide Cobra's default completion command — we provide our own
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.AddCommand(versionCmd)
 }
@@ -52,6 +55,11 @@ func SetVersion(v string) {
 // Execute runs the root command. On error it prints the message to stderr
 // and exits with code 1.
 func Execute() {
+	// Auto-install shell completions on first run (skip during completion callbacks)
+	if !isCompletionRequest() {
+		autoInstallCompletions()
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
