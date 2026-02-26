@@ -9,11 +9,14 @@ import (
 	"testing"
 )
 
-// TestE2E_FullStackLifecycle exercises the complete sdf workflow:
+// TestE2E_FullStackLifecycle exercises the complete sdf workflow by building
+// a user-registration feature as a stack of three dependent PRs:
 //
-//	sdf new → sdf branch (x2) → commit on each → sdf pr (x3) →
-//	verify PRs on GitHub → sdf sync (should be in sync) →
-//	verify stack state
+//	main ← db-schema ← api-endpoints ← frontend
+//
+// Scenario: A developer breaks a "user registration" feature into three
+// reviewable pieces — the database layer, the API, and the UI — then
+// creates PRs for each and verifies everything is in sync.
 //
 // This test creates real branches and real PRs on the sandbox repo.
 func TestE2E_FullStackLifecycle(t *testing.T) {
@@ -37,8 +40,8 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 
 	stackName := prefix
 
-	// --- Step 1: sdf new ---
-	t.Log("Step 1: sdf new")
+	// Initialize the stack with the first branch: the database schema
+	t.Log("Initializing user-registration stack with the database schema branch")
 	output := runSDF(t, dir, "new", "--base", "main", "--branch", "db-schema", stackName)
 	t.Log(output)
 
@@ -49,7 +52,7 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 		t.Fatalf("expected branch %s, got %s", expectedBranch, branch)
 	}
 
-	// Add a commit to the first branch
+	// Add the users table migration
 	writeCommit(t, dir, prefix+"-schema.sql", "CREATE TABLE users (id INT);\n", "feat: add users table schema")
 
 	// Verify: stack has 1 node, no PR yet
@@ -57,8 +60,8 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 		{BranchSuffix: "/db-schema", Status: "open"},
 	})
 
-	// --- Step 2: sdf branch (second branch) ---
-	t.Log("Step 2: sdf branch (api-endpoints)")
+	// Stack the API layer on top of the database schema
+	t.Log("Adding api-endpoints branch on top of db-schema")
 	runSDF(t, dir, "branch", "api-endpoints")
 
 	branch = runGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD")
@@ -75,8 +78,8 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 		{BranchSuffix: "/api-endpoints", Status: "open"},
 	})
 
-	// --- Step 3: sdf branch (third branch) ---
-	t.Log("Step 3: sdf branch (frontend)")
+	// Stack the frontend on top of the API
+	t.Log("Adding frontend branch on top of api-endpoints")
 	runSDF(t, dir, "branch", "frontend")
 
 	branch = runGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD")
@@ -94,8 +97,8 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 		{BranchSuffix: "/frontend", Status: "open"},
 	})
 
-	// --- Step 4: Create PRs for all three branches ---
-	t.Log("Step 4: sdf pr for each branch")
+	// Create pull requests for all three branches
+	t.Log("Creating PRs for db-schema, api-endpoints, and frontend")
 
 	branches := []string{
 		stackName + "/db-schema",
@@ -132,29 +135,29 @@ func TestE2E_FullStackLifecycle(t *testing.T) {
 		{BranchSuffix: "/frontend", HasPR: true, Status: "open"},
 	})
 
-	// --- Step 5: Verify PRs exist on GitHub with correct bases ---
-	t.Log("Step 5: verify PR bases on GitHub")
+	// Verify PR base chain: db-schema→main, api-endpoints→db-schema, frontend→api-endpoints
+	t.Log("Verifying PR base chain on GitHub")
 
-	// PR 1 (db-schema) should have base=main
+	// db-schema PR should target main
 	pr1 := runGH(t, dir, "pr", "view", branches[0], "--json", "baseRefName")
 	if !strings.Contains(pr1, `"main"`) {
 		t.Errorf("PR for db-schema should have base=main, got: %s", pr1)
 	}
 
-	// PR 2 (api-endpoints) should have base=db-schema branch
+	// api-endpoints PR should target db-schema
 	pr2 := runGH(t, dir, "pr", "view", branches[1], "--json", "baseRefName")
 	if !strings.Contains(pr2, "db-schema") {
 		t.Errorf("PR for api-endpoints should have base containing db-schema, got: %s", pr2)
 	}
 
-	// PR 3 (frontend) should have base=api-endpoints branch
+	// frontend PR should target api-endpoints
 	pr3 := runGH(t, dir, "pr", "view", branches[2], "--json", "baseRefName")
 	if !strings.Contains(pr3, "api-endpoints") {
 		t.Errorf("PR for frontend should have base containing api-endpoints, got: %s", pr3)
 	}
 
-	// --- Step 6: sdf sync (should report in sync) ---
-	t.Log("Step 6: sdf sync (expect in-sync)")
+	// Sync should confirm the stack is already up to date
+	t.Log("Syncing — expecting everything is already up to date")
 	runGit(t, dir, "checkout", branches[2])
 	syncOut := runSDF(t, dir, "sync", "-y")
 	t.Log(syncOut)

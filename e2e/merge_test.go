@@ -15,14 +15,14 @@ import (
 // BEFORE the head PR is merged+deleted, otherwise GitHub auto-closes
 // the downstream PR.
 //
-// Scenario:
+// Scenario: A developer builds an authentication feature in two stacked PRs:
 //
-//	main ← branch-A (PR#1) ← branch-B (PR#2)
+//	main ← add-login-page (PR#1) ← add-session-management (PR#2)
 //
-// After merging PR#1:
-//   - PR#2's base should be retargeted to main (BEFORE merge)
-//   - PR#1 merged and branch-A deleted
-//   - PR#2 should still be OPEN with base=main
+// When the login page PR is merged first:
+//   - The session-management PR's base is retargeted to main (BEFORE merge)
+//   - The login page PR is merged and its branch deleted
+//   - The session-management PR must still be OPEN with base=main
 func TestE2E_MergeRetargetOrdering(t *testing.T) {
 	dir := e2eRepo(t)
 	setupRecording(t)
@@ -40,57 +40,57 @@ func TestE2E_MergeRetargetOrdering(t *testing.T) {
 
 	stackName := prefix
 
-	// --- Setup: Create a 2-branch stack with PRs ---
-	t.Log("Setup: init stack with 2 branches")
-	runSDF(t, dir, "init", "--base", "main", "--branch", "layer-a", stackName)
-	writeCommit(t, dir, prefix+"-a.txt", "layer A content\n", "feat: add layer A")
+	// Build a 2-branch authentication stack
+	t.Log("Initializing auth stack: add-login-page → add-session-management")
+	runSDF(t, dir, "init", "--base", "main", "--branch", "add-login-page", stackName)
+	writeCommit(t, dir, prefix+"-login.html", "<form action=\"/login\"><input name=\"email\"/></form>\n", "feat: add login page with email form")
 
-	runSDF(t, dir, "branch", "layer-b")
-	writeCommit(t, dir, prefix+"-b.txt", "layer B content\n", "feat: add layer B")
+	runSDF(t, dir, "branch", "add-session-management")
+	writeCommit(t, dir, prefix+"-session.go", "package auth\n\nfunc CreateSession(userID string) {}\n", "feat: add session creation after login")
 
-	branchA := stackName + "/layer-a"
-	branchB := stackName + "/layer-b"
+	branchLogin := stackName + "/add-login-page"
+	branchSession := stackName + "/add-session-management"
 
-	// Create PRs
-	runGit(t, dir, "checkout", branchA)
-	prAOut := runSDF(t, dir, "pr", "--json")
-	var prA struct {
+	// Create PRs for both branches
+	runGit(t, dir, "checkout", branchLogin)
+	prLoginOut := runSDF(t, dir, "pr", "--json")
+	var prLogin struct {
 		Number int `json:"number"`
 	}
-	json.Unmarshal([]byte(prAOut), &prA)
-	t.Logf("PR#%d created for %s", prA.Number, branchA)
+	json.Unmarshal([]byte(prLoginOut), &prLogin)
+	t.Logf("PR#%d created for %s", prLogin.Number, branchLogin)
 
-	runGit(t, dir, "checkout", branchB)
-	prBOut := runSDF(t, dir, "pr", "--json")
-	var prB struct {
+	runGit(t, dir, "checkout", branchSession)
+	prSessionOut := runSDF(t, dir, "pr", "--json")
+	var prSession struct {
 		Number int `json:"number"`
 	}
-	json.Unmarshal([]byte(prBOut), &prB)
-	t.Logf("PR#%d created for %s", prB.Number, branchB)
+	json.Unmarshal([]byte(prSessionOut), &prSession)
+	t.Logf("PR#%d created for %s", prSession.Number, branchSession)
 
 	// Verify: 2 nodes with PRs, both open
 	assertStack(t, dir, stackName, "main", []nodeExpectation{
-		{BranchSuffix: "/layer-a", HasPR: true, Status: "open"},
-		{BranchSuffix: "/layer-b", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-login-page", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-session-management", HasPR: true, Status: "open"},
 	})
 
-	// Verify PR#2 base is branch-A
-	pr2Info := runGH(t, dir, "pr", "view", fmt.Sprint(prB.Number), "--json", "baseRefName,state")
-	t.Logf("PR#%d before merge: %s", prB.Number, pr2Info)
-	if !strings.Contains(pr2Info, "layer-a") {
-		t.Fatalf("expected PR#%d base to contain 'layer-a', got: %s", prB.Number, pr2Info)
+	// Confirm session-management PR targets the login-page branch
+	pr2Info := runGH(t, dir, "pr", "view", fmt.Sprint(prSession.Number), "--json", "baseRefName,state")
+	t.Logf("PR#%d before merge: %s", prSession.Number, pr2Info)
+	if !strings.Contains(pr2Info, "add-login-page") {
+		t.Fatalf("expected PR#%d base to contain 'add-login-page', got: %s", prSession.Number, pr2Info)
 	}
 
-	// --- Critical test: sdf merge ---
-	t.Log("Merging head PR via sdf merge")
-	runGit(t, dir, "checkout", branchB) // must be on a stack branch
+	// Merge the login-page PR — the critical ordering test
+	t.Log("Merging add-login-page PR via sdf merge")
+	runGit(t, dir, "checkout", branchSession) // must be on a stack branch
 	mergeOut := runSDF(t, dir, "merge", "-y")
 	t.Log(mergeOut)
 
-	// --- Verify: PR#2 is still OPEN with base=main ---
-	t.Log("Verifying PR#2 state after merge")
-	pr2After := runGH(t, dir, "pr", "view", fmt.Sprint(prB.Number), "--json", "baseRefName,state")
-	t.Logf("PR#%d after merge: %s", prB.Number, pr2After)
+	// THE CRITICAL ASSERTION: session-management PR must still be open
+	t.Log("Verifying add-session-management PR survived the merge")
+	pr2After := runGH(t, dir, "pr", "view", fmt.Sprint(prSession.Number), "--json", "baseRefName,state")
+	t.Logf("PR#%d after merge: %s", prSession.Number, pr2After)
 
 	var pr2State struct {
 		BaseRefName string `json:"baseRefName"`
@@ -100,35 +100,41 @@ func TestE2E_MergeRetargetOrdering(t *testing.T) {
 		t.Fatalf("cannot parse PR state: %v", err)
 	}
 
-	// THE CRITICAL ASSERTION: PR#2 must still be open
 	if pr2State.State != "OPEN" {
 		t.Errorf("PR#%d should be OPEN after merge, got %s — retarget-before-merge ordering may be broken",
-			prB.Number, pr2State.State)
+			prSession.Number, pr2State.State)
 	}
 
-	// PR#2's base should now be main
+	// Session-management PR's base should now be main
 	if pr2State.BaseRefName != "main" {
 		t.Errorf("PR#%d base should be 'main' after merge, got %q",
-			prB.Number, pr2State.BaseRefName)
+			prSession.Number, pr2State.BaseRefName)
 	}
 
-	// Verify PR#1 is merged
-	pr1After := runGH(t, dir, "pr", "view", fmt.Sprint(prA.Number), "--json", "state")
+	// Verify login-page PR is merged
+	pr1After := runGH(t, dir, "pr", "view", fmt.Sprint(prLogin.Number), "--json", "state")
 	if !strings.Contains(pr1After, "MERGED") {
-		t.Errorf("PR#%d should be MERGED, got: %s", prA.Number, pr1After)
+		t.Errorf("PR#%d should be MERGED, got: %s", prLogin.Number, pr1After)
 	}
 
-	// Verify: stack reflects merge — first node merged, second still open
+	// Stack reflects the merge: login merged, session still open
 	assertStack(t, dir, stackName, "main", []nodeExpectation{
-		{BranchSuffix: "/layer-a", HasPR: true, Status: "merged"},
-		{BranchSuffix: "/layer-b", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-login-page", HasPR: true, Status: "merged"},
+		{BranchSuffix: "/add-session-management", HasPR: true, Status: "open"},
 	})
 
-	t.Log("Merge ordering test passed — downstream PR survived the merge")
+	t.Log("Merge ordering verified — session-management PR survived the login-page merge")
 }
 
 // TestE2E_MergeThenSync verifies that after merging the head PR,
 // sdf sync correctly rebases remaining branches onto the new base.
+//
+// Scenario: A developer builds a search feature in three stacked PRs:
+//
+//	main ← add-search-index ← add-search-api ← add-search-ui
+//
+// After the search-index PR is merged, the remaining two PRs should
+// be rebased correctly with search-api now targeting main.
 func TestE2E_MergeThenSync(t *testing.T) {
 	dir := e2eRepo(t)
 	setupRecording(t)
@@ -146,61 +152,62 @@ func TestE2E_MergeThenSync(t *testing.T) {
 
 	stackName := prefix
 
-	// Create a 3-branch stack
-	runSDF(t, dir, "init", "--base", "main", "--branch", "step-1", stackName)
-	writeCommit(t, dir, prefix+"-1.txt", "step 1\n", "feat: step 1")
+	// Build a 3-branch search feature stack
+	t.Log("Building search feature stack: add-search-index → add-search-api → add-search-ui")
 
-	runSDF(t, dir, "branch", "step-2")
-	writeCommit(t, dir, prefix+"-2.txt", "step 2\n", "feat: step 2")
+	runSDF(t, dir, "init", "--base", "main", "--branch", "add-search-index", stackName)
+	writeCommit(t, dir, prefix+"-index.go", "package search\n\ntype Index struct{ docs map[string]string }\n", "feat: add full-text search index")
 
-	runSDF(t, dir, "branch", "step-3")
-	writeCommit(t, dir, prefix+"-3.txt", "step 3\n", "feat: step 3")
+	runSDF(t, dir, "branch", "add-search-api")
+	writeCommit(t, dir, prefix+"-search-api.go", "package api\n\nfunc SearchHandler(w http.ResponseWriter, r *http.Request) {}\n", "feat: add search API endpoint")
 
-	// Create PRs for all 3
-	for _, br := range []string{stackName + "/step-1", stackName + "/step-2", stackName + "/step-3"} {
+	runSDF(t, dir, "branch", "add-search-ui")
+	writeCommit(t, dir, prefix+"-search-ui.tsx", "export const SearchBar = () => <input type=\"search\" placeholder=\"Search...\"/>;\n", "feat: add search bar component")
+
+	// Create PRs for all 3 branches
+	for _, br := range []string{stackName + "/add-search-index", stackName + "/add-search-api", stackName + "/add-search-ui"} {
 		runGit(t, dir, "checkout", br)
 		runSDF(t, dir, "pr", "--json")
 	}
 
 	// Verify: 3 nodes with PRs, all open
 	assertStack(t, dir, stackName, "main", []nodeExpectation{
-		{BranchSuffix: "/step-1", HasPR: true, Status: "open"},
-		{BranchSuffix: "/step-2", HasPR: true, Status: "open"},
-		{BranchSuffix: "/step-3", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-search-index", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-search-api", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-search-ui", HasPR: true, Status: "open"},
 	})
 
-	// Merge head PR
-	t.Log("Merging step-1...")
-	runGit(t, dir, "checkout", stackName+"/step-3")
+	// Merge the search-index PR (head of the stack)
+	t.Log("Merging add-search-index PR...")
+	runGit(t, dir, "checkout", stackName+"/add-search-ui")
 	mergeOut := runSDF(t, dir, "merge", "-y")
 	t.Log(mergeOut)
 
-	// The merge command runs sync automatically. Verify the remaining branches
-	// were rebased correctly by checking that step-2 and step-3 are still valid.
-	t.Log("Verifying remaining PRs are open")
+	// Verify remaining PRs are still open
+	t.Log("Verifying add-search-api and add-search-ui PRs remain open")
 
-	step2 := stackName + "/step-2"
-	step3 := stackName + "/step-3"
+	branchAPI := stackName + "/add-search-api"
+	branchUI := stackName + "/add-search-ui"
 
-	for _, br := range []string{step2, step3} {
+	for _, br := range []string{branchAPI, branchUI} {
 		info := runGH(t, dir, "pr", "view", br, "--json", "state,baseRefName")
 		if !strings.Contains(info, "OPEN") {
 			t.Errorf("PR for %s should be OPEN, got: %s", br, info)
 		}
 	}
 
-	// Step-2 should now have base=main (since step-1 was merged)
-	step2Info := runGH(t, dir, "pr", "view", step2, "--json", "baseRefName")
-	if !strings.Contains(step2Info, "main") {
-		t.Errorf("after merge, step-2 base should be main, got: %s", step2Info)
+	// search-api should now target main (since search-index was merged)
+	apiInfo := runGH(t, dir, "pr", "view", branchAPI, "--json", "baseRefName")
+	if !strings.Contains(apiInfo, "main") {
+		t.Errorf("after merge, add-search-api base should be main, got: %s", apiInfo)
 	}
 
-	// Verify: stack reflects merge — first node merged, others still open
+	// Stack reflects the merge
 	assertStack(t, dir, stackName, "main", []nodeExpectation{
-		{BranchSuffix: "/step-1", HasPR: true, Status: "merged"},
-		{BranchSuffix: "/step-2", HasPR: true, Status: "open"},
-		{BranchSuffix: "/step-3", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-search-index", HasPR: true, Status: "merged"},
+		{BranchSuffix: "/add-search-api", HasPR: true, Status: "open"},
+		{BranchSuffix: "/add-search-ui", HasPR: true, Status: "open"},
 	})
 
-	t.Log("Merge-then-sync test passed")
+	t.Log("Merge-then-sync verified — search-api and search-ui survived the merge")
 }
