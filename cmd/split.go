@@ -39,8 +39,8 @@ func init() {
 	splitCmd.Flags().Bool("dry-run", false, "show the split plan without executing")
 	splitCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
 	splitCmd.Flags().Bool("no-push", false, "create branches locally without pushing or creating PRs")
-	splitCmd.MarkFlagRequired("from")
-	splitCmd.MarkFlagRequired("stack")
+	_ = splitCmd.MarkFlagRequired("from")
+	_ = splitCmd.MarkFlagRequired("stack")
 }
 
 // RunSplit is a compatibility wrapper for tests.
@@ -194,7 +194,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 						fmt.Fprintf(os.Stderr, "\n%s %s\n", ui.SymWarn, reason)
 						fmt.Println("Shared files deduplicated — each kept in its first layer.")
 						plan = splitpkg.DeduplicateSharedFiles(plan)
-						splitpkg.SavePlan(planPath, plan)
+						_ = splitpkg.SavePlan(planPath, plan)
 						displaySplitPlan(plan, stackName, base, fromBranch)
 					}
 
@@ -238,7 +238,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 
 				continue
 			default:
-				// abort or empty (user cancelled)
+				// abort or empty (user canceled)
 				fmt.Println("Aborted.")
 				return nil
 			}
@@ -304,7 +304,7 @@ execute:
 	pushFailed := false
 	for _, b := range branches {
 		if err := gitpkg.PushNew(b); err != nil {
-			fmt.Fprintf(os.Stderr, "  %s could not push %s: %v\n", ui.SymWarn, ui.Branch(b), err)
+			fmt.Fprintf(os.Stderr, "  %s could not push %s: %v\n", ui.SymWarn, ui.Branch(b), err) //nolint:gosec // XSS not applicable in CLI output
 			pushFailed = true
 		} else {
 			fmt.Printf("  %s %s\n", ui.SymOK, ui.Branch(b))
@@ -312,7 +312,8 @@ execute:
 	}
 
 	// --- Create PRs ---
-	if !pushFailed && ghpkg.Available() {
+	switch {
+	case !pushFailed && ghpkg.Available():
 		s, err := stack.LoadStack(root, stackName)
 		if err == nil {
 			cfg, _ := cfgpkg.Load(root)
@@ -322,10 +323,10 @@ execute:
 				fmt.Println("  You can create them manually with: sdf pr (from each branch)")
 			}
 		}
-	} else if pushFailed {
+	case pushFailed:
 		fmt.Println("\nSkipped PR creation (push failed for some branches).")
 		fmt.Println("Push manually, then create PRs with: sdf pr")
-	} else {
+	default:
 		fmt.Println("\nSkipped PR creation (gh CLI not available).")
 		fmt.Println("Install gh from https://cli.github.com, then run: sdf pr")
 	}
@@ -484,4 +485,3 @@ func printStackChain(s *stack.Stack) {
 	}
 	fmt.Printf("\n  %s\n", strings.Join(parts, " ← "))
 }
-
