@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/pavelpascari/sdf/compare/v0.2.5...v0.2.6) (2026-02-26)
+
+
+### Miscellaneous
+
+* correct changelogs for v0.2.1 through v0.2.5 ([#94](https://github.com/pavelpascari/sdf/issues/94)) ([f51c45e](https://github.com/pavelpascari/sdf/commit/f51c45efc80de912b25949bdd5f5b5528e737bb2))
+
 ## [0.2.5](https://github.com/pavelpascari/sdf/compare/v0.2.4...v0.2.5) (2026-02-26)
 
 
