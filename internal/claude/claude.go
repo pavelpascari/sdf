@@ -56,20 +56,22 @@ type PromptOptions struct {
 	AllowedTools []string // Tools Claude may use without prompting (e.g. "Write", "Read")
 }
 
+// StreamResult holds the output of a streaming Claude invocation.
+type StreamResult struct {
+	Result    string // final response text
+	SessionID string // session ID for resumption
+}
+
 // RunPromptStreaming sends a prompt to Claude using stream-json output format
 // with partial messages enabled, displaying text in real-time via display writer
-// while capturing the full response.
-//
-// The stream-json format emits JSON events line-by-line. With --include-partial-messages,
-// "assistant" events arrive incrementally with growing content. We display only the
-// new text since the last event. The "result" event carries the final complete text.
-func RunPromptStreaming(name, prompt string, display io.Writer) (string, error) {
+// while capturing the full response and session ID.
+func RunPromptStreaming(name, prompt string, display io.Writer) (StreamResult, error) {
 	return RunPromptStreamingWithOpts(name, prompt, display, PromptOptions{})
 }
 
 // RunPromptStreamingWithOpts is like RunPromptStreaming but accepts PromptOptions
 // to configure additional CLI flags such as allowed tools.
-func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts PromptOptions) (string, error) {
+func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts PromptOptions) (StreamResult, error) {
 	args := []string{"-p", "--verbose",
 		"--output-format", "stream-json",
 		"--include-partial-messages",
@@ -77,20 +79,37 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 	for _, tool := range opts.AllowedTools {
 		args = append(args, "--allowedTools", tool)
 	}
+	return runStreaming(name, args, prompt, display)
+}
 
+// RunPromptStreamingResume resumes a previous session with a new prompt,
+// streaming output and capturing the response.
+func RunPromptStreamingResume(name, sessionID, prompt string, display io.Writer) (StreamResult, error) {
+	args := []string{"--resume", sessionID,
+		"-p", "--verbose",
+		"--output-format", "stream-json",
+		"--include-partial-messages",
+		prompt}
+	return runStreaming(name, args, "", display)
+}
+
+// runStreaming is the shared implementation for streaming Claude invocations.
+func runStreaming(name string, args []string, stdinContent string, display io.Writer) (StreamResult, error) {
 	cmd := exec.Command(Binary, args...)
-	cmd.Stdin = strings.NewReader(prompt)
+	if stdinContent != "" {
+		cmd.Stdin = strings.NewReader(stdinContent)
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", fmt.Errorf("claude %s: %w", name, err)
+		return StreamResult{}, fmt.Errorf("claude %s: %w", name, err)
 	}
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("claude %s: %w", name, err)
+		return StreamResult{}, fmt.Errorf("claude %s: %w", name, err)
 	}
 
-	var result string
+	var sr StreamResult
 	var displayedLen int
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -102,9 +121,10 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 		}
 
 		var event struct {
-			Type    string `json:"type"`
-			Name    string `json:"name"`
-			Message struct {
+			Type      string `json:"type"`
+			Name      string `json:"name"`
+			SessionID string `json:"session_id"`
+			Message   struct {
 				Content []struct {
 					Text string `json:"text"`
 				} `json:"content"`
@@ -114,6 +134,11 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 
 		if json.Unmarshal(line, &event) != nil {
 			continue
+		}
+
+		// Capture session_id from any event that has it
+		if event.SessionID != "" && sr.SessionID == "" {
+			sr.SessionID = event.SessionID
 		}
 
 		// Display incremental text from partial assistant messages
@@ -132,23 +157,33 @@ func RunPromptStreamingWithOpts(name, prompt string, display io.Writer, opts Pro
 		}
 
 		// Capture the final result text
-		if event.Type == "result" && event.Result != "" {
-			result = event.Result
+		if event.Type == "result" {
+			if event.Result != "" {
+				sr.Result = event.Result
+			}
+			if event.SessionID != "" {
+				sr.SessionID = event.SessionID
+			}
 		}
 	}
 
-	recordArgs := make([]string, len(args)+1)
-	copy(recordArgs, args)
-	recordArgs[len(args)] = prompt
+	recordArgs := args
+	if stdinContent != "" {
+		recordArgs = make([]string, len(args)+1)
+		copy(recordArgs, args)
+		recordArgs[len(args)] = stdinContent
+	}
+
 	exitCode := 0
 	if err := cmd.Wait(); err != nil {
 		exitCode = 1
-		recordRun(recordArgs, result, exitCode)
-		return result, fmt.Errorf("claude %s: failed", name)
+		recordRun(recordArgs, sr.Result, exitCode)
+		return sr, fmt.Errorf("claude %s: failed", name)
 	}
 
-	recordRun(recordArgs, result, exitCode)
-	return strings.TrimSpace(result), nil
+	sr.Result = strings.TrimSpace(sr.Result)
+	recordRun(recordArgs, sr.Result, exitCode)
+	return sr, nil
 }
 
 // SanitizeSessionName produces a safe session name from a branch name.
@@ -157,4 +192,16 @@ func SanitizeSessionName(prefix, branch string) string {
 	name = strings.ReplaceAll(name, "/", "-")
 	name = strings.ReplaceAll(name, " ", "-")
 	return name
+}
+
+// RunInteractiveResume spawns an interactive Claude session that resumes
+// a previous conversation. The initialPrompt is passed as the positional
+// argument so Claude starts with context. Returns nil when the user exits.
+func RunInteractiveResume(sessionID, initialPrompt string) error {
+	args := []string{"--resume", sessionID, initialPrompt}
+	cmd := exec.Command(Binary, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

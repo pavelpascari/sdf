@@ -94,8 +94,8 @@ func TestRunPromptStreaming_ReturnsFakeResponse(t *testing.T) {
 
 	// The stream-json canonical fake sends a result event with this text.
 	want := "Resolved conflict in main.go by keeping both changes."
-	if result != want {
-		t.Errorf("result = %q, want %q", result, want)
+	if result.Result != want {
+		t.Errorf("result = %q, want %q", result.Result, want)
 	}
 
 	log := testutil.ReadLog(t, dir, "claude")

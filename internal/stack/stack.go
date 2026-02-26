@@ -41,7 +41,8 @@ const LocalFile = "local.json"
 // LocalState is the root structure of .sdf/local.json.
 // Each subsystem owns its own field — they don't clobber each other.
 type LocalState struct {
-	SyncProgress *SyncProgress `json:"sync_progress,omitempty"`
+	SyncProgress  *SyncProgress     `json:"sync_progress,omitempty"`
+	SplitSessions map[string]string `json:"split_sessions,omitempty"` // stack_name → session_id
 }
 
 // SyncProgress tracks a paused sync so `sdf sync --continue` can resume.
