@@ -42,6 +42,7 @@ func init() {
 	newCmd.Flags().String("base", "", "base branch (default: auto-detected from origin HEAD)")
 	newCmd.Flags().String("branch", "", "name for the first branch (default: stack name)")
 	newCmd.Flags().Bool("json", false, "output machine-readable JSON")
+	_ = newCmd.RegisterFlagCompletionFunc("base", completeGitBranches)
 }
 
 func runNewCmd(cmd *cobra.Command, args []string) error {

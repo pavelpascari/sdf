@@ -45,6 +45,8 @@ func init() {
 	mergeCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
 	mergeCmd.Flags().String("method", "squash", "merge method: squash, merge, or rebase")
 	mergeCmd.Flags().Bool("json", false, "output result as JSON")
+	_ = mergeCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
+	_ = mergeCmd.RegisterFlagCompletionFunc("method", completeMergeMethods)
 }
 
 func runMergeCmd(cmd *cobra.Command, args []string) error {

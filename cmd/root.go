@@ -17,6 +17,9 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Args:          cobra.ArbitraryArgs,
+	// Suggest stack branch names for `sdf <TAB>` (the switch shorthand).
+	// Cobra also suggests subcommands automatically alongside these.
+	ValidArgsFunction: completeStackBranches,
 	// Handle `sdf <branch>` as shorthand for `sdf switch <branch>`
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {

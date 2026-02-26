@@ -27,8 +27,9 @@ var switchCmd = &cobra.Command{
 With a branch name, checks it out and shows its stack position.`,
 	Example: `  sdf switch db-schema              # switch to a specific branch
   sdf switch                        # list all branches from all stacks`,
-	Annotations: map[string]string{"category": "navigation"},
-	RunE:        runSwitchCmd,
+	Annotations:       map[string]string{"category": "navigation"},
+	ValidArgsFunction: completeStackBranches,
+	RunE:              runSwitchCmd,
 }
 
 func init() {

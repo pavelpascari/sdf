@@ -47,6 +47,8 @@ func init() {
 	fetchCmd.Flags().String("stack", "", "name for the stack (default: auto-generated from branches)")
 	fetchCmd.Flags().String("base", "", "base branch (default: auto-detected)")
 	fetchCmd.Flags().Bool("json", false, "output result as JSON")
+	_ = fetchCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
+	_ = fetchCmd.RegisterFlagCompletionFunc("base", completeGitBranches)
 }
 
 func runFetchCmd(cmd *cobra.Command, args []string) error {
