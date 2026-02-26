@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.5](https://github.com/pavelpascari/sdf/compare/v0.2.4...v0.2.5) (2026-02-26)
+
+
+### CI/CD
+
+* add changelog sections for all conventional commit types ([#90](https://github.com/pavelpascari/sdf/issues/90)) ([8dd36fe](https://github.com/pavelpascari/sdf/commit/8dd36fe326ea373447393faa25739cf5f6870fe0))
+* move golangci-lint from pre-push to pre-commit hook ([#91](https://github.com/pavelpascari/sdf/issues/91)) ([ed53335](https://github.com/pavelpascari/sdf/commit/ed5333512e4182fd01eee3bc2da10eecff6e8497))
+
 ## [0.2.4](https://github.com/pavelpascari/sdf/compare/v0.2.3...v0.2.4) (2026-02-26)
 
 
