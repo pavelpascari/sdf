@@ -164,6 +164,27 @@ const jsonLd = [
         </p>
       </div>
 
+      <!-- Highlighted feature: split -->
+      <div class="mb-8 rounded-2xl border border-brand/30 bg-surface p-6 sm:p-8 flex flex-col sm:flex-row gap-6 items-start">
+        <div class="text-3xl opacity-80 shrink-0">{'\u2702'}</div>
+        <div>
+          <h3
+            class="font-display font-semibold text-lg text-fg mb-2"
+            style="font-family: var(--font-display); font-weight: 600;"
+          >
+            AI branch splitting
+          </h3>
+          <p class="text-fg-muted text-sm leading-relaxed mb-3">
+            <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf split</code> takes a large branch and decomposes it into a stack of focused, reviewable PRs.
+            Claude analyzes your commits, identifies semantic themes, and creates each layer in dependency order &mdash; with hunk-level precision when the same file spans multiple concerns.
+            The original branch is never touched.
+          </p>
+          <a href="/blog/sdf-split-from-branch-to-stack" class="text-sm text-brand hover:text-brand-dim transition-colors">
+            Read the announcement &rarr;
+          </a>
+        </div>
+      </div>
+
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {[
           {
@@ -338,6 +359,62 @@ const jsonLd = [
   <span class="text-success">&#10003;</span> <span class="text-fg-muted">1 PR base(s) updated on GitHub</span>
 
 <span class="text-fg-muted">Sync complete. Stack updated.</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Alternative: Split -->
+        <div class="mt-16 pt-12 border-t border-rim">
+          <div class="text-center mb-8">
+            <p class="text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-3">
+              Already have a big branch?
+            </p>
+            <h3
+              class="font-display text-2xl sm:text-3xl font-bold text-fg tracking-tight mb-3"
+              style="font-family: var(--font-display); font-weight: 700;"
+            >
+              Split it into a stack
+            </h3>
+            <p class="text-fg-muted max-w-xl mx-auto text-sm">
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf split</code> uses Claude
+              to decompose an existing branch into focused, reviewable layers &mdash; without touching the original.
+            </p>
+          </div>
+
+          <div class="grid lg:grid-cols-2 gap-8 items-center">
+            <div>
+              <p class="text-fg-muted leading-relaxed text-sm">
+                Point <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf split</code> at any branch.
+                Claude analyzes commits, identifies semantic themes, and proposes a split plan.
+                Review the plan, refine if needed, then execute &mdash; SDF creates the branches,
+                verifies the split is lossless, pushes, and opens PRs.
+              </p>
+            </div>
+            <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+                <div class="flex gap-1.5">
+                  <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                </div>
+                <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+              </div>
+              <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf split --from feature/big-change --stack my-feature</span>
+<span class="text-fg-muted">Analyzing </span><span class="text-fg font-bold">feature/big-change</span><span class="text-fg-muted">...</span>
+
+<span class="text-fg-muted">Split plan for </span><span class="text-fg font-bold">my-feature</span><span class="text-fg-muted"> (base: main)</span>
+<span class="text-fg-muted">──────────────────────────────────────────</span>
+<span class="text-fg-muted">  Layer 1: </span><span class="text-fg font-bold">schema</span><span class="text-fg-muted"> (6 files, +142 -3)</span>
+<span class="text-fg-muted">  Layer 2: </span><span class="text-fg font-bold">api</span><span class="text-fg-muted"> (8 files, +310 -12)</span>
+<span class="text-fg-muted">  Layer 3: </span><span class="text-fg font-bold">ui</span><span class="text-fg-muted"> (9 files, +395 -28)</span>
+
+<span class="text-fg-muted">Executing split...</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">Layer 1: my-feature/1-schema — 6 files</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">Layer 2: my-feature/2-api — 8 files</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">Layer 3: my-feature/3-ui — 9 files</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">Tree identity verified — split is lossless</span>
+
+<span class="text-fg-muted">Split complete — 3 branches created in stack "my-feature"</span></code></pre>
+            </div>
           </div>
         </div>
 
