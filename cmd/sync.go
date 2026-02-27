@@ -1,10 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -13,6 +13,7 @@ import (
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
@@ -489,7 +490,6 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		descPrompt   string
 		titleSession string
 		descSession  string
-		index        int
 	}
 
 	hasClaude := claudepkg.Available()
@@ -510,7 +510,6 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		j := contentJob{
 			node:       *node,
 			localTitle: localTitle,
-			index:      len(jobs),
 		}
 
 		if hasClaude {
@@ -533,58 +532,64 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		return
 	}
 
-	printer := newOrderedPrinter(len(jobs), "Updating PR content...")
-	var wg sync.WaitGroup
-
+	bus := render.NewBus(os.Stdout, render.Options{Label: "Updating PR content"})
 	for _, j := range jobs {
-		wg.Add(1)
-		go func(j contentJob) {
-			defer wg.Done()
+		bus.AddTask(render.TaskSpec{
+			ID:   fmt.Sprintf("pr-%d", j.node.PR),
+			Name: fmt.Sprintf("PR %s", ui.PR(j.node.PR)),
+			Fn: func(ctx context.Context, r *render.Reporter) error {
+				var parts []string
 
-			var parts []string // tracks what changed: "title", "description"
-
-			// --- Title ---
-			proposedTitle := j.localTitle
-			if hasClaude && j.titlePrompt != "" {
-				aiTitle, err := claudepkg.RunPrompt(j.titleSession, j.titlePrompt)
-				if err == nil {
-					aiTitle = strings.Split(aiTitle, "\n")[0]
-					aiTitle = strings.Trim(aiTitle, "\"' ")
-					proposedTitle = j.prefix + aiTitle
+				// --- Title ---
+				r.Log("updating title...")
+				proposedTitle := j.localTitle
+				if hasClaude && j.titlePrompt != "" {
+					aiTitle, err := claudepkg.RunPrompt(j.titleSession, j.titlePrompt)
+					if err == nil {
+						aiTitle = strings.Split(aiTitle, "\n")[0]
+						aiTitle = strings.Trim(aiTitle, "\"' ")
+						proposedTitle = j.prefix + aiTitle
+					}
 				}
-			}
 
-			currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
-			if !similar(currentTitle, proposedTitle, 0.8) {
-				if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err == nil {
-					parts = append(parts, "title")
+				currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
+				if !similar(currentTitle, proposedTitle, 0.8) {
+					if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err == nil {
+						parts = append(parts, "title")
+					}
 				}
-			}
 
-			// --- Description (Claude only) ---
-			if hasClaude && j.descPrompt != "" {
-				desc, err := claudepkg.RunPrompt(j.descSession, j.descPrompt)
-				if err == nil {
-					currentBody, _ := ghpkg.PRViewBody(j.node.PR)
-					currentDesc := extractDescription(currentBody)
-					if !similar(currentDesc, desc, 0.85) {
-						newBody := replaceDescription(currentBody, desc)
-						if err := ghpkg.PREditBody(j.node.PR, newBody); err == nil {
-							parts = append(parts, "description")
+				// --- Description (Claude only) ---
+				if hasClaude && j.descPrompt != "" {
+					r.Log("generating description...")
+					desc, err := claudepkg.RunPrompt(j.descSession, j.descPrompt)
+					if err == nil {
+						currentBody, _ := ghpkg.PRViewBody(j.node.PR)
+						currentDesc := extractDescription(currentBody)
+						if !similar(currentDesc, desc, 0.85) {
+							newBody := replaceDescription(currentBody, desc)
+							if err := ghpkg.PREditBody(j.node.PR, newBody); err == nil {
+								parts = append(parts, "description")
+							}
 						}
 					}
 				}
-			}
 
-			if len(parts) == 0 {
-				printer.set(j.index, fmt.Sprintf("  %s PR %s unchanged", ui.SymOK, ui.PR(j.node.PR)))
-			} else {
-				printer.set(j.index, fmt.Sprintf("  %s PR %s updated (%s)", ui.SymOK, ui.PR(j.node.PR), strings.Join(parts, " + ")))
-			}
-		}(j)
+				if len(parts) == 0 {
+					r.End("succeeded", fmt.Sprintf("%s PR %s unchanged", ui.SymOK, ui.PR(j.node.PR)))
+				} else {
+					r.End("succeeded", fmt.Sprintf("%s PR %s updated (%s)", ui.SymOK, ui.PR(j.node.PR), strings.Join(parts, " + ")))
+				}
+				return nil
+			},
+		})
 	}
-	wg.Wait()
-	printer.finish()
+	if err := bus.RunBatch(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: some PR updates failed: %v\n", err)
+	}
+	if err := bus.Finish(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
+	}
 }
 
 // titlePrefix returns the conventional commit prefix for a PR title
@@ -732,45 +737,6 @@ func buildDescriptionPrompt(branch string, subjects []string, diff, currentDesc 
 	b.WriteString("\nWrite 2-5 sentences explaining what this change does and why. Focus on user impact and key changes.")
 
 	return b.String()
-}
-
-// orderedPrinter collects results from parallel goroutines and prints them
-// in order after all complete. Shows a single updatable progress counter.
-type orderedPrinter struct {
-	mu        sync.Mutex
-	results   []string
-	completed int
-	total     int
-	label     string
-}
-
-func newOrderedPrinter(count int, label string) *orderedPrinter {
-	p := &orderedPrinter{
-		results: make([]string, count),
-		total:   count,
-		label:   label,
-	}
-	fmt.Printf("\n  %s (0/%d)", label, count)
-	return p
-}
-
-// set stores a result and updates the progress counter.
-func (p *orderedPrinter) set(index int, result string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.results[index] = result
-	p.completed++
-	fmt.Printf("\r\033[K  %s (%d/%d)", p.label, p.completed, p.total)
-}
-
-// finish clears the progress line and prints all results in order.
-func (p *orderedPrinter) finish() {
-	fmt.Print("\r\033[K")
-	for _, r := range p.results {
-		if r != "" {
-			fmt.Println(r)
-		}
-	}
 }
 
 // reconcileSyncPRStates polls GitHub for PR states and applies lightweight
