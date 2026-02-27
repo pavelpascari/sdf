@@ -471,9 +471,8 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
 }
 
 // updatePRContent updates PR titles and descriptions for open PRs in the stack.
-// Each PR is processed in its own goroutine (title then description).
-// A single progress line updates during the parallel work, then results
-// are printed in order.
+// Each title and description is its own parallel task, giving fine-grained
+// progress feedback and maximum concurrency.
 func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	if opts == nil || !opts.withContent {
 		return
@@ -532,18 +531,17 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		return
 	}
 
+	fmt.Println()
 	bus := render.NewBus(os.Stdout, render.Options{Label: "Updating PR content"})
 	for _, j := range jobs {
+		// Title task
 		bus.AddTask(render.TaskSpec{
-			ID:   fmt.Sprintf("pr-%d", j.node.PR),
-			Name: fmt.Sprintf("PR %s", ui.PR(j.node.PR)),
+			ID:   fmt.Sprintf("pr-%d-title", j.node.PR),
+			Name: fmt.Sprintf("PR %s title", ui.PR(j.node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
-				var parts []string
-
-				// --- Title ---
-				r.Log("updating title...")
 				proposedTitle := j.localTitle
 				if hasClaude && j.titlePrompt != "" {
+					r.Log("generating with Claude...")
 					aiTitle, err := claudepkg.RunPrompt(j.titleSession, j.titlePrompt)
 					if err == nil {
 						aiTitle = strings.Split(aiTitle, "\n")[0]
@@ -555,34 +553,44 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 				currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
 				if !similar(currentTitle, proposedTitle, 0.8) {
 					if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err == nil {
-						parts = append(parts, "title")
+						r.End("succeeded", fmt.Sprintf("%s PR %s title updated", ui.SymOK, ui.PR(j.node.PR)))
+						return nil
 					}
 				}
 
-				// --- Description (Claude only) ---
-				if hasClaude && j.descPrompt != "" {
-					r.Log("generating description...")
-					desc, err := claudepkg.RunPrompt(j.descSession, j.descPrompt)
-					if err == nil {
-						currentBody, _ := ghpkg.PRViewBody(j.node.PR)
-						currentDesc := extractDescription(currentBody)
-						if !similar(currentDesc, desc, 0.85) {
-							newBody := replaceDescription(currentBody, desc)
-							if err := ghpkg.PREditBody(j.node.PR, newBody); err == nil {
-								parts = append(parts, "description")
-							}
-						}
-					}
-				}
-
-				if len(parts) == 0 {
-					r.End("succeeded", fmt.Sprintf("%s PR %s unchanged", ui.SymOK, ui.PR(j.node.PR)))
-				} else {
-					r.End("succeeded", fmt.Sprintf("%s PR %s updated (%s)", ui.SymOK, ui.PR(j.node.PR), strings.Join(parts, " + ")))
-				}
+				r.End("succeeded", fmt.Sprintf("%s PR %s title unchanged", ui.SymOK, ui.PR(j.node.PR)))
 				return nil
 			},
 		})
+
+		// Description task (Claude only)
+		if hasClaude && j.descPrompt != "" {
+			bus.AddTask(render.TaskSpec{
+				ID:   fmt.Sprintf("pr-%d-desc", j.node.PR),
+				Name: fmt.Sprintf("PR %s description", ui.PR(j.node.PR)),
+				Fn: func(ctx context.Context, r *render.Reporter) error {
+					r.Log("generating with Claude...")
+					desc, err := claudepkg.RunPrompt(j.descSession, j.descPrompt)
+					if err != nil {
+						r.End("failed", fmt.Sprintf("%s PR %s description failed", ui.SymFail, ui.PR(j.node.PR)))
+						return nil
+					}
+
+					currentBody, _ := ghpkg.PRViewBody(j.node.PR)
+					currentDesc := extractDescription(currentBody)
+					if !similar(currentDesc, desc, 0.85) {
+						newBody := replaceDescription(currentBody, desc)
+						if err := ghpkg.PREditBody(j.node.PR, newBody); err == nil {
+							r.End("succeeded", fmt.Sprintf("%s PR %s description updated", ui.SymOK, ui.PR(j.node.PR)))
+							return nil
+						}
+					}
+
+					r.End("succeeded", fmt.Sprintf("%s PR %s description unchanged", ui.SymOK, ui.PR(j.node.PR)))
+					return nil
+				},
+			})
+		}
 	}
 	if err := bus.RunBatch(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: some PR updates failed: %v\n", err)
@@ -590,7 +598,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	if err := bus.Finish(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
 	}
-	fmt.Printf("Updated %d PR(s).\n", len(jobs))
+	fmt.Printf("\nUpdated %d PR(s).\n", len(jobs))
 }
 
 // titlePrefix returns the conventional commit prefix for a PR title
