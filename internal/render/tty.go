@@ -21,6 +21,7 @@ type slot struct {
 type TTYRenderer struct {
 	mu           sync.Mutex
 	w            io.Writer
+	errw         io.Writer
 	slots        []slot
 	taskIndex    map[string]int // taskID → slot index
 	completed    int
@@ -30,37 +31,14 @@ type TTYRenderer struct {
 	label        string // spinner label, default "Running tasks"
 }
 
-// NewTTYRenderer creates a TTYRenderer that writes to w.
-func NewTTYRenderer(w io.Writer) *TTYRenderer {
+// NewTTYRenderer creates a TTYRenderer that writes normal output to w and
+// warnings/errors to errw.
+func NewTTYRenderer(w, errw io.Writer) *TTYRenderer {
 	return &TTYRenderer{
 		w:         w,
+		errw:      errw,
 		taskIndex: make(map[string]int),
 		label:     "Running tasks",
-	}
-}
-
-// SetLabel overrides the default spinner label ("Running tasks").
-func (r *TTYRenderer) SetLabel(label string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.label = label
-}
-
-// Init sets up the renderer. If taskCount > 0, batch mode is activated:
-// n slots are allocated and n+2 blank lines are printed to reserve screen space.
-// If taskCount is 0, sequential mode is used (append-only, no cursor movement).
-func (r *TTYRenderer) Init(taskCount int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if taskCount > 0 {
-		r.batchMode = true
-		r.slots = make([]slot, 0, taskCount)
-		// Reserve n+2 lines (n slots + blank line + spinner line).
-		for i := 0; i < taskCount+2; i++ {
-			fmt.Fprintln(r.w)
-		}
-		fmt.Fprintf(r.w, "%s", HideCursor())
 	}
 }
 
@@ -78,11 +56,102 @@ func (r *TTYRenderer) HandleEvent(e Event) {
 		r.handleTaskLog(e)
 	case EventTaskEnd:
 		r.handleTaskEnd(e)
+	case EventPrint:
+		r.handlePrint(e)
+	case EventWarn:
+		r.handleWarn(e)
+	case EventErr:
+		r.handleErr(e)
+	case EventBatchStart:
+		r.handleBatchStart(e)
+	case EventBatchEnd:
+		r.handleBatchEnd()
 	case EventPause:
 		r.paused = true
+		if r.batchMode {
+			fmt.Fprintf(r.w, "%s", ShowCursor())
+		}
 	case EventResume:
 		r.paused = false
+		if r.batchMode {
+			fmt.Fprintf(r.w, "%s", HideCursor())
+		}
 	}
+}
+
+func (r *TTYRenderer) handlePrint(e Event) {
+	data, ok := e.Data.(map[string]any)
+	if !ok {
+		return
+	}
+	text, _ := data["text"].(string)
+	fmt.Fprintf(r.w, "%s\n", text)
+}
+
+func (r *TTYRenderer) handleWarn(e Event) {
+	data, ok := e.Data.(map[string]any)
+	if !ok {
+		return
+	}
+	text, _ := data["text"].(string)
+	fmt.Fprintf(r.errw, "%s\n", text)
+}
+
+func (r *TTYRenderer) handleErr(e Event) {
+	data, ok := e.Data.(map[string]any)
+	if !ok {
+		return
+	}
+	text, _ := data["text"].(string)
+	fmt.Fprintf(r.errw, "%s\n", text)
+}
+
+func (r *TTYRenderer) handleBatchStart(e Event) {
+	data, ok := e.Data.(map[string]any)
+	if !ok {
+		return
+	}
+
+	// Read count — handle both int and float64 (JSON unmarshalled).
+	var count int
+	switch v := data["count"].(type) {
+	case int:
+		count = v
+	case float64:
+		count = int(v)
+	}
+
+	if label, ok := data["label"].(string); ok && label != "" {
+		r.label = label
+	}
+
+	if count > 0 {
+		r.batchMode = true
+		r.slots = make([]slot, 0, count)
+		// Reserve n+2 lines (n slots + blank line + spinner line).
+		for i := 0; i < count+2; i++ {
+			fmt.Fprintln(r.w)
+		}
+		fmt.Fprintf(r.w, "%s", HideCursor())
+	}
+}
+
+func (r *TTYRenderer) handleBatchEnd() {
+	if !r.batchMode {
+		return
+	}
+
+	// Final flush to render the last state.
+	r.paused = false
+	r.flushLocked()
+	fmt.Fprintf(r.w, "%s", ShowCursor())
+
+	// Reset batch state.
+	r.batchMode = false
+	r.slots = nil
+	r.taskIndex = make(map[string]int)
+	r.completed = 0
+	r.spinnerFrame = 0
 }
 
 func (r *TTYRenderer) handleTaskStart(e Event) {
@@ -175,30 +244,8 @@ func (r *TTYRenderer) flushLocked() {
 	r.spinnerFrame++
 }
 
-// Pause sets the renderer to paused state and shows the cursor so interactive
-// prompts can work correctly.
-func (r *TTYRenderer) Pause() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.paused = true
-	if r.batchMode {
-		fmt.Fprintf(r.w, "%s", ShowCursor())
-	}
-}
-
-// Resume clears the paused state and hides the cursor for batch mode rendering.
-func (r *TTYRenderer) Resume() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.paused = false
-	if r.batchMode {
-		fmt.Fprintf(r.w, "%s", HideCursor())
-	}
-}
-
-// Finish performs a final Flush and restores the cursor.
+// Finish ensures the cursor is shown. Batch cleanup is handled by
+// EventBatchEnd, so this is a safety net.
 func (r *TTYRenderer) Finish() {
 	r.mu.Lock()
 	defer r.mu.Unlock()

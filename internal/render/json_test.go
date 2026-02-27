@@ -7,7 +7,6 @@ import (
 
 func TestJSONRendererCollectsEndEvents(t *testing.T) {
 	r := &JSONRenderer{}
-	r.Init(3)
 
 	r.HandleEvent(Event{
 		Type:   EventTaskEnd,
@@ -50,7 +49,6 @@ func TestJSONRendererCollectsEndEvents(t *testing.T) {
 
 func TestJSONRendererIgnoresNonEndEvents(t *testing.T) {
 	r := &JSONRenderer{}
-	r.Init(5)
 
 	r.HandleEvent(Event{
 		Type:   EventTaskStart,
@@ -83,12 +81,9 @@ func TestJSONRendererIgnoresNonEndEvents(t *testing.T) {
 
 func TestJSONRendererNoOpsDoNotPanic(t *testing.T) {
 	r := &JSONRenderer{}
-	r.Init(0)
 
 	// These should all be safe no-ops.
 	r.Flush()
-	r.Pause()
-	r.Resume()
 	r.Finish()
 }
 
@@ -99,7 +94,6 @@ func TestJSONRendererImplementsRenderer(t *testing.T) {
 
 func TestJSONRendererHandlesInvalidData(t *testing.T) {
 	r := &JSONRenderer{}
-	r.Init(1)
 
 	// Data is not a map[string]any — should be silently ignored.
 	r.HandleEvent(Event{

@@ -12,11 +12,6 @@ type JSONRenderer struct {
 	results []TaskResult
 }
 
-// Init pre-allocates the results slice.
-func (r *JSONRenderer) Init(taskCount int) {
-	r.results = make([]TaskResult, 0, taskCount)
-}
-
 // HandleEvent processes an event. Only EventTaskEnd events are collected;
 // all other event types are ignored.
 func (r *JSONRenderer) HandleEvent(e Event) {
@@ -41,12 +36,6 @@ func (r *JSONRenderer) HandleEvent(e Event) {
 
 // Flush is a no-op for JSONRenderer.
 func (r *JSONRenderer) Flush() {}
-
-// Pause is a no-op for JSONRenderer.
-func (r *JSONRenderer) Pause() {}
-
-// Resume is a no-op for JSONRenderer.
-func (r *JSONRenderer) Resume() {}
 
 // Finish is a no-op for JSONRenderer.
 func (r *JSONRenderer) Finish() {}

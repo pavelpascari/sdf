@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -9,9 +10,14 @@ import (
 
 func TestTTYRenderer_BatchMode_ShowsSlots(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewTTYRenderer(&buf)
-	r.Init(2)
-	buf.Reset() // clear the Init output so we only inspect Flush output
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": 2, "label": "Running tasks"},
+	})
+	buf.Reset() // clear the batch start output so we only inspect Flush output
 
 	r.HandleEvent(Event{
 		Type:   EventTaskStart,
@@ -48,8 +54,13 @@ func TestTTYRenderer_BatchMode_ShowsSlots(t *testing.T) {
 
 func TestTTYRenderer_BatchMode_EndFinalizes(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewTTYRenderer(&buf)
-	r.Init(2)
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": 2, "label": "Running tasks"},
+	})
 
 	r.HandleEvent(Event{
 		Type:   EventTaskStart,
@@ -81,8 +92,13 @@ func TestTTYRenderer_BatchMode_EndFinalizes(t *testing.T) {
 
 func TestTTYRenderer_BatchMode_SpinnerCounter(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewTTYRenderer(&buf)
-	r.Init(2)
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": 2, "label": "Running tasks"},
+	})
 
 	r.HandleEvent(Event{
 		Type:   EventTaskStart,
@@ -114,8 +130,9 @@ func TestTTYRenderer_BatchMode_SpinnerCounter(t *testing.T) {
 
 func TestTTYRenderer_SequentialMode_AppendsLines(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewTTYRenderer(&buf)
-	r.Init(0)
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	// No batch.start event — sequential mode by default.
 
 	r.HandleEvent(Event{
 		Type:   EventTaskLog,
@@ -146,8 +163,13 @@ func TestTTYRenderer_SequentialMode_AppendsLines(t *testing.T) {
 
 func TestTTYRenderer_PauseShowsCursor(t *testing.T) {
 	var buf bytes.Buffer
-	r := NewTTYRenderer(&buf)
-	r.Init(2)
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": 2, "label": "Running tasks"},
+	})
 
 	r.HandleEvent(Event{
 		Type:   EventTaskStart,
@@ -159,11 +181,138 @@ func TestTTYRenderer_PauseShowsCursor(t *testing.T) {
 	r.Flush()
 	buf.Reset()
 
-	r.Pause()
+	r.HandleEvent(Event{Type: EventPause, TS: time.Now()})
 
 	out := buf.String()
 	if !strings.Contains(out, ShowCursor()) {
 		t.Errorf("Pause should emit ShowCursor, got:\n%q", out)
+	}
+}
+
+func TestTTYRenderer_PrintWritesToStdout(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	r.HandleEvent(Event{
+		Type: EventPrint,
+		TS:   time.Now(),
+		Data: map[string]any{"text": "hello world"},
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "hello world") {
+		t.Errorf("expected stdout to contain %q, got:\n%s", "hello world", out)
+	}
+}
+
+func TestTTYRenderer_WarnWritesToStderr(t *testing.T) {
+	var stdoutBuf, stderrBuf bytes.Buffer
+	r := NewTTYRenderer(&stdoutBuf, &stderrBuf)
+
+	r.HandleEvent(Event{
+		Type: EventWarn,
+		TS:   time.Now(),
+		Data: map[string]any{"text": "be careful"},
+	})
+
+	if strings.Contains(stdoutBuf.String(), "be careful") {
+		t.Error("warn should not write to stdout")
+	}
+	if !strings.Contains(stderrBuf.String(), "be careful") {
+		t.Errorf("expected stderr to contain %q, got:\n%s", "be careful", stderrBuf.String())
+	}
+}
+
+func TestTTYRenderer_ErrWritesToStderr(t *testing.T) {
+	var stdoutBuf, stderrBuf bytes.Buffer
+	r := NewTTYRenderer(&stdoutBuf, &stderrBuf)
+
+	r.HandleEvent(Event{
+		Type: EventErr,
+		TS:   time.Now(),
+		Data: map[string]any{"text": "something failed"},
+	})
+
+	if strings.Contains(stdoutBuf.String(), "something failed") {
+		t.Error("err should not write to stdout")
+	}
+	if !strings.Contains(stderrBuf.String(), "something failed") {
+		t.Errorf("expected stderr to contain %q, got:\n%s", "something failed", stderrBuf.String())
+	}
+}
+
+func TestTTYRenderer_BatchStartEnd_Lifecycle(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	// Start batch mode.
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": 1, "label": "Testing"},
+	})
+
+	if !strings.Contains(buf.String(), HideCursor()) {
+		t.Error("batch.start should hide cursor")
+	}
+
+	r.HandleEvent(Event{
+		Type:   EventTaskStart,
+		TS:     time.Now(),
+		TaskID: "t1",
+		Data:   map[string]any{"name": "task one"},
+	})
+	r.HandleEvent(Event{
+		Type:   EventTaskEnd,
+		TS:     time.Now(),
+		TaskID: "t1",
+		Data:   map[string]any{"status": "ok", "message": "done"},
+	})
+
+	buf.Reset()
+
+	// End batch mode.
+	r.HandleEvent(Event{Type: EventBatchEnd, TS: time.Now()})
+
+	out := buf.String()
+	if !strings.Contains(out, ShowCursor()) {
+		t.Error("batch.end should show cursor")
+	}
+	if !strings.Contains(out, "done") {
+		t.Error("batch.end should flush final state")
+	}
+}
+
+func TestTTYRenderer_BatchStartFloat64Count(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	// Simulate JSON-unmarshalled count (float64 instead of int).
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": float64(2), "label": "Tasks"},
+	})
+
+	r.HandleEvent(Event{
+		Type:   EventTaskStart,
+		TS:     time.Now(),
+		TaskID: "t1",
+		Data:   map[string]any{"name": "task one"},
+	})
+	r.HandleEvent(Event{
+		Type:   EventTaskStart,
+		TS:     time.Now(),
+		TaskID: "t2",
+		Data:   map[string]any{"name": "task two"},
+	})
+
+	buf.Reset()
+	r.Flush()
+
+	out := buf.String()
+	if !strings.Contains(out, "0/2") {
+		t.Errorf("expected spinner counter to show 0/2, got:\n%s", out)
 	}
 }
 

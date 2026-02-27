@@ -2,6 +2,7 @@ package render
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
@@ -33,18 +34,21 @@ type Bus struct {
 	tasks    []TaskSpec
 	seq      atomic.Uint64
 	done     chan struct{} // signals router goroutine stopped
+	label    string
 }
 
-// NewBus creates a Bus that writes output to w. If opts.Renderer is nil, a
-// TTYRenderer is created. The router goroutine is started immediately.
-func NewBus(w io.Writer, opts Options) *Bus {
+// NewBus creates a Bus that writes output to w (stdout) and errw (stderr).
+// If opts.Renderer is nil, a TTYRenderer is created with both writers.
+// The router goroutine is started immediately.
+func NewBus(w, errw io.Writer, opts Options) *Bus {
 	r := opts.Renderer
 	if r == nil {
-		tty := NewTTYRenderer(w)
-		if opts.Label != "" {
-			tty.SetLabel(opts.Label)
-		}
-		r = tty
+		r = NewTTYRenderer(w, errw)
+	}
+
+	label := opts.Label
+	if label == "" {
+		label = "Running tasks"
 	}
 
 	b := &Bus{
@@ -52,6 +56,7 @@ func NewBus(w io.Writer, opts Options) *Bus {
 		log:      opts.LogWriter,
 		events:   make(chan Event, 256),
 		done:     make(chan struct{}),
+		label:    label,
 	}
 
 	go b.router()
@@ -63,10 +68,61 @@ func (b *Bus) AddTask(task TaskSpec) {
 	b.tasks = append(b.tasks, task)
 }
 
+// Print sends an EventPrint event through the bus.
+func (b *Bus) Print(text string) {
+	b.events <- Event{
+		Type: EventPrint,
+		TS:   time.Now(),
+		Data: map[string]any{"text": text},
+	}
+}
+
+// Printf is a convenience wrapper around Print with fmt.Sprintf formatting.
+func (b *Bus) Printf(format string, args ...any) {
+	b.Print(fmt.Sprintf(format, args...))
+}
+
+// Warn sends an EventWarn event through the bus.
+func (b *Bus) Warn(text string) {
+	b.events <- Event{
+		Type: EventWarn,
+		TS:   time.Now(),
+		Data: map[string]any{"text": text},
+	}
+}
+
+// Warnf is a convenience wrapper around Warn with fmt.Sprintf formatting.
+func (b *Bus) Warnf(format string, args ...any) {
+	b.Warn(fmt.Sprintf(format, args...))
+}
+
+// Err sends an EventErr event through the bus.
+func (b *Bus) Err(err error) {
+	b.events <- Event{
+		Type: EventErr,
+		TS:   time.Now(),
+		Data: map[string]any{"text": err.Error()},
+	}
+}
+
+// Pause sends an EventPause event through the bus.
+func (b *Bus) Pause() {
+	b.events <- Event{
+		Type: EventPause,
+		TS:   time.Now(),
+	}
+}
+
+// Resume sends an EventResume event through the bus.
+func (b *Bus) Resume() {
+	b.events <- Event{
+		Type: EventResume,
+		TS:   time.Now(),
+	}
+}
+
 // Run executes a single task sequentially (no parallel spinner).
 func (b *Bus) Run(ctx context.Context, task TaskSpec) error {
-	b.renderer.Init(0) // sequential mode
-
 	reporter := NewReporter(task.ID, b.events)
 	reporter.Start(task.Name)
 
@@ -94,7 +150,12 @@ func (b *Bus) RunBatch(ctx context.Context) error {
 	tasks := b.tasks
 	b.tasks = nil
 
-	b.renderer.Init(len(tasks))
+	// Signal batch start to the renderer.
+	b.events <- Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": len(tasks), "label": b.label},
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -130,8 +191,14 @@ func (b *Bus) RunBatch(ctx context.Context) error {
 
 	close(tickDone)
 
-	// Final flush to render the last state.
-	b.renderer.Flush()
+	// Signal batch end to the renderer.
+	b.events <- Event{
+		Type: EventBatchEnd,
+		TS:   time.Now(),
+	}
+
+	// Let the router drain the batch.end event before returning.
+	time.Sleep(10 * time.Millisecond)
 
 	return err
 }
