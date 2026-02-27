@@ -92,6 +92,48 @@ func TestJSONRendererImplementsRenderer(t *testing.T) {
 	var _ Renderer = (*JSONRenderer)(nil)
 }
 
+func TestJSONRendererCollectsWarnings(t *testing.T) {
+	r := &JSONRenderer{}
+	r.HandleEvent(Event{Type: EventWarn, Data: map[string]any{"text": "something is off"}})
+	r.HandleEvent(Event{Type: EventWarn, Data: map[string]any{"text": "another warning"}})
+	warnings := r.Warnings()
+	if len(warnings) != 2 {
+		t.Fatalf("expected 2 warnings, got %d", len(warnings))
+	}
+	if warnings[0] != "something is off" {
+		t.Errorf("warnings[0]: got %q, want %q", warnings[0], "something is off")
+	}
+	if warnings[1] != "another warning" {
+		t.Errorf("warnings[1]: got %q, want %q", warnings[1], "another warning")
+	}
+}
+
+func TestJSONRendererCollectsErrors(t *testing.T) {
+	r := &JSONRenderer{}
+	r.HandleEvent(Event{Type: EventErr, Data: map[string]any{"text": "something broke"}})
+	errs := r.Errors()
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(errs))
+	}
+	if errs[0] != "something broke" {
+		t.Errorf("errors[0]: got %q, want %q", errs[0], "something broke")
+	}
+}
+
+func TestJSONRendererIgnoresPrintEvents(t *testing.T) {
+	r := &JSONRenderer{}
+	r.HandleEvent(Event{Type: EventPrint, Data: map[string]any{"text": "hello"}})
+	if len(r.Results()) != 0 {
+		t.Error("expected no results from print event")
+	}
+	if len(r.Warnings()) != 0 {
+		t.Error("expected no warnings from print event")
+	}
+	if len(r.Errors()) != 0 {
+		t.Error("expected no errors from print event")
+	}
+}
+
 func TestJSONRendererHandlesInvalidData(t *testing.T) {
 	r := &JSONRenderer{}
 
