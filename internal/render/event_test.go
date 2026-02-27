@@ -16,6 +16,11 @@ func TestEventConstants(t *testing.T) {
 		{"EventTaskEnd", EventTaskEnd, "task.end"},
 		{"EventPause", EventPause, "renderer.pause"},
 		{"EventResume", EventResume, "renderer.resume"},
+		{"EventPrint", EventPrint, "bus.print"},
+		{"EventWarn", EventWarn, "bus.warn"},
+		{"EventErr", EventErr, "bus.err"},
+		{"EventBatchStart", EventBatchStart, "batch.start"},
+		{"EventBatchEnd", EventBatchEnd, "batch.end"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
