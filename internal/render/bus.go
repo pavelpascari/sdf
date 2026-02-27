@@ -34,6 +34,7 @@ type Bus struct {
 	tasks    []TaskSpec
 	seq      atomic.Uint64
 	done     chan struct{} // signals router goroutine stopped
+	closed   atomic.Bool   // set by Finish to prevent send-on-closed-channel
 	label    string
 }
 
@@ -68,13 +69,22 @@ func (b *Bus) AddTask(task TaskSpec) {
 	b.tasks = append(b.tasks, task)
 }
 
+// send emits an event, returning false if the bus is already closed.
+func (b *Bus) send(e Event) bool {
+	if b.closed.Load() {
+		return false
+	}
+	b.events <- e
+	return true
+}
+
 // Print sends an EventPrint event through the bus.
 func (b *Bus) Print(text string) {
-	b.events <- Event{
+	b.send(Event{
 		Type: EventPrint,
 		TS:   time.Now(),
 		Data: map[string]any{"text": text},
-	}
+	})
 }
 
 // Printf is a convenience wrapper around Print with fmt.Sprintf formatting.
@@ -84,11 +94,11 @@ func (b *Bus) Printf(format string, args ...any) {
 
 // Warn sends an EventWarn event through the bus.
 func (b *Bus) Warn(text string) {
-	b.events <- Event{
+	b.send(Event{
 		Type: EventWarn,
 		TS:   time.Now(),
 		Data: map[string]any{"text": text},
-	}
+	})
 }
 
 // Warnf is a convenience wrapper around Warn with fmt.Sprintf formatting.
@@ -98,27 +108,27 @@ func (b *Bus) Warnf(format string, args ...any) {
 
 // Err sends an EventErr event through the bus.
 func (b *Bus) Err(err error) {
-	b.events <- Event{
+	b.send(Event{
 		Type: EventErr,
 		TS:   time.Now(),
 		Data: map[string]any{"text": err.Error()},
-	}
+	})
 }
 
 // Pause sends an EventPause event through the bus.
 func (b *Bus) Pause() {
-	b.events <- Event{
+	b.send(Event{
 		Type: EventPause,
 		TS:   time.Now(),
-	}
+	})
 }
 
 // Resume sends an EventResume event through the bus.
 func (b *Bus) Resume() {
-	b.events <- Event{
+	b.send(Event{
 		Type: EventResume,
 		TS:   time.Now(),
-	}
+	})
 }
 
 // Run executes a single task sequentially (no parallel spinner).
@@ -135,8 +145,8 @@ func (b *Bus) Run(ctx context.Context, task TaskSpec) error {
 		reporter.End("failed", err.Error())
 	}
 
-	// Give the router a moment to drain the events from this task.
-	time.Sleep(10 * time.Millisecond)
+	// Wait for the router to process all events from this task.
+	b.drain()
 
 	return err
 }
@@ -197,8 +207,8 @@ func (b *Bus) RunBatch(ctx context.Context) error {
 		TS:   time.Now(),
 	}
 
-	// Let the router drain the batch.end event before returning.
-	time.Sleep(10 * time.Millisecond)
+	// Wait for the router to process the batch.end event before returning.
+	b.drain()
 
 	return err
 }
@@ -206,6 +216,7 @@ func (b *Bus) RunBatch(ctx context.Context) error {
 // Finish closes the event channel, waits for the router to drain, calls
 // renderer.Finish, and flushes the LogWriter if present.
 func (b *Bus) Finish() error {
+	b.closed.Store(true)
 	close(b.events)
 	<-b.done // wait for router to finish draining
 
@@ -217,12 +228,28 @@ func (b *Bus) Finish() error {
 	return nil
 }
 
+// drain sends a barrier event through the channel and blocks until the
+// router has processed it. This replaces time.Sleep for synchronization.
+func (b *Bus) drain() {
+	ack := make(chan struct{})
+	b.events <- Event{Type: eventDrain, Data: ack}
+	<-ack
+}
+
+const eventDrain = "bus.drain"
+
 // router reads events from the channel, assigns sequence numbers, and
 // dispatches to the LogWriter and Renderer. It runs until the events
 // channel is closed.
 func (b *Bus) router() {
 	defer close(b.done)
 	for ev := range b.events {
+		if ev.Type == eventDrain {
+			if ch, ok := ev.Data.(chan struct{}); ok {
+				close(ch)
+			}
+			continue
+		}
 		ev.Seq = b.seq.Add(1)
 		if b.log != nil {
 			_ = b.log.Write(ev)
