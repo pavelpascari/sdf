@@ -531,8 +531,8 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		return
 	}
 
-	fmt.Println()
-	bus := render.NewBus(os.Stdout, render.Options{Label: "Updating PR content"})
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR content"})
+	bus.Print("")
 	for _, j := range jobs {
 		// Title task
 		bus.AddTask(render.TaskSpec{
@@ -593,12 +593,12 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		}
 	}
 	if err := bus.RunBatch(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: some PR updates failed: %v\n", err)
+		bus.Warnf("some PR updates failed: %v", err)
 	}
+	bus.Printf("\nUpdated %d PR(s).", len(jobs))
 	if err := bus.Finish(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
 	}
-	fmt.Printf("\nUpdated %d PR(s).\n", len(jobs))
 }
 
 // titlePrefix returns the conventional commit prefix for a PR title
