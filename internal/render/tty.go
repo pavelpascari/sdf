@@ -39,6 +39,13 @@ func NewTTYRenderer(w io.Writer) *TTYRenderer {
 	}
 }
 
+// SetLabel overrides the default spinner label ("Running tasks").
+func (r *TTYRenderer) SetLabel(label string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.label = label
+}
+
 // Init sets up the renderer. If taskCount > 0, batch mode is activated:
 // n slots are allocated and n+2 blank lines are printed to reserve screen space.
 // If taskCount is 0, sequential mode is used (append-only, no cursor movement).
