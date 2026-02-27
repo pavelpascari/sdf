@@ -200,6 +200,7 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 		if err := stack.Save(root, s); err != nil {
 			return fmt.Errorf("cannot save stack after nav update: %w", err)
 		}
+		fmt.Printf("Updated %d PR description(s).\n", len(hashUpdates))
 	}
 
 	return nil

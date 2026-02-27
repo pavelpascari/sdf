@@ -590,6 +590,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	if err := bus.Finish(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
 	}
+	fmt.Printf("Updated %d PR(s).\n", len(jobs))
 }
 
 // titlePrefix returns the conventional commit prefix for a PR title
