@@ -1,13 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/pavelpascari/sdf/internal/ui"
 )
 
 const (
@@ -106,10 +110,8 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 	}
 
 	if len(branches) == 0 {
-		fmt.Println("  No branches with PRs found.")
 		return nil
 	}
-	fmt.Printf("  Checking nav for %d PR(s)...\n", len(branches))
 
 	// Fetch PR info for all branches
 	prList, err := ghpkg.PRList(branches)
@@ -122,41 +124,79 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 		prMap[pr.Number] = pr
 	}
 
-	// Update each PR's description, skipping when nav hasn't changed
-	updated := 0
+	// Pre-compute hashes and filter to only PRs that need updating.
+	type navJob struct {
+		nodeIndex int
+		hash      string
+		nav       string
+	}
+	var jobs []navJob
 	for i := range s.Nodes {
 		node := &s.Nodes[i]
 		if node.PR == 0 {
 			continue
 		}
-
 		hash := navHash(s, prMap, node.Branch)
 		if node.NavHash == hash {
 			continue
 		}
-
-		nav := buildStackNav(s, prMap, node.Branch)
-
-		// Fetch current body
-		currentBody, err := ghpkg.PRViewBody(node.PR)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not read PR #%d body: %v\n", node.PR, err)
-			continue
-		}
-
-		newBody := replaceStackNav(currentBody, nav)
-
-		if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update PR #%d: %v\n", node.PR, err)
-			continue
-		}
-
-		node.NavHash = hash
-		updated++
+		jobs = append(jobs, navJob{
+			nodeIndex: i,
+			hash:      hash,
+			nav:       buildStackNav(s, prMap, node.Branch),
+		})
 	}
 
-	if updated > 0 {
-		fmt.Printf("Updated %d PR description(s).\n", updated)
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	// Track successful hash updates to apply after all tasks complete.
+	var mu sync.Mutex
+	hashUpdates := make(map[int]string) // nodeIndex → hash
+
+	bus := render.NewBus(os.Stdout, render.Options{Label: "Updating PR navigation"})
+	for _, j := range jobs {
+		node := s.Nodes[j.nodeIndex]
+		bus.AddTask(render.TaskSpec{
+			ID:   fmt.Sprintf("nav-%d", node.PR),
+			Name: fmt.Sprintf("PR %s nav", ui.PR(node.PR)),
+			Fn: func(ctx context.Context, r *render.Reporter) error {
+				currentBody, err := ghpkg.PRViewBody(node.PR)
+				if err != nil {
+					r.End("failed", fmt.Sprintf("could not read PR #%d body: %v", node.PR, err))
+					return nil // non-fatal
+				}
+
+				newBody := replaceStackNav(currentBody, j.nav)
+				if err := ghpkg.PREditBody(node.PR, newBody); err != nil {
+					r.End("failed", fmt.Sprintf("could not update PR #%d: %v", node.PR, err))
+					return nil // non-fatal
+				}
+
+				mu.Lock()
+				hashUpdates[j.nodeIndex] = j.hash
+				mu.Unlock()
+
+				r.End("succeeded", fmt.Sprintf("PR %s nav updated", ui.PR(node.PR)))
+				return nil
+			},
+		})
+	}
+
+	if err := bus.RunBatch(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: some nav updates failed: %v\n", err)
+	}
+	if err := bus.Finish(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
+	}
+
+	// Apply hash updates to stack nodes.
+	for idx, hash := range hashUpdates {
+		s.Nodes[idx].NavHash = hash
+	}
+
+	if len(hashUpdates) > 0 {
 		if err := stack.Save(root, s); err != nil {
 			return fmt.Errorf("cannot save stack after nav update: %w", err)
 		}
