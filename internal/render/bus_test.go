@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync/atomic"
@@ -277,5 +278,93 @@ func TestBus_RunThenRunBatch_Interleaved(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "step one") {
 		t.Errorf("expected output to contain sequential task log, got:\n%s", out)
+	}
+}
+
+func TestBus_FullLifecycle_InterleavedOutput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	bus := NewBus(&stdout, &stderr, Options{})
+
+	bus.Print("Starting operation...")
+
+	err := bus.Run(context.Background(), TaskSpec{
+		ID: "fetch", Name: "fetch",
+		Fn: func(ctx context.Context, r *Reporter) error {
+			r.Log("fetching from origin")
+			r.End("ok", "fetched")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	bus.Warn("something went sideways")
+
+	for i := range 2 {
+		id := fmt.Sprintf("task-%d", i)
+		bus.AddTask(TaskSpec{
+			ID: id, Name: id,
+			Fn: func(ctx context.Context, r *Reporter) error {
+				r.End("ok", "done")
+				return nil
+			},
+		})
+	}
+	if err := bus.RunBatch(context.Background()); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+
+	bus.Print("All done.")
+
+	if err := bus.Finish(); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	out := stdout.String()
+	errOut := stderr.String()
+
+	if !strings.Contains(out, "Starting operation...") {
+		t.Errorf("stdout missing 'Starting operation...': %s", out)
+	}
+	if !strings.Contains(out, "All done.") {
+		t.Errorf("stdout missing 'All done.': %s", out)
+	}
+	if !strings.Contains(errOut, "something went sideways") {
+		t.Errorf("stderr missing warning: %s", errOut)
+	}
+}
+
+func TestBus_FullLifecycle_JSONRenderer(t *testing.T) {
+	jr := &JSONRenderer{}
+	bus := NewBus(io.Discard, io.Discard, Options{Renderer: jr})
+
+	bus.Print("ignored by JSON")
+	bus.Warn("collected warning")
+	bus.Err(errors.New("collected error"))
+
+	bus.AddTask(TaskSpec{
+		ID: "t1", Name: "task",
+		Fn: func(ctx context.Context, r *Reporter) error {
+			r.End("ok", "completed")
+			return nil
+		},
+	})
+	if err := bus.RunBatch(context.Background()); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+
+	if err := bus.Finish(); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	if len(jr.Results()) != 1 {
+		t.Errorf("expected 1 result, got %d", len(jr.Results()))
+	}
+	if len(jr.Warnings()) != 1 {
+		t.Errorf("expected 1 warning, got %d", len(jr.Warnings()))
+	}
+	if len(jr.Errors()) != 1 {
+		t.Errorf("expected 1 error, got %d", len(jr.Errors()))
 	}
 }
