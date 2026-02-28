@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T02:41:09Z",
+  "generated": "2026-02-28T02:47:04Z",
   "commands": [
     {
       "name": "ai",
@@ -244,6 +244,12 @@
       "use": "status [stack-name]",
       "short": "Show stack topology and sync state",
       "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        },
         {
           "name": "stack",
           "type": "string",

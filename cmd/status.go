@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +14,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// StatusResult is the structured output of sdf status when --json is used.
+type StatusResult struct {
+	Stack         string             `json:"stack"`
+	Base          string             `json:"base"`
+	CurrentBranch string             `json:"current_branch"`
+	Nodes         []StatusNodeResult `json:"nodes"`
+	NeedsSync     []string           `json:"needs_sync,omitempty"`
+	DriftWarnings []string           `json:"drift_warnings,omitempty"`
+}
+
+// StatusNodeResult describes a single branch in the stack status.
+type StatusNodeResult struct {
+	Branch       string `json:"branch"`
+	PR           int    `json:"pr,omitempty"`
+	Status       string `json:"status"`
+	SyncState    string `json:"sync_state,omitempty"`
+	CommitsAhead int    `json:"commits_ahead,omitempty"`
+	IsCurrent    bool   `json:"is_current,omitempty"`
+}
+
 var statusCmd = &cobra.Command{
 	Use:         "status [stack-name]",
 	Short:       "Show stack topology and sync state",
@@ -23,6 +44,7 @@ var statusCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().String("stack", "", "stack to show (default: auto-detect)")
+	statusCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 // RunStatus is a compatibility wrapper for callers that use the old interface.
@@ -33,6 +55,7 @@ func RunStatus(args []string) error {
 
 func runStatus(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	// Accept positional arg as stack name: sdf status <stack-name>
 	stackName := stackFlag
@@ -45,8 +68,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-	defer func() { _ = bus.Finish() }()
+	var rdr render.Renderer
+	if jsonFlag {
+		rdr = &render.JSONRenderer{}
+	}
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: rdr})
+	if !jsonFlag {
+		defer func() { _ = bus.Finish() }()
+	}
 
 	s, err := resolveStack(root, stackName)
 	if err != nil {
@@ -54,6 +83,21 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(s.Nodes) == 0 {
+		if jsonFlag {
+			result := StatusResult{
+				Stack:         s.StackID,
+				Base:          s.Base,
+				CurrentBranch: "",
+				Nodes:         []StatusNodeResult{},
+			}
+			_ = bus.Finish()
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return fmt.Errorf("cannot marshal result: %w", err)
+			}
+			fmt.Println(string(data))
+			return nil
+		}
 		bus.Printf("  %s  (base: %s)\n", s.StackID, s.Base)
 		bus.Print("  No branches in stack yet. Run `sdf branch <name>` to add one.")
 		return nil
@@ -100,65 +144,100 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Print header
+	// Build node results (used by both TTY and JSON)
+	var needsSync []string
+	var nodeResults []StatusNodeResult
+	for _, node := range s.Nodes {
+		nr := StatusNodeResult{
+			Branch:    node.Branch,
+			PR:        node.PR,
+			Status:    node.Status,
+			IsCurrent: node.Branch == currentBranch,
+		}
+
+		status := node.Status
+		parent := s.ParentBranch(node.Branch)
+
+		if status != "merged" && status != "closed" {
+			if node.BaseTip != "" {
+				currentParentTip, err := gitpkg.RevParse(parent)
+				if err == nil && currentParentTip != node.BaseTip {
+					nr.SyncState = "needs_sync"
+					needsSync = append(needsSync, node.Branch)
+				} else {
+					nr.SyncState = "in_sync"
+				}
+			}
+
+			count, err := gitpkg.CommitCount(parent, node.Branch)
+			if err == nil && count != "0" {
+				fmt.Sscanf(count, "%d", &nr.CommitsAhead)
+			}
+		}
+
+		nodeResults = append(nodeResults, nr)
+	}
+
+	if jsonFlag {
+		result := StatusResult{
+			Stack:         s.StackID,
+			Base:          s.Base,
+			CurrentBranch: currentBranch,
+			Nodes:         nodeResults,
+			NeedsSync:     needsSync,
+			DriftWarnings: driftWarnings,
+		}
+		_ = bus.Finish()
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("cannot marshal result: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	// TTY output
 	bus.Printf("  %s  (base: %s)\n", ui.Bold.Render(s.StackID), ui.Branch(s.Base))
 
-	// Print each node
-	needsSync := []string{}
-	for _, node := range s.Nodes {
+	for _, nr := range nodeResults {
 		icon := ui.Gray.Render("●")
-		status := node.Status
-
-		switch status {
+		switch nr.Status {
 		case "merged":
 			icon = ui.SymOK
 		case "closed":
 			icon = ui.SymFail
 		}
 
-		// Check sync state
 		syncStatus := ""
-		parent := s.ParentBranch(node.Branch)
-
-		if status != "merged" && status != "closed" {
-			// Check if parent has commits this branch hasn't seen
-			if node.BaseTip != "" {
-				currentParentTip, err := gitpkg.RevParse(parent)
-				if err == nil && currentParentTip != node.BaseTip {
-					syncStatus = ui.Yellow.Render("needs sync")
-					needsSync = append(needsSync, node.Branch)
-				} else {
-					syncStatus = ui.Green.Render("in sync")
-				}
-			}
-
-			// Count commits ahead
-			count, err := gitpkg.CommitCount(parent, node.Branch)
-			if err == nil && count != "0" {
-				syncStatus = count + " commits ahead, " + syncStatus
-			}
+		switch nr.SyncState {
+		case "needs_sync":
+			syncStatus = ui.Yellow.Render("needs sync")
+		case "in_sync":
+			syncStatus = ui.Green.Render("in sync")
+		}
+		if nr.CommitsAhead > 0 {
+			syncStatus = fmt.Sprintf("%d commits ahead, %s", nr.CommitsAhead, syncStatus)
 		}
 
-		// Format the line
 		marker := " "
-		if node.Branch == currentBranch {
+		if nr.IsCurrent {
 			marker = ui.Cyan.Render("→")
 		}
 
 		var prInfo string
-		if node.PR > 0 {
-			prInfo = fmt.Sprintf("PR %-5s", ui.PR(node.PR))
+		if nr.PR > 0 {
+			prInfo = fmt.Sprintf("PR %-5s", ui.PR(nr.PR))
 		} else {
 			prInfo = "        "
 		}
 
-		statusStr := fmt.Sprintf("%-8s", status)
+		statusStr := fmt.Sprintf("%-8s", nr.Status)
 		syncStr := ""
 		if syncStatus != "" {
 			syncStr = "  " + syncStatus
 		}
 
-		bus.Printf(" %s %s  %-30s %s %s%s", marker, icon, ui.Branch(node.Branch), prInfo, statusStr, syncStr)
+		bus.Printf(" %s %s  %-30s %s %s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr)
 	}
 
 	// Print sync suggestion
