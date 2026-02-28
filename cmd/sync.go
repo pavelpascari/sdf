@@ -104,17 +104,17 @@ func runSyncContinue(root string, bus *render.Bus) error {
 
 	switch {
 	case gitpkg.IsRebaseInProgress():
-		fmt.Printf("  rebasing %s (continuing)...\n", ui.Branch(progress.PausedAt))
+		bus.Printf("  rebasing %s (continuing)...", ui.Branch(progress.PausedAt))
 		if err := gitpkg.RebaseContinue(); err != nil {
 			return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
 		}
 	case gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt):
 		// No rebase in progress but the parent tip is an ancestor of the
 		// paused branch — the user completed the rebase manually.
-		fmt.Printf("  %s %s rebased (completed outside sdf)\n", ui.SymOK, ui.Branch(progress.PausedAt))
+		bus.Printf("  %s %s rebased (completed outside sdf)", ui.SymOK, ui.Branch(progress.PausedAt))
 	default:
 		// The parent tip is NOT an ancestor — the rebase was aborted.
-		fmt.Printf("Rebase of %s was aborted. Starting a fresh sync.\n", ui.Branch(progress.PausedAt))
+		bus.Printf("Rebase of %s was aborted. Starting a fresh sync.", ui.Branch(progress.PausedAt))
 		local.SyncProgress = nil
 		stack.SaveLocal(root, local)
 		return runSyncFull(root, "", false, false, bus)
@@ -130,17 +130,17 @@ func runSyncContinue(root string, bus *render.Bus) error {
 		node.BaseTip = progress.ParentTip
 
 		if err := gitpkg.Push(node.Branch); err != nil {
-			fmt.Fprintf(os.Stderr, "  %s push failed for %s: %v\n", ui.SymFail, ui.Branch(node.Branch), err)
+			bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
 		} else {
-			fmt.Printf("  %s %s rebased and pushed\n", ui.SymOK, ui.Branch(node.Branch))
+			bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
 		}
 
 		parent := s.ParentBranch(node.Branch)
 		if node.PR > 0 && ghpkg.Available() {
 			if err := ghpkg.PREditBase(node.PR, parent); err != nil {
-				fmt.Fprintf(os.Stderr, "  %s could not update PR %s base: %v\n", ui.SymWarn, ui.PR(node.PR), err)
+				bus.Warnf("  %s could not update PR %s base: %v", ui.SymWarn, ui.PR(node.PR), err)
 			} else {
-				fmt.Printf("  %s PR %s base updated to %s\n", ui.SymOK, ui.PR(node.PR), ui.Branch(parent))
+				bus.Printf("  %s PR %s base updated to %s", ui.SymOK, ui.PR(node.PR), ui.Branch(parent))
 			}
 		}
 	}
@@ -154,7 +154,7 @@ func runSyncContinue(root string, bus *render.Bus) error {
 
 	gitpkg.Checkout(progress.OriginalBranch)
 
-	fmt.Println("\nResuming sync for remaining branches...")
+	bus.Print("\nResuming sync for remaining branches...")
 	return runSyncFrom(root, s, progress.ResumeIndex+1, nil, bus)
 }
 
