@@ -9,6 +9,7 @@ import (
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
@@ -55,6 +56,9 @@ func runFetchLogic(stackName, base string) error {
 		return fmt.Errorf("not inside a git repository: %w", err)
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	stack.MigrateIfNeeded(root)
 
 	// Detect default branch
@@ -67,7 +71,7 @@ func runFetchLogic(stackName, base string) error {
 		defaultBranch = detected
 	}
 
-	fmt.Printf("Scanning your open PRs (base: %s)...\n", defaultBranch)
+	bus.Printf("Scanning your open PRs (base: %s)...", defaultBranch)
 
 	// Fetch all open PRs by the current user
 	prs, err := ghpkg.PRListForCurrentUser()
@@ -76,8 +80,8 @@ func runFetchLogic(stackName, base string) error {
 	}
 
 	if len(prs) == 0 {
-		fmt.Println("No open PRs found for your user.")
-		fmt.Println("Use `sdf new <name>` to create a new stack from scratch.")
+		bus.Print("No open PRs found for your user.")
+		bus.Print("Use `sdf new <name>` to create a new stack from scratch.")
 		return nil
 	}
 
@@ -96,38 +100,41 @@ func runFetchLogic(stackName, base string) error {
 	discovered := stack.DiscoverStacks(records, defaultBranch)
 
 	if len(discovered) == 0 {
-		fmt.Println("\nNo stacked PRs found (need at least 2 chained PRs).")
-		fmt.Println()
-		fmt.Println("Your open PRs:")
+		bus.Print("\nNo stacked PRs found (need at least 2 chained PRs).")
+		bus.Print("")
+		bus.Print("Your open PRs:")
 		for _, pr := range prs {
-			fmt.Printf("  #%-4d  %s → %s\n", pr.Number, pr.HeadRefName, pr.BaseRefName)
+			bus.Printf("  #%-4d  %s → %s", pr.Number, pr.HeadRefName, pr.BaseRefName)
 		}
-		fmt.Println()
-		fmt.Println("A stack requires PRs to chain: A → main, B → A, C → B, etc.")
-		fmt.Println("Use `sdf new <name>` to create a new stack from scratch.")
+		bus.Print("")
+		bus.Print("A stack requires PRs to chain: A → main, B → A, C → B, etc.")
+		bus.Print("Use `sdf new <name>` to create a new stack from scratch.")
 		return nil
 	}
 
 	// Display discovered stacks
-	fmt.Printf("\nFound %d potential stack(s):\n\n", len(discovered))
+	bus.Printf("\nFound %d potential stack(s):\n", len(discovered))
 
 	for i, ds := range discovered {
-		fmt.Printf("  [%d] base: %s\n", i+1, ds.Base)
+		bus.Printf("  [%d] base: %s", i+1, ds.Base)
 		for j, pr := range ds.Chains {
 			prefix := "  ├─"
 			if j == len(ds.Chains)-1 {
 				prefix = "  └─"
 			}
-			fmt.Printf("      %s #%-4d  %s\n", prefix, pr.Number, pr.HeadRefName)
+			bus.Printf("      %s #%-4d  %s", prefix, pr.Number, pr.HeadRefName)
 		}
-		fmt.Println()
+		bus.Print("")
 	}
 
 	// Let user pick
 	choice := 0
 	if len(discovered) == 1 {
-		if !ui.Confirm("Fetch this stack?") {
-			fmt.Println("Aborted.")
+		bus.Pause()
+		proceed := ui.Confirm("Fetch this stack?")
+		bus.Resume()
+		if !proceed {
+			bus.Print("Aborted.")
 			return nil
 		}
 	} else {
@@ -136,9 +143,11 @@ func runFetchLogic(stackName, base string) error {
 			label := fmt.Sprintf("base: %s — %d branches", ds.Base, len(ds.Chains))
 			options[i] = huh.NewOption(label, fmt.Sprintf("%d", i))
 		}
+		bus.Pause()
 		picked := ui.Select("Which stack to fetch?", options)
+		bus.Resume()
 		if picked == "" {
-			fmt.Println("Aborted.")
+			bus.Print("Aborted.")
 			return nil
 		}
 		fmt.Sscanf(picked, "%d", &choice)
@@ -147,14 +156,14 @@ func runFetchLogic(stackName, base string) error {
 	selected := discovered[choice]
 
 	// Ensure branches exist locally (fetch if needed)
-	fmt.Println("\nFetching branches...")
+	bus.Print("\nFetching branches...")
 	if err := gitpkg.FetchAll(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: fetch failed: %v\n", err)
+		bus.Warnf("fetch failed: %v", err)
 	}
 
 	for _, pr := range selected.Chains {
 		if !gitpkg.BranchExists(pr.HeadRefName) {
-			fmt.Printf("  Checking out %s from origin...\n", pr.HeadRefName)
+			bus.Printf("  Checking out %s from origin...", pr.HeadRefName)
 			if err := gitpkg.CheckoutRemote(pr.HeadRefName); err != nil {
 				return fmt.Errorf("cannot checkout %s: %w", pr.HeadRefName, err)
 			}
@@ -169,7 +178,7 @@ func runFetchLogic(stackName, base string) error {
 
 	if matched != nil {
 		// Reconcile existing stack
-		return reconcileStack(root, matched, selected)
+		return reconcileStack(root, matched, selected, bus)
 	}
 
 	// No match — first-time registration
@@ -209,21 +218,21 @@ func matchLocalStack(stacks []*stack.Stack, discovered stack.DiscoveredStack) *s
 
 // reconcileStack compares the local stack against the discovered chain,
 // prints changes, and applies them.
-func reconcileStack(root string, local *stack.Stack, discovered stack.DiscoveredStack) error {
+func reconcileStack(root string, local *stack.Stack, discovered stack.DiscoveredStack, bus *render.Bus) error {
 	changes := stack.Reconcile(local, discovered)
 
 	if len(changes) == 0 {
-		fmt.Printf("\n%s Stack %s is up to date.\n", ui.SymOK, ui.Bold.Render(local.StackID))
+		bus.Printf("\n%s Stack %s is up to date.", ui.SymOK, ui.Bold.Render(local.StackID))
 		return nil
 	}
 
-	fmt.Printf("\nReconciling stack %s:\n", ui.Bold.Render(local.StackID))
+	bus.Printf("\nReconciling stack %s:", ui.Bold.Render(local.StackID))
 	for _, c := range changes {
 		sym := ui.SymOK
 		if c.Notable {
 			sym = ui.SymWarn
 		}
-		fmt.Printf("  %s %s\n", sym, c.Detail)
+		bus.Printf("  %s %s", sym, c.Detail)
 	}
 
 	// Validate new branches for uniqueness
@@ -240,6 +249,6 @@ func reconcileStack(root string, local *stack.Stack, discovered stack.Discovered
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	fmt.Printf("\n%s Stack %s reconciled (%d change(s))\n", ui.SymOK, ui.Bold.Render(local.StackID), len(changes))
+	bus.Printf("\n%s Stack %s reconciled (%d change(s))", ui.SymOK, ui.Bold.Render(local.StackID), len(changes))
 	return nil
 }
