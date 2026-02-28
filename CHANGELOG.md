@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/pavelpascari/sdf/compare/v0.2.8...v0.2.9) (2026-02-28)
+
+
+### Bug Fixes
+
+* **ci:** use GitHub App token for release-please ([#127](https://github.com/pavelpascari/sdf/issues/127)) ([154a30b](https://github.com/pavelpascari/sdf/commit/154a30bcd1ee9cb6d351fe5c2e14d8555e4de211))
+
 ## [0.2.8](https://github.com/pavelpascari/sdf/compare/v0.2.7...v0.2.8) (2026-02-28)
 
 
