@@ -80,12 +80,12 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 	}
 
 	// Fetch and refresh PR states
-	fmt.Println("Fetching from origin...")
+	mergeBus.Print("Fetching from origin...")
 	if err := gitpkg.FetchAll(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: fetch failed: %v\n", err)
+		mergeBus.Warnf("fetch failed: %v", err)
 	}
 	if err := gitpkg.FastForward(s.Base); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not fast-forward %s: %v\n", s.Base, err)
+		mergeBus.Warnf("could not fast-forward %s: %v", s.Base, err)
 	}
 
 	reconcileSyncPRStates(s, mergeBus)
@@ -101,17 +101,20 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 
 	// Pre-merge info
 	remaining := countOpen(s) - 1
-	fmt.Printf("\nMerge PR %s (%s) into %s via %s\n",
+	mergeBus.Printf("\nMerge PR %s (%s) into %s via %s",
 		ui.PR(node.PR), ui.Branch(node.Branch), ui.Branch(parent), ui.Bold.Render(method))
 	if remaining > 0 {
-		fmt.Printf("  %d open PR(s) remaining after merge\n", remaining)
+		mergeBus.Printf("  %d open PR(s) remaining after merge", remaining)
 	} else {
-		fmt.Printf("  This is the last open PR in the stack\n")
+		mergeBus.Print("  This is the last open PR in the stack")
 	}
 
 	if !yes {
-		if !ui.Confirm("Proceed?") {
-			fmt.Println("Aborted.")
+		mergeBus.Pause()
+		proceed := ui.Confirm("Proceed?")
+		mergeBus.Resume()
+		if !proceed {
+			mergeBus.Print("Aborted.")
 			return nil
 		}
 	}
@@ -122,15 +125,15 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 	nextNode := findNextOpenNode(s, node.Branch)
 	if nextNode != nil && nextNode.PR > 0 {
 		newBase := s.ParentBranch(node.Branch) // will be stack base after merge
-		fmt.Printf("  Retargeting PR %s base → %s...\n", ui.PR(nextNode.PR), ui.Branch(newBase))
+		mergeBus.Printf("  Retargeting PR %s base → %s...", ui.PR(nextNode.PR), ui.Branch(newBase))
 		if err := ghpkg.PREditBase(nextNode.PR, newBase); err != nil {
-			fmt.Fprintf(os.Stderr, "  %s could not retarget PR %s: %v\n", ui.SymWarn, ui.PR(nextNode.PR), err)
-			fmt.Fprintln(os.Stderr, "    The PR may be auto-closed when the branch is deleted.")
+			mergeBus.Warnf("  %s could not retarget PR %s: %v", ui.SymWarn, ui.PR(nextNode.PR), err)
+			mergeBus.Warnf("    The PR may be auto-closed when the branch is deleted.")
 		}
 	}
 
 	// Merge
-	fmt.Printf("  Merging PR %s...\n", ui.PR(node.PR))
+	mergeBus.Printf("  Merging PR %s...", ui.PR(node.PR))
 	if err := ghpkg.PRMerge(node.PR, method); err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
@@ -145,15 +148,15 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	fmt.Printf("  %s PR %s merged\n", ui.SymOK, ui.PR(node.PR))
+	mergeBus.Printf("  %s PR %s merged", ui.SymOK, ui.PR(node.PR))
 
 	// Post-merge: sync remaining branches
 	if remaining > 0 {
-		fmt.Println("\nSyncing remaining branches...")
+		mergeBus.Print("\nSyncing remaining branches...")
 
 		// Fast-forward base to include the merge commit
 		if err := gitpkg.FastForward(s.Base); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not fast-forward %s: %v\n", s.Base, err)
+			mergeBus.Warnf("could not fast-forward %s: %v", s.Base, err)
 		}
 
 		// Run sync with confirmation skipped (user already confirmed the merge)
@@ -161,7 +164,7 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 			return fmt.Errorf("post-merge sync failed: %w\n\nRun `sdf sync` to retry", err)
 		}
 	} else {
-		fmt.Printf("\n%s Stack %s fully merged.\n", ui.SymOK, ui.Bold.Render(s.StackID))
+		mergeBus.Printf("\n%s Stack %s fully merged.", ui.SymOK, ui.Bold.Render(s.StackID))
 	}
 
 	return nil
