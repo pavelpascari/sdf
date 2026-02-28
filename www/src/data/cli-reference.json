@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T03:12:16Z",
+  "generated": "2026-02-28T17:42:19Z",
   "commands": [
     {
       "name": "ai",
@@ -168,7 +168,15 @@
       "use": "move \u003ccommit\u003e...",
       "short": "Move commits from current branch to parent",
       "long": "Cherry-picks listed commits onto the parent branch, strips them from the\ncurrent branch via rebase, and cascade-rebases downstream branches.",
-      "example": "  sdf move abc1234                   # move one commit\n  sdf move abc1234 def5678           # move multiple commits"
+      "example": "  sdf move abc1234                   # move one commit\n  sdf move abc1234 def5678           # move multiple commits",
+      "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        }
+      ]
     },
     {
       "name": "new",

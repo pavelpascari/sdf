@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -14,6 +15,14 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
+
+// MoveResult is the structured output of sdf move when --json is used.
+type MoveResult struct {
+	Source  string   `json:"source"`
+	Target  string   `json:"target"`
+	Commits []string `json:"commits"`
+	Error   string   `json:"error,omitempty"`
+}
 
 var moveCmd = &cobra.Command{
 	Use:   "move <commit>...",
@@ -29,10 +38,12 @@ current branch via rebase, and cascade-rebases downstream branches.`,
 
 func init() {
 	rootCmd.AddCommand(moveCmd)
+	moveCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runMoveCmd(cmd *cobra.Command, args []string) error {
-	return runMoveLogic(args)
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+	return runMoveLogic(args, jsonFlag)
 }
 
 // RunMove is a compatibility wrapper for callers that use the old interface.
@@ -41,15 +52,21 @@ func RunMove(args []string) error {
 	return rootCmd.Execute()
 }
 
-func runMoveLogic(commits []string) error {
+func runMoveLogic(commits []string, jsonMode bool) error {
 
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
 	}
 
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-	defer func() { _ = bus.Finish() }()
+	var rdr render.Renderer
+	if jsonMode {
+		rdr = &render.JSONRenderer{}
+	}
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: rdr})
+	if !jsonMode {
+		defer func() { _ = bus.Finish() }()
+	}
 
 	s, err := resolveStack(root, "")
 	if err != nil {
@@ -213,6 +230,17 @@ func runMoveLogic(commits []string) error {
 	}
 
 	bus.Printf("\n%s Moved %d commit(s) from %s to %s", ui.SymOK, len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
+
+	if jsonMode {
+		result := MoveResult{
+			Source:  branch,
+			Target:  parent,
+			Commits: resolvedCommits,
+		}
+		_ = bus.Finish()
+		data, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(data))
+	}
 	return nil
 }
 
