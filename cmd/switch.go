@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -51,13 +53,16 @@ func runSwitchToTarget(target string) error {
 		return fmt.Errorf("cannot checkout %s: %w", target, err)
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	if lookupErr != nil {
-		fmt.Printf("Switched to %s (not part of any sdf stack)\n", target)
+		bus.Printf("Switched to %s (not part of any sdf stack)", target)
 		return nil
 	}
 
 	idx := s.NodeIndex(target)
-	fmt.Printf("Switched to %s [stack: %s, layer %d/%d]\n", target, s.StackID, idx+1, len(s.Nodes))
+	bus.Printf("Switched to %s [stack: %s, layer %d/%d]", target, s.StackID, idx+1, len(s.Nodes))
 
 	return nil
 }
@@ -89,8 +94,11 @@ func TrySwitch(name string) error {
 		return fmt.Errorf("cannot checkout %s: %w", name, err)
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	idx := s.NodeIndex(name)
-	fmt.Printf("Switched to %s [stack: %s, layer %d/%d]\n", name, s.StackID, idx+1, len(s.Nodes))
+	bus.Printf("Switched to %s [stack: %s, layer %d/%d]", name, s.StackID, idx+1, len(s.Nodes))
 
 	return nil
 }
@@ -108,23 +116,26 @@ func listStackBranches() error {
 		return err
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	if len(stacks) == 0 {
-		fmt.Println("No stacks found. Run `sdf new <name>` to create one.")
+		bus.Print("No stacks found. Run `sdf new <name>` to create one.")
 		return nil
 	}
 
 	currentBranch, _ := gitpkg.CurrentBranch()
 
 	for _, s := range stacks {
-		fmt.Printf("  %s  (base: %s)\n", s.StackID, s.Base)
+		bus.Printf("  %s  (base: %s)", s.StackID, s.Base)
 		for _, node := range s.Nodes {
 			marker := " "
 			if node.Branch == currentBranch {
 				marker = "→"
 			}
-			fmt.Printf("   %s %s\n", marker, node.Branch)
+			bus.Printf("   %s %s", marker, node.Branch)
 		}
-		fmt.Println()
+		bus.Print("")
 	}
 
 	return nil
