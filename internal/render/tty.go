@@ -237,9 +237,13 @@ func (r *TTYRenderer) flushLocked() {
 	// Blank separator line.
 	fmt.Fprintf(r.w, "%s\n", El())
 
-	// Spinner line with completion counter.
-	frame := spinnerFrames[r.spinnerFrame%len(spinnerFrames)]
-	fmt.Fprintf(r.w, "%s  %s %s (%d/%d)\n", El(), frame, r.label, r.completed, len(r.slots))
+	// Spinner/done line with completion counter.
+	if r.completed == len(r.slots) {
+		fmt.Fprintf(r.w, "%s  ✓ %s (%d/%d)\n", El(), r.label, r.completed, len(r.slots))
+	} else {
+		frame := spinnerFrames[r.spinnerFrame%len(spinnerFrames)]
+		fmt.Fprintf(r.w, "%s  %s %s (%d/%d)\n", El(), frame, r.label, r.completed, len(r.slots))
+	}
 
 	r.spinnerFrame++
 }

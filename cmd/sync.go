@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -531,6 +532,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 		return
 	}
 
+	var updated atomic.Int32
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR content"})
 	bus.Print("")
 	for _, j := range jobs {
@@ -553,6 +555,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 				currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
 				if !similar(currentTitle, proposedTitle, 0.8) {
 					if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err == nil {
+						updated.Add(1)
 						r.End("succeeded", fmt.Sprintf("%s PR %s title updated", ui.SymOK, ui.PR(j.node.PR)))
 						return nil
 					}
@@ -581,6 +584,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 					if !similar(currentDesc, desc, 0.85) {
 						newBody := replaceDescription(currentBody, desc)
 						if err := ghpkg.PREditBody(j.node.PR, newBody); err == nil {
+							updated.Add(1)
 							r.End("succeeded", fmt.Sprintf("%s PR %s description updated", ui.SymOK, ui.PR(j.node.PR)))
 							return nil
 						}
@@ -595,7 +599,12 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	if err := bus.RunBatch(context.Background()); err != nil {
 		bus.Warnf("some PR updates failed: %v", err)
 	}
-	bus.Printf("\nUpdated %d PR(s).", len(jobs))
+	n := int(updated.Load())
+	if n > 0 {
+		bus.Printf("\nUpdated %d PR(s).", n)
+	} else {
+		bus.Print("\nAll PR content is up to date.")
+	}
 	if err := bus.Finish(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
 	}
