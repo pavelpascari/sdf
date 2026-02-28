@@ -676,7 +676,7 @@ func TestSyncResultJSON(t *testing.T) {
 }
 
 func TestSyncResultJSON_EmptyOmitsOptional(t *testing.T) {
-	result := SyncResult{Stack: "test", Base: "main"}
+	result := SyncResult{Stack: "test", Base: "main", Branches: []BranchResult{}}
 
 	data, err := json.Marshal(result)
 	if err != nil {
@@ -693,9 +693,9 @@ func TestSyncResultJSON_EmptyOmitsOptional(t *testing.T) {
 	if strings.Contains(s, `"error"`) {
 		t.Error("empty error should be omitted")
 	}
-	// branches is NOT omitempty — it should always be present (as null or [])
-	if !strings.Contains(s, "branches") {
-		t.Error("branches should always be present")
+	// branches should be [] not null
+	if !strings.Contains(s, `"branches":[]`) {
+		t.Errorf("branches should be empty array, got: %s", s)
 	}
 }
 

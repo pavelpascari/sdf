@@ -116,7 +116,7 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 
 	var result *SyncResult
 	if jsonFlag {
-		result = &SyncResult{}
+		result = &SyncResult{Branches: []BranchResult{}}
 	}
 
 	if cont {
