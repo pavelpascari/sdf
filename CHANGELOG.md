@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.11](https://github.com/pavelpascari/sdf/compare/v0.2.10...v0.2.11) (2026-02-28)
+
+
+### Bug Fixes
+
+* **ci:** add actions:write permission for workflow dispatch ([#131](https://github.com/pavelpascari/sdf/issues/131)) ([da857b3](https://github.com/pavelpascari/sdf/commit/da857b333a3fafaaeb16893f056da2941ed357a8))
+
 ## [0.2.10](https://github.com/pavelpascari/sdf/compare/v0.2.9...v0.2.10) (2026-02-28)
 
 
