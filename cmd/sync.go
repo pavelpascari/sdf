@@ -179,7 +179,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 	}
 
 	if len(s.Nodes) == 0 {
-		fmt.Printf("No branches in stack %q. Nothing to sync.\n", s.StackID)
+		bus.Printf("No branches in stack %q. Nothing to sync.", s.StackID)
 		return nil
 	}
 
@@ -191,15 +191,15 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 		return fmt.Errorf("working tree is not clean — commit or stash changes before syncing")
 	}
 
-	fmt.Printf("Syncing stack %s...\n", ui.Bold.Render(s.StackID))
-	fmt.Println("Fetching from origin...")
+	bus.Printf("Syncing stack %s...", ui.Bold.Render(s.StackID))
+	bus.Print("Fetching from origin...")
 	if err := gitpkg.FetchAll(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: fetch failed: %v\n", err)
+		bus.Warnf("warning: fetch failed: %v", err)
 	}
 
 	// Fast-forward the base branch so RevParse returns the latest tip
 	if err := gitpkg.FastForward(s.Base); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not fast-forward %s: %v\n", s.Base, err)
+		bus.Warnf("warning: could not fast-forward %s: %v", s.Base, err)
 	}
 
 	if ghpkg.Available() {
@@ -209,7 +209,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 	// Load config for PR update settings
 	cfg, err := cfgpkg.Load(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not load config: %v\n", err)
+		bus.Warnf("warning: could not load config: %v", err)
 		cfg = cfgpkg.Defaults()
 	}
 
@@ -231,14 +231,14 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 	}
 
 	if len(plan) == 0 || onlySkipMerged {
-		fmt.Println("\nEverything is in sync.")
+		bus.Print("\nEverything is in sync.")
 		// Save any state changes from reconciliation
 		if err := stack.Save(root, s); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not save stack: %v\n", err)
+			bus.Warnf("warning: could not save stack: %v", err)
 		}
 		// Still update stack navigation (catches empty/stale nav hashes)
 		if err := updateStackNavForAllPRs(root, s, bus); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+			bus.Warnf("warning: could not update PR descriptions: %v", err)
 		}
 		return nil
 	}
@@ -246,13 +246,16 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 	printSyncPlan(plan, bus)
 
 	if !skipConfirm {
-		if !confirmSync() {
-			fmt.Println("Aborted.")
+		bus.Pause()
+		ok := confirmSync()
+		bus.Resume()
+		if !ok {
+			bus.Print("Aborted.")
 			return nil
 		}
 	}
 
-	fmt.Println()
+	bus.Print("")
 
 	return runSyncFrom(root, s, 0, &opts, bus)
 }
