@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.8](https://github.com/pavelpascari/sdf/compare/v0.2.7...v0.2.8) (2026-02-28)
+
+
+### Features
+
+* add smart shell autocompletion for all commands ([#97](https://github.com/pavelpascari/sdf/issues/97)) ([679cd70](https://github.com/pavelpascari/sdf/commit/679cd70fa505dccfaa147b1d4d877dd9bf971964))
+
+
+### Bug Fixes
+
+* **ci:** trigger goreleaser from release-please workflow ([#125](https://github.com/pavelpascari/sdf/issues/125)) ([e91135a](https://github.com/pavelpascari/sdf/commit/e91135a8931ddafef1f6defb8c7b21ff7df4b890))
+
 ## [0.2.7](https://github.com/pavelpascari/sdf/compare/v0.2.6...v0.2.7) (2026-02-28)
 
 
