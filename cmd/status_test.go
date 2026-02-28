@@ -12,8 +12,8 @@ func TestStatusResultJSON(t *testing.T) {
 		Base:          "main",
 		CurrentBranch: "feat-a",
 		Nodes: []StatusNodeResult{
-			{Branch: "feat-a", PR: 42, Status: "open", SyncState: "in_sync", CommitsAhead: 3, IsCurrent: true},
-			{Branch: "feat-b", PR: 43, Status: "open", SyncState: "needs_sync", CommitsAhead: 1},
+			{Branch: "feat-a", PR: 42, Status: "open", SyncState: "in_sync", CommitsAhead: 3, IsCurrent: true, CIStatus: "pass"},
+			{Branch: "feat-b", PR: 43, Status: "open", SyncState: "needs_sync", CommitsAhead: 1, CIStatus: "fail"},
 		},
 		NeedsSync:     []string{"feat-b"},
 		DriftWarnings: []string{"PR #44 base changed"},
@@ -43,6 +43,12 @@ func TestStatusResultJSON(t *testing.T) {
 	}
 	if roundtrip.Nodes[1].SyncState != "needs_sync" {
 		t.Errorf("sync_state = %q, want %q", roundtrip.Nodes[1].SyncState, "needs_sync")
+	}
+	if roundtrip.Nodes[0].CIStatus != "pass" {
+		t.Errorf("ci_status = %q, want %q", roundtrip.Nodes[0].CIStatus, "pass")
+	}
+	if roundtrip.Nodes[1].CIStatus != "fail" {
+		t.Errorf("ci_status = %q, want %q", roundtrip.Nodes[1].CIStatus, "fail")
 	}
 }
 

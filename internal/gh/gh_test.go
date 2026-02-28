@@ -32,7 +32,7 @@ func TestPRList_ParsesJSON(t *testing.T) {
 	if len(log) != 1 {
 		t.Fatalf("expected 1 invocation, got %d", len(log))
 	}
-	if log[0] != "pr list --state all --json number,headRefName,state,baseRefName,url --limit 100" {
+	if log[0] != "pr list --state all --json number,headRefName,state,baseRefName,url,statusCheckRollup --limit 100" {
 		t.Errorf("unexpected arguments: %s", log[0])
 	}
 
@@ -227,5 +227,49 @@ func TestPRList_ErrorFromBinary(t *testing.T) {
 	_, err := PRList([]string{"feat/a"})
 	if err == nil {
 		t.Fatal("expected error from failing binary")
+	}
+}
+
+func TestAggregateCheckStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		checks []CheckRun
+		want   string
+	}{
+		{name: "empty", checks: nil, want: ""},
+		{name: "all pass", checks: []CheckRun{
+			{Name: "Lint", Status: "COMPLETED", Conclusion: "SUCCESS"},
+			{Name: "Test", Status: "COMPLETED", Conclusion: "SUCCESS"},
+		}, want: "pass"},
+		{name: "skipped counts as pass", checks: []CheckRun{
+			{Name: "Lint", Status: "COMPLETED", Conclusion: "SUCCESS"},
+			{Name: "Auto-merge", Status: "COMPLETED", Conclusion: "SKIPPED"},
+		}, want: "pass"},
+		{name: "one failure", checks: []CheckRun{
+			{Name: "Lint", Status: "COMPLETED", Conclusion: "SUCCESS"},
+			{Name: "Test", Status: "COMPLETED", Conclusion: "FAILURE"},
+		}, want: "fail"},
+		{name: "canceled is fail", checks: []CheckRun{
+			{Name: "Build", Status: "COMPLETED", Conclusion: "CANCELED"},
+		}, want: "fail"},
+		{name: "in progress", checks: []CheckRun{
+			{Name: "Lint", Status: "COMPLETED", Conclusion: "SUCCESS"},
+			{Name: "Test", Status: "IN_PROGRESS", Conclusion: ""},
+		}, want: "pending"},
+		{name: "queued", checks: []CheckRun{
+			{Name: "Test", Status: "QUEUED", Conclusion: ""},
+		}, want: "pending"},
+		{name: "failure beats pending", checks: []CheckRun{
+			{Name: "Lint", Status: "IN_PROGRESS", Conclusion: ""},
+			{Name: "Test", Status: "COMPLETED", Conclusion: "FAILURE"},
+		}, want: "fail"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AggregateCheckStatus(tt.checks)
+			if got != tt.want {
+				t.Errorf("AggregateCheckStatus() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
