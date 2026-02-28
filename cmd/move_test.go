@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,6 +116,48 @@ func testRepo(t *testing.T) (repoDir string, shas map[string]string) {
 	}
 
 	return dir, shas
+}
+
+func TestMoveResultJSON(t *testing.T) {
+	result := MoveResult{
+		Source:  "feature-b",
+		Target:  "feature-a",
+		Commits: []string{"abc1234", "def5678"},
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(data)
+	if !strings.Contains(s, `"source":"feature-b"`) {
+		t.Errorf("missing source field: %s", s)
+	}
+	if !strings.Contains(s, `"target":"feature-a"`) {
+		t.Errorf("missing target field: %s", s)
+	}
+	if !strings.Contains(s, `"commits":["abc1234","def5678"]`) {
+		t.Errorf("missing commits field: %s", s)
+	}
+	if strings.Contains(s, `"error"`) {
+		t.Errorf("error field should be omitted when empty: %s", s)
+	}
+}
+
+func TestMoveResultJSON_WithError(t *testing.T) {
+	result := MoveResult{
+		Source:  "feature-b",
+		Target:  "feature-a",
+		Commits: []string{},
+		Error:   "cherry-pick conflict",
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(data)
+	if !strings.Contains(s, `"error":"cherry-pick conflict"`) {
+		t.Errorf("error field should be present: %s", s)
+	}
 }
 
 func TestRunMove_SingleCommit(t *testing.T) {
