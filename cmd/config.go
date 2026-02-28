@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -96,7 +97,9 @@ func runConfigSetCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Set %s = %s in %s\n", key, value, path)
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+	bus.Printf("Set %s = %s in %s", key, value, path)
 	return nil
 }
 
@@ -107,10 +110,13 @@ func RunConfig(args []string) error {
 }
 
 func runConfigShow() error {
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	root, err := stack.FindRoot()
 	if err != nil {
 		// If not in a stack, try to show just global config
-		fmt.Fprintln(os.Stderr, "Not inside an sdf stack — showing global config only.")
+		bus.Warnf("Not inside an sdf stack — showing global config only.")
 		globalPath, err := cfgpkg.GlobalPath()
 		if err != nil {
 			return err
@@ -119,7 +125,7 @@ func runConfigShow() error {
 		if err != nil {
 			return err
 		}
-		return printConfig(cfg, globalPath, "")
+		return printConfig(cfg, globalPath, "", bus)
 	}
 
 	cfg, err := cfgpkg.Load(root)
@@ -129,21 +135,21 @@ func runConfigShow() error {
 
 	globalPath, _ := cfgpkg.GlobalPath()
 	repoPath := cfgpkg.RepoPath(root)
-	return printConfig(cfg, globalPath, repoPath)
+	return printConfig(cfg, globalPath, repoPath, bus)
 }
 
-func printConfig(cfg cfgpkg.Config, globalPath, repoPath string) error {
+func printConfig(cfg cfgpkg.Config, globalPath, repoPath string, bus *render.Bus) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Effective configuration (merged):")
-	fmt.Println(string(data))
-	fmt.Println()
-	fmt.Printf("Global: %s\n", globalPath)
+	bus.Print("Effective configuration (merged):")
+	bus.Print(string(data))
+	bus.Print("")
+	bus.Printf("Global: %s", globalPath)
 	if repoPath != "" {
-		fmt.Printf("Repo:   %s\n", repoPath)
+		bus.Printf("Repo:   %s", repoPath)
 	}
 	return nil
 }
