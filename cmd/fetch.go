@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -13,6 +14,21 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
+
+// FetchResult is the structured output of sdf fetch when --json is used.
+type FetchResult struct {
+	Stack   string            `json:"stack"`
+	Base    string            `json:"base"`
+	Nodes   []FetchNodeResult `json:"nodes"`
+	Action  string            `json:"action"` // "registered", "reconciled", "up_to_date"
+	Changes int               `json:"changes,omitempty"`
+}
+
+// FetchNodeResult describes a branch discovered during fetch.
+type FetchNodeResult struct {
+	Branch string `json:"branch"`
+	PR     int    `json:"pr"`
+}
 
 var fetchCmd = &cobra.Command{
 	Use:   "fetch",
@@ -30,13 +46,15 @@ func init() {
 	rootCmd.AddCommand(fetchCmd)
 	fetchCmd.Flags().String("stack", "", "name for the stack (default: auto-generated from branches)")
 	fetchCmd.Flags().String("base", "", "base branch (default: auto-detected)")
+	fetchCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runFetchCmd(cmd *cobra.Command, args []string) error {
 	stackName, _ := cmd.Flags().GetString("stack")
 	base, _ := cmd.Flags().GetString("base")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 
-	return runFetchLogic(stackName, base)
+	return runFetchLogic(stackName, base, jsonFlag)
 }
 
 // RunFetch is a compatibility wrapper for callers that use the old interface.
@@ -45,7 +63,7 @@ func RunFetch(args []string) error {
 	return rootCmd.Execute()
 }
 
-func runFetchLogic(stackName, base string) error {
+func runFetchLogic(stackName, base string, jsonMode bool) error {
 
 	if !ghpkg.Available() {
 		return fmt.Errorf("gh CLI is required for stack discovery — install it from https://cli.github.com")
@@ -56,8 +74,14 @@ func runFetchLogic(stackName, base string) error {
 		return fmt.Errorf("not inside a git repository: %w", err)
 	}
 
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-	defer func() { _ = bus.Finish() }()
+	var rdr render.Renderer
+	if jsonMode {
+		rdr = &render.JSONRenderer{}
+	}
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: rdr})
+	if !jsonMode {
+		defer func() { _ = bus.Finish() }()
+	}
 
 	stack.MigrateIfNeeded(root)
 
@@ -112,45 +136,52 @@ func runFetchLogic(stackName, base string) error {
 		return nil
 	}
 
-	// Display discovered stacks
-	bus.Printf("\nFound %d potential stack(s):\n", len(discovered))
-
-	for i, ds := range discovered {
-		bus.Printf("  [%d] base: %s", i+1, ds.Base)
-		for j, pr := range ds.Chains {
-			prefix := "  ├─"
-			if j == len(ds.Chains)-1 {
-				prefix = "  └─"
-			}
-			bus.Printf("      %s #%-4d  %s", prefix, pr.Number, pr.HeadRefName)
-		}
-		bus.Print("")
-	}
-
-	// Let user pick
+	// In JSON mode, auto-select if one stack, error if multiple
 	choice := 0
-	if len(discovered) == 1 {
-		bus.Pause()
-		proceed := ui.Confirm("Fetch this stack?")
-		bus.Resume()
-		if !proceed {
-			bus.Print("Aborted.")
-			return nil
+	if jsonMode {
+		if len(discovered) > 1 {
+			return fmt.Errorf("found %d stacks — use --base to narrow results", len(discovered))
 		}
 	} else {
-		options := make([]huh.Option[string], len(discovered))
+		// Display discovered stacks
+		bus.Printf("\nFound %d potential stack(s):\n", len(discovered))
+
 		for i, ds := range discovered {
-			label := fmt.Sprintf("base: %s — %d branches", ds.Base, len(ds.Chains))
-			options[i] = huh.NewOption(label, fmt.Sprintf("%d", i))
+			bus.Printf("  [%d] base: %s", i+1, ds.Base)
+			for j, pr := range ds.Chains {
+				prefix := "  ├─"
+				if j == len(ds.Chains)-1 {
+					prefix = "  └─"
+				}
+				bus.Printf("      %s #%-4d  %s", prefix, pr.Number, pr.HeadRefName)
+			}
+			bus.Print("")
 		}
-		bus.Pause()
-		picked := ui.Select("Which stack to fetch?", options)
-		bus.Resume()
-		if picked == "" {
-			bus.Print("Aborted.")
-			return nil
+
+		// Let user pick
+		if len(discovered) == 1 {
+			bus.Pause()
+			proceed := ui.Confirm("Fetch this stack?")
+			bus.Resume()
+			if !proceed {
+				bus.Print("Aborted.")
+				return nil
+			}
+		} else {
+			options := make([]huh.Option[string], len(discovered))
+			for i, ds := range discovered {
+				label := fmt.Sprintf("base: %s — %d branches", ds.Base, len(ds.Chains))
+				options[i] = huh.NewOption(label, fmt.Sprintf("%d", i))
+			}
+			bus.Pause()
+			picked := ui.Select("Which stack to fetch?", options)
+			bus.Resume()
+			if picked == "" {
+				bus.Print("Aborted.")
+				return nil
+			}
+			fmt.Sscanf(picked, "%d", &choice)
 		}
-		fmt.Sscanf(picked, "%d", &choice)
 	}
 
 	selected := discovered[choice]
@@ -178,7 +209,33 @@ func runFetchLogic(stackName, base string) error {
 
 	if matched != nil {
 		// Reconcile existing stack
-		return reconcileStack(root, matched, selected, bus)
+		err := reconcileStack(root, matched, selected, bus)
+		if err != nil {
+			return err
+		}
+		if jsonMode {
+			changes := stack.Reconcile(matched, selected)
+			action := "up_to_date"
+			if len(changes) > 0 {
+				action = "reconciled"
+			}
+			result := FetchResult{
+				Stack:   matched.StackID,
+				Base:    matched.Base,
+				Action:  action,
+				Changes: len(changes),
+			}
+			for _, n := range matched.Nodes {
+				result.Nodes = append(result.Nodes, FetchNodeResult{Branch: n.Branch, PR: n.PR})
+			}
+			if result.Nodes == nil {
+				result.Nodes = []FetchNodeResult{}
+			}
+			_ = bus.Finish()
+			data, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(data))
+		}
+		return nil
 	}
 
 	// No match — first-time registration
@@ -186,7 +243,27 @@ func runFetchLogic(stackName, base string) error {
 	if name == "" {
 		name = inferStackName(selected.Chains)
 	}
-	return RegisterStack(root, name, selected)
+	if err := RegisterStack(root, name, selected); err != nil {
+		return err
+	}
+
+	if jsonMode {
+		result := FetchResult{
+			Stack:  name,
+			Base:   selected.Base,
+			Action: "registered",
+		}
+		for _, pr := range selected.Chains {
+			result.Nodes = append(result.Nodes, FetchNodeResult{Branch: pr.HeadRefName, PR: pr.Number})
+		}
+		if result.Nodes == nil {
+			result.Nodes = []FetchNodeResult{}
+		}
+		_ = bus.Finish()
+		data, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(data))
+	}
+	return nil
 }
 
 // matchLocalStack finds the local stack with the most branch overlap with
