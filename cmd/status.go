@@ -33,6 +33,9 @@ type StatusNodeResult struct {
 	CommitsAhead int    `json:"commits_ahead,omitempty"`
 	IsCurrent    bool   `json:"is_current,omitempty"`
 	CIStatus     string `json:"ci_status,omitempty"`
+	ReviewStatus string `json:"review_status,omitempty"`
+	Mergeable    string `json:"mergeable,omitempty"`
+	IsDraft      bool   `json:"is_draft,omitempty"`
 }
 
 var statusCmd = &cobra.Command{
@@ -160,6 +163,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		if prInfo, ok := prInfoByBranch[node.Branch]; ok {
 			nr.CIStatus = gh.AggregateCheckStatus(prInfo.StatusChecks)
+			nr.ReviewStatus = strings.ToLower(prInfo.ReviewDecision)
+			nr.Mergeable = strings.ToLower(prInfo.Mergeable)
+			nr.IsDraft = prInfo.IsDraft
 		}
 
 		status := node.Status
@@ -244,17 +250,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			syncStr = "  " + syncStatus
 		}
 
-		ciStr := ""
-		switch nr.CIStatus {
-		case "pass":
-			ciStr = "  " + ui.Green.Render("CI ✓")
-		case "fail":
-			ciStr = "  " + ui.Red.Render("CI ✗")
-		case "pending":
-			ciStr = "  " + ui.Yellow.Render("CI ⏳")
-		}
+		mergeStr := formatMergeability(nr)
 
-		bus.Printf(" %s %s  %-30s %s %s%s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr, ciStr)
+		bus.Printf(" %s %s  %-30s %s %s%s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr, mergeStr)
 	}
 
 	// Print sync suggestion
@@ -275,4 +273,48 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// formatMergeability renders compact [CI:x] [R:x] badges for TTY output.
+func formatMergeability(nr StatusNodeResult) string {
+	// Only show for open PRs with a PR number
+	if nr.PR == 0 || nr.Status == "merged" || nr.Status == "closed" {
+		return ""
+	}
+
+	if nr.IsDraft {
+		return "  " + ui.Gray.Render("draft")
+	}
+
+	if nr.Mergeable == "conflicting" {
+		return "  " + ui.Red.Render("[conflict]")
+	}
+
+	// CI badge
+	var ciBadge string
+	switch nr.CIStatus {
+	case "pass":
+		ciBadge = ui.Green.Render("[CI:✓]")
+	case "fail":
+		ciBadge = ui.Red.Render("[CI:✗]")
+	case "pending":
+		ciBadge = ui.Yellow.Render("[CI:⏳]")
+	default:
+		ciBadge = ui.Gray.Render("[CI:–]")
+	}
+
+	// Review badge
+	var reviewBadge string
+	switch nr.ReviewStatus {
+	case "approved":
+		reviewBadge = ui.Green.Render("[R:✓]")
+	case "changes_requested":
+		reviewBadge = ui.Red.Render("[R:✗]")
+	case "review_required":
+		reviewBadge = ui.Yellow.Render("[R:?]")
+	default:
+		reviewBadge = ui.Gray.Render("[R:–]")
+	}
+
+	return "  " + ciBadge + " " + reviewBadge
 }
