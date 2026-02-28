@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.2.7](https://github.com/pavelpascari/sdf/compare/v0.2.6...v0.2.7) (2026-02-28)
+
+
+### Features
+
+* add --json flag for structured sync output ([#104](https://github.com/pavelpascari/sdf/issues/104)) ([08eed74](https://github.com/pavelpascari/sdf/commit/08eed74f5d1e856ea066b6b05382ff44e44511da))
+* add render package with event bus, TTY/JSON renderers, and ANSI helpers ([#98](https://github.com/pavelpascari/sdf/issues/98)) ([2e017d8](https://github.com/pavelpascari/sdf/commit/2e017d803b8ded0fce3a12ef5f538b950a5e7338))
+* **branch:** add --json flag for structured output ([#110](https://github.com/pavelpascari/sdf/issues/110)) ([713ddad](https://github.com/pavelpascari/sdf/commit/713ddadad774c06045a2d3606d7a67822e692c1c))
+* **config:** add --json flag for structured output ([#118](https://github.com/pavelpascari/sdf/issues/118)) ([18d719d](https://github.com/pavelpascari/sdf/commit/18d719d9c9a67509533375486672f5b16df74300))
+* **doctor:** add --json flag for structured output ([#116](https://github.com/pavelpascari/sdf/issues/116)) ([f9d2d12](https://github.com/pavelpascari/sdf/commit/f9d2d122f2e370d9f1a2d807d0dfb769d2f026f2))
+* event-driven bus with print/warn/err and batch lifecycle ([#101](https://github.com/pavelpascari/sdf/issues/101)) ([e094624](https://github.com/pavelpascari/sdf/commit/e094624d1f6f15437ee33b970758c33f4a3a0473))
+* **fetch:** add --json flag for structured output ([#112](https://github.com/pavelpascari/sdf/issues/112)) ([3e1dbd0](https://github.com/pavelpascari/sdf/commit/3e1dbd0327c4c99ccc878f693cc06fa87ba5eb13))
+* **merge:** add --json flag for structured output ([#108](https://github.com/pavelpascari/sdf/issues/108)) ([d50427c](https://github.com/pavelpascari/sdf/commit/d50427c26217c4ded63c95e2e660f13838241343))
+* **move:** add --json flag for structured output ([#120](https://github.com/pavelpascari/sdf/issues/120)) ([6701585](https://github.com/pavelpascari/sdf/commit/670158552d94b32cd09b8f828c6df14b8e9d7b45))
+* **rdr:** mergeability ([#123](https://github.com/pavelpascari/sdf/issues/123)) ([8d24344](https://github.com/pavelpascari/sdf/commit/8d24344ef75e17efb5dfdc662a39e1094507a1cc))
+* **status:** add --json flag for structured output ([#106](https://github.com/pavelpascari/sdf/issues/106)) ([5517b83](https://github.com/pavelpascari/sdf/commit/5517b838d96faff64bef1b3521bbb4b5da8697e9))
+* **status:** display CI check status for each PR ([#121](https://github.com/pavelpascari/sdf/issues/121)) ([599068c](https://github.com/pavelpascari/sdf/commit/599068cdd4ae32ff67bda721d43e0a90b6f38a02))
+* **switch:** add --json flag for structured output ([#114](https://github.com/pavelpascari/sdf/issues/114)) ([7afd479](https://github.com/pavelpascari/sdf/commit/7afd479a9c9b24e4c141dd8e432f4dd3341bb31a))
+
+
+### Bug Fixes
+
+* **ci:** fix YAML syntax error in release-checklist workflow ([#124](https://github.com/pavelpascari/sdf/issues/124)) ([0c36926](https://github.com/pavelpascari/sdf/commit/0c36926e4776aa538e21c717b093e9bc776fce70))
+
+
+### Code Refactoring
+
+* **branch:** route output through render.Bus ([#109](https://github.com/pavelpascari/sdf/issues/109)) ([c517018](https://github.com/pavelpascari/sdf/commit/c5170187f937791349e3d12412196e54ad0d2087))
+* **config:** route all output through render.Bus ([#117](https://github.com/pavelpascari/sdf/issues/117)) ([7f530be](https://github.com/pavelpascari/sdf/commit/7f530be3e8ed6227604828b6aac1bf21c45a74d4))
+* **doctor:** route all output through render.Bus ([#115](https://github.com/pavelpascari/sdf/issues/115)) ([05777ef](https://github.com/pavelpascari/sdf/commit/05777ef35bc43f147f858009e90392fbd68eb145))
+* **fetch:** route all output through render.Bus ([#111](https://github.com/pavelpascari/sdf/issues/111)) ([0d22095](https://github.com/pavelpascari/sdf/commit/0d220953270a963abec475a641a556dc1cf28710))
+* **merge:** route all output through render.Bus ([#107](https://github.com/pavelpascari/sdf/issues/107)) ([dda8195](https://github.com/pavelpascari/sdf/commit/dda81954083bb5e3b0a6199b8bcae2940d768ae8))
+* **move:** route all output through render.Bus ([#119](https://github.com/pavelpascari/sdf/issues/119)) ([36219b3](https://github.com/pavelpascari/sdf/commit/36219b3d3947af8b14a9ca8650fb693128d68d04))
+* route all sync and prnav output through render.Bus ([#99](https://github.com/pavelpascari/sdf/issues/99)) ([68f8a73](https://github.com/pavelpascari/sdf/commit/68f8a735fca2d42e266385e03e29f73671b6bfde))
+* **status:** route all output through render.Bus ([#105](https://github.com/pavelpascari/sdf/issues/105)) ([b75b9dd](https://github.com/pavelpascari/sdf/commit/b75b9dd3c552f0ced1ddb9d87f5fe9bf70478079))
+* **switch:** route all output through render.Bus ([#113](https://github.com/pavelpascari/sdf/issues/113)) ([9f01762](https://github.com/pavelpascari/sdf/commit/9f017621ce44eb241034e9108caaf66b45dbae4e))
+
+
+### Documentation
+
+* add render package research, design, and implementation plan ([#100](https://github.com/pavelpascari/sdf/issues/100)) ([5fc6dee](https://github.com/pavelpascari/sdf/commit/5fc6dee769b2ef64e4b39d6eda34bc8ef23a4faf))
+
 ## [0.2.6](https://github.com/pavelpascari/sdf/compare/v0.2.5...v0.2.6) (2026-02-26)
 
 
