@@ -157,7 +157,7 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		}
 
 		// Run sync with confirmation skipped (user already confirmed the merge)
-		if err := runSyncFull(root, s.StackID, true, false, mergeBus); err != nil {
+		if err := runSyncFull(root, s.StackID, true, false, false, nil, mergeBus); err != nil {
 			return fmt.Errorf("post-merge sync failed: %w\n\nRun `sdf sync` to retry", err)
 		}
 	} else {
