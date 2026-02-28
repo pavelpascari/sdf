@@ -292,9 +292,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			// Only print merged status when there's real sync work to show
 			if hasRealWork {
 				if node.PR > 0 {
-					fmt.Printf("  %s PR %s (%s) merged\n", ui.SymOK, ui.PR(node.PR), ui.Branch(node.Branch))
+					bus.Printf("  %s PR %s (%s) merged", ui.SymOK, ui.PR(node.PR), ui.Branch(node.Branch))
 				} else {
-					fmt.Printf("  %s %s merged\n", ui.SymOK, ui.Branch(node.Branch))
+					bus.Printf("  %s %s merged", ui.SymOK, ui.Branch(node.Branch))
 				}
 			}
 			continue
@@ -305,7 +305,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 		}
 
 		if isBlocked(s, i, failed) {
-			fmt.Printf("  %s skipping %s — depends on a branch that failed\n", ui.SymFail, ui.Branch(node.Branch))
+			bus.Printf("  %s skipping %s — depends on a branch that failed", ui.SymFail, ui.Branch(node.Branch))
 			continue
 		}
 
@@ -317,7 +317,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 		}
 
 		if node.BaseTip != "" && currentParentTip != node.BaseTip {
-			fmt.Printf("  rebasing %s onto %s...\n", ui.Branch(node.Branch), ui.Branch(parent))
+			bus.Printf("  rebasing %s onto %s...", ui.Branch(node.Branch), ui.Branch(parent))
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
 				action, err := promptOnConflict(root, s, node.Branch, originalBranch, i, err, bus)
@@ -338,9 +338,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			modified = true
 
 			if err := gitpkg.Push(node.Branch); err != nil {
-				fmt.Fprintf(os.Stderr, "  %s push failed for %s: %v\n", ui.SymFail, ui.Branch(node.Branch), err)
+				bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
 			} else {
-				fmt.Printf("  %s %s rebased and pushed\n", ui.SymOK, ui.Branch(node.Branch))
+				bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
 			}
 
 			// Silently update PR base when the parent branch name changed
@@ -352,7 +352,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 				}
 				if parent != directParent {
 					if err := ghpkg.PREditBase(node.PR, parent); err != nil {
-						fmt.Fprintf(os.Stderr, "  %s could not update PR %s base: %v\n", ui.SymWarn, ui.PR(node.PR), err)
+						bus.Warnf("  %s could not update PR %s base: %v", ui.SymWarn, ui.PR(node.PR), err)
 					} else {
 						prBasesUpdated++
 					}
@@ -362,7 +362,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	}
 
 	if prBasesUpdated > 0 {
-		fmt.Printf("  %s %d PR base(s) updated on GitHub\n", ui.SymOK, prBasesUpdated)
+		bus.Printf("  %s %d PR base(s) updated on GitHub", ui.SymOK, prBasesUpdated)
 	}
 
 	if modified {
@@ -386,18 +386,18 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	gitpkg.Checkout(checkoutTarget)
 
 	if len(failed) > 0 {
-		fmt.Printf("\nSync partially complete. %d branch(es) failed:\n", len(failed))
+		bus.Printf("\nSync partially complete. %d branch(es) failed:", len(failed))
 		for branch, err := range failed {
-			fmt.Printf("  %s %s: %v\n", ui.SymFail, ui.Branch(branch), err)
+			bus.Printf("  %s %s: %v", ui.SymFail, ui.Branch(branch), err)
 		}
-		fmt.Println("\nRun `sdf sync` again to retry.")
+		bus.Print("\nRun `sdf sync` again to retry.")
 		return fmt.Errorf("%d branch(es) could not be synced", len(failed))
 	}
 
 	if modified {
-		fmt.Println("\nSync complete. Stack updated.")
+		bus.Print("\nSync complete. Stack updated.")
 	} else {
-		fmt.Println("\nEverything is in sync.")
+		bus.Print("\nEverything is in sync.")
 	}
 
 	// Offer to create PRs for branches that don't have one yet
@@ -409,7 +409,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	// Update stack navigation in all PRs (runs even when in sync,
 	// to catch stale nav hashes from PRs created before this feature)
 	if err := updateStackNavForAllPRs(root, s, bus); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
+		bus.Warnf("warning: could not update PR descriptions: %v", err)
 	}
 
 	return nil
