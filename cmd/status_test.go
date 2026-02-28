@@ -67,12 +67,12 @@ func TestFormatMergeability(t *testing.T) {
 		{name: "no PR", nr: StatusNodeResult{Status: "open"}, want: ""},
 		{name: "merged", nr: StatusNodeResult{PR: 1, Status: "merged"}, want: ""},
 		{name: "draft", nr: StatusNodeResult{PR: 1, Status: "open", IsDraft: true}, want: "draft"},
-		{name: "conflicting", nr: StatusNodeResult{PR: 1, Status: "open", Mergeable: "conflicting"}, want: "conflicting"},
-		{name: "ready", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "approved"}, want: "ready"},
-		{name: "blocked by CI", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "fail", ReviewStatus: "approved"}, want: "blocked"},
-		{name: "blocked by review", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "changes_requested"}, want: "blocked"},
-		{name: "pending CI", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pending"}, want: "pending"},
-		{name: "pending review", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "review_required"}, want: "pending"},
+		{name: "conflicting", nr: StatusNodeResult{PR: 1, Status: "open", Mergeable: "conflicting"}, want: "conflict"},
+		{name: "CI pass + approved", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "approved"}, want: "[CI:"},
+		{name: "CI fail badge", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "fail", ReviewStatus: "approved"}, want: "[CI:"},
+		{name: "review changes requested", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "changes_requested"}, want: "[R:"},
+		{name: "pending CI badge", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pending"}, want: "[CI:"},
+		{name: "review required badge", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "review_required"}, want: "[R:"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -275,9 +275,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// formatMergeability renders a combined mergeability indicator for TTY output.
+// formatMergeability renders compact [CI:x] [R:x] badges for TTY output.
 func formatMergeability(nr StatusNodeResult) string {
-	// Only show for open PRs
+	// Only show for open PRs with a PR number
 	if nr.PR == 0 || nr.Status == "merged" || nr.Status == "closed" {
 		return ""
 	}
@@ -287,50 +287,34 @@ func formatMergeability(nr StatusNodeResult) string {
 	}
 
 	if nr.Mergeable == "conflicting" {
-		return "  " + ui.Red.Render("conflicting")
+		return "  " + ui.Red.Render("[conflict]")
 	}
 
-	// Build CI part
-	var ciPart string
+	// CI badge
+	var ciBadge string
 	switch nr.CIStatus {
 	case "pass":
-		ciPart = "CI ✓"
+		ciBadge = ui.Green.Render("[CI:✓]")
 	case "fail":
-		ciPart = "CI ✗"
+		ciBadge = ui.Red.Render("[CI:✗]")
 	case "pending":
-		ciPart = "CI ⏳"
+		ciBadge = ui.Yellow.Render("[CI:⏳]")
 	default:
-		ciPart = "CI –"
+		ciBadge = ui.Gray.Render("[CI:–]")
 	}
 
-	// Build review part
-	var reviewPart string
+	// Review badge
+	var reviewBadge string
 	switch nr.ReviewStatus {
 	case "approved":
-		reviewPart = "approved"
+		reviewBadge = ui.Green.Render("[R:✓]")
 	case "changes_requested":
-		reviewPart = "changes requested"
+		reviewBadge = ui.Red.Render("[R:✗]")
 	case "review_required":
-		reviewPart = "review required"
+		reviewBadge = ui.Yellow.Render("[R:?]")
+	default:
+		reviewBadge = ui.Gray.Render("[R:–]")
 	}
 
-	// Build detail string
-	detail := ciPart
-	if reviewPart != "" {
-		detail += ", " + reviewPart
-	}
-
-	// Determine overall label and color
-	if nr.CIStatus == "pass" && nr.ReviewStatus == "approved" {
-		return "  " + ui.Green.Render(fmt.Sprintf("ready (%s)", detail))
-	}
-	if nr.CIStatus == "fail" || nr.ReviewStatus == "changes_requested" {
-		return "  " + ui.Red.Render(fmt.Sprintf("blocked (%s)", detail))
-	}
-	if nr.CIStatus == "pending" || nr.ReviewStatus == "review_required" {
-		return "  " + ui.Yellow.Render(fmt.Sprintf("pending (%s)", detail))
-	}
-
-	// Fallback: show detail without overall label
-	return "  " + ui.Gray.Render(fmt.Sprintf("(%s)", detail))
+	return "  " + ciBadge + " " + reviewBadge
 }
