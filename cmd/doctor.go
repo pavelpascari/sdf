@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DoctorResult is the structured output of sdf doctor when --json is used.
+type DoctorResult struct {
+	Dependencies []DependencyResult `json:"dependencies"`
+	OK           bool               `json:"ok"`
+}
+
+// DependencyResult describes a single dependency check.
+type DependencyResult struct {
+	Name     string `json:"name"`
+	Found    bool   `json:"found"`
+	Version  string `json:"version,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Required bool   `json:"required"`
+}
+
 var doctorCmd = &cobra.Command{
 	Use:         "doctor",
 	Short:       "Check that dependencies are available",
@@ -25,9 +41,15 @@ var doctorCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+	doctorCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runDoctor(cmd *cobra.Command, args []string) error {
+	var jsonFlag bool
+	if cmd != nil {
+		jsonFlag, _ = cmd.Flags().GetBool("json")
+	}
+
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
 
@@ -35,29 +57,45 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	bus.Print("")
 	allOk := true
 
-	// git (required)
-	if path, err := exec.LookPath(gitpkg.Binary); err != nil {
-		bus.Printf("  %s git        not found (required)", ui.SymFail)
-		allOk = false
-	} else {
-		ver := getVersion(gitpkg.Binary, "--version")
-		bus.Printf("  %s git        %s (%s)", ui.SymOK, ver, path)
+	type depCheck struct {
+		name     string
+		binary   string
+		verArg   string
+		required bool
+		missing  string // message when not found
 	}
 
-	// gh (required for PR operations)
-	if path, err := exec.LookPath(ghpkg.Binary); err != nil {
-		bus.Printf("  %s gh         not found (needed for PR operations)", ui.Gray.Render("●"))
-	} else {
-		ver := getVersion(ghpkg.Binary, "version")
-		bus.Printf("  %s gh         %s (%s)", ui.SymOK, ver, path)
+	checks := []depCheck{
+		{name: "git", binary: gitpkg.Binary, verArg: "--version", required: true, missing: "not found (required)"},
+		{name: "gh", binary: ghpkg.Binary, verArg: "version", required: false, missing: "not found (needed for PR operations)"},
+		{name: "claude", binary: claudepkg.Binary, verArg: "--version", required: false, missing: "not found (needed for conflict resolution and PR descriptions)"},
 	}
 
-	// claude (optional, needed for conflict resolution and PR description generation)
-	if path, err := exec.LookPath(claudepkg.Binary); err != nil {
-		bus.Printf("  %s claude     not found (needed for conflict resolution and PR descriptions)", ui.Gray.Render("●"))
-	} else {
-		ver := getVersion(claudepkg.Binary, "--version")
-		bus.Printf("  %s claude     %s (%s)", ui.SymOK, ver, path)
+	var deps []DependencyResult
+	for _, chk := range checks {
+		dep := DependencyResult{Name: chk.name, Required: chk.required}
+		if path, err := exec.LookPath(chk.binary); err != nil {
+			dep.Found = false
+			if chk.required {
+				bus.Printf("  %s %-10s %s", ui.SymFail, chk.name, chk.missing)
+				allOk = false
+			} else {
+				bus.Printf("  %s %-10s %s", ui.Gray.Render("●"), chk.name, chk.missing)
+			}
+		} else {
+			dep.Found = true
+			dep.Path = path
+			dep.Version = getVersion(chk.binary, chk.verArg)
+			bus.Printf("  %s %-10s %s (%s)", ui.SymOK, chk.name, dep.Version, path)
+		}
+		deps = append(deps, dep)
+	}
+
+	if jsonFlag {
+		result := DoctorResult{Dependencies: deps, OK: allOk}
+		data, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(data))
+		return nil
 	}
 
 	bus.Print("")
