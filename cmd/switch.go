@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
+
+// SwitchResult is the structured output of sdf switch when --json is used.
+type SwitchResult struct {
+	Branch string `json:"branch"`
+	Stack  string `json:"stack,omitempty"`
+	Layer  int    `json:"layer,omitempty"`
+	Total  int    `json:"total,omitempty"`
+}
 
 var switchCmd = &cobra.Command{
 	Use:   "switch [branch]",
@@ -24,17 +33,19 @@ With a branch name, checks it out and shows its stack position.`,
 
 func init() {
 	rootCmd.AddCommand(switchCmd)
+	switchCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runSwitchCmd(cmd *cobra.Command, args []string) error {
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 	if len(args) == 0 {
 		return listStackBranches()
 	}
-	return runSwitchToTarget(args[0])
+	return runSwitchToTarget(args[0], jsonFlag)
 }
 
 // runSwitchToTarget checks out a branch and reports which stack it belongs to.
-func runSwitchToTarget(target string) error {
+func runSwitchToTarget(target string, jsonMode bool) error {
 	root, err := stack.FindRoot()
 	if err != nil {
 		// Not in an sdf repo — plain git checkout
@@ -51,6 +62,19 @@ func runSwitchToTarget(target string) error {
 			return fmt.Errorf("branch %q is not in any stack and git checkout failed: %w", target, err)
 		}
 		return fmt.Errorf("cannot checkout %s: %w", target, err)
+	}
+
+	if jsonMode {
+		result := SwitchResult{Branch: target}
+		if lookupErr == nil {
+			idx := s.NodeIndex(target)
+			result.Stack = s.StackID
+			result.Layer = idx + 1
+			result.Total = len(s.Nodes)
+		}
+		data, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(data))
+		return nil
 	}
 
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
