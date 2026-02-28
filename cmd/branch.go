@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -12,6 +13,13 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/spf13/cobra"
 )
+
+// NewBranchResult is the structured output of sdf branch when --json is used.
+type NewBranchResult struct {
+	Branch string `json:"branch"`
+	Stack  string `json:"stack"`
+	Parent string `json:"parent"`
+}
 
 var branchCmd = &cobra.Command{
 	Use:         "branch <name>",
@@ -25,6 +33,7 @@ func init() {
 	rootCmd.AddCommand(branchCmd)
 	branchCmd.Flags().String("stack", "", "stack to add the branch to (default: auto-detect)")
 	branchCmd.Flags().Bool("no-prefix", false, "create branch without applying the configured prefix")
+	branchCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 // RunBranch is a compatibility wrapper for tests.
@@ -36,6 +45,7 @@ func RunBranch(args []string) error {
 func runBranch(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	noPrefix, _ := cmd.Flags().GetBool("no-prefix")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	branchName := args[0]
 
@@ -120,8 +130,14 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-	defer func() { _ = bus.Finish() }()
+	var rdr render.Renderer
+	if jsonFlag {
+		rdr = &render.JSONRenderer{}
+	}
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: rdr})
+	if !jsonFlag {
+		defer func() { _ = bus.Finish() }()
+	}
 
 	// Push tracking branch to origin
 	if err := gitpkg.PushNew(branchName); err != nil {
@@ -139,6 +155,21 @@ func runBranch(cmd *cobra.Command, args []string) error {
 				bus.Printf("  Updated PR #%d base → %s", downstream.PR, branchName)
 			}
 		}
+	}
+
+	if jsonFlag {
+		result := NewBranchResult{
+			Branch: branchName,
+			Stack:  s.StackID,
+			Parent: parent,
+		}
+		_ = bus.Finish()
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("cannot marshal result: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
 	}
 
 	bus.Printf("Created branch %q in stack %q (based on %s)", branchName, s.StackID, parent)
