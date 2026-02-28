@@ -10,6 +10,7 @@ import (
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
@@ -46,6 +47,9 @@ func runMoveLogic(commits []string) error {
 	if err != nil {
 		return err
 	}
+
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
 
 	s, err := resolveStack(root, "")
 	if err != nil {
@@ -139,13 +143,13 @@ func runMoveLogic(commits []string) error {
 		}
 	}
 
-	fmt.Printf("Moving %d commit(s) from %s to %s\n", len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
+	bus.Printf("Moving %d commit(s) from %s to %s", len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
 	for _, c := range resolvedCommits {
-		fmt.Printf("  %s\n", short(c))
+		bus.Printf("  %s", short(c))
 	}
 
 	// --- Phase 1: cherry-pick commits onto the parent ---
-	fmt.Printf("\n→ cherry-picking onto %s...\n", parent)
+	bus.Printf("\n→ cherry-picking onto %s...", parent)
 	if err := gitpkg.Checkout(parent); err != nil {
 		return fmt.Errorf("cannot checkout %s: %w", parent, err)
 	}
@@ -161,12 +165,12 @@ func runMoveLogic(commits []string) error {
 	if err != nil {
 		return fmt.Errorf("cannot resolve new tip of %s: %w", parent, err)
 	}
-	fmt.Printf("  %s %s tip is now %s\n", ui.SymOK, ui.Branch(parent), short(newParentTip))
+	bus.Printf("  %s %s tip is now %s", ui.SymOK, ui.Branch(parent), short(newParentTip))
 
 	// --- Phase 2: strip moved commits from current branch ---
-	fmt.Printf("→ rebasing %s onto updated %s...\n", branch, parent)
+	bus.Printf("→ rebasing %s onto updated %s...", branch, parent)
 	if err := gitpkg.RebaseOnto(newParentTip, lastMovedSHA, branch); err != nil {
-		if conflictErr := handleMoveConflict(s, branch, err); conflictErr != nil {
+		if conflictErr := handleMoveConflict(s, branch, err, bus); conflictErr != nil {
 			gitpkg.Checkout(branch)
 			return fmt.Errorf("rebase of %s failed: %w", branch, conflictErr)
 		}
@@ -186,10 +190,10 @@ func runMoveLogic(commits []string) error {
 		}
 
 		if downstream.BaseTip != "" && downstream.BaseTip != upstreamTip {
-			fmt.Printf("→ rebasing %s onto updated %s...\n", downstream.Branch, upstreamBranch)
+			bus.Printf("→ rebasing %s onto updated %s...", downstream.Branch, upstreamBranch)
 
 			if err := gitpkg.RebaseOnto(upstreamTip, downstream.BaseTip, downstream.Branch); err != nil {
-				if conflictErr := handleMoveConflict(s, downstream.Branch, err); conflictErr != nil {
+				if conflictErr := handleMoveConflict(s, downstream.Branch, err, bus); conflictErr != nil {
 					// Save partial progress before failing
 					stack.Save(root, s)
 					gitpkg.Checkout(branch)
@@ -208,23 +212,23 @@ func runMoveLogic(commits []string) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	fmt.Printf("\n%s Moved %d commit(s) from %s to %s\n", ui.SymOK, len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
+	bus.Printf("\n%s Moved %d commit(s) from %s to %s", ui.SymOK, len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
 	return nil
 }
 
 // handleMoveConflict tries Claude resolution for a rebase conflict during move.
 // Falls back to aborting the rebase and returning the error.
-func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error) error {
+func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error, bus *render.Bus) error {
 	conflicted, err := gitpkg.ConflictedFiles()
 	if err != nil || len(conflicted) == 0 {
 		gitpkg.RebaseAbort()
 		return rebaseErr
 	}
 
-	fmt.Printf("  %s Conflict in %s — %d file(s)\n", ui.SymWarn, ui.Branch(branch), len(conflicted))
+	bus.Printf("  %s Conflict in %s — %d file(s)", ui.SymWarn, ui.Branch(branch), len(conflicted))
 
 	if claudepkg.Available() {
-		fmt.Println("  → invoking Claude for conflict resolution...")
+		bus.Print("  → invoking Claude for conflict resolution...")
 
 		parent := s.ParentBranch(branch)
 		upstreamSummary, _ := gitpkg.DiffSummary(s.FindNode(branch).BaseTip, parent)
@@ -251,13 +255,13 @@ func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error) error {
 			if err := applyResolutions(output, conflicted); err == nil {
 				if err := gitpkg.Add("."); err == nil {
 					if err := gitpkg.RebaseContinue(); err == nil {
-						fmt.Printf("  %s Conflicts resolved by Claude\n", ui.SymOK)
+						bus.Printf("  %s Conflicts resolved by Claude", ui.SymOK)
 						return nil
 					}
 				}
 			}
 		}
-		fmt.Fprintf(os.Stderr, "  Claude resolution failed, falling back to manual resolution\n")
+		bus.Warnf("  Claude resolution failed, falling back to manual resolution")
 	}
 
 	gitpkg.RebaseAbort()
