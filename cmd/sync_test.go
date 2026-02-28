@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -607,3 +608,121 @@ func TestBuildDescriptionPrompt_NoDiff(t *testing.T) {
 
 // confirmSync is now a thin wrapper around ui.Confirm (huh library).
 // Interactive prompt behavior is tested by huh's own test suite.
+
+// --- SyncResult JSON tests ---
+
+func TestSyncResultJSON(t *testing.T) {
+	result := SyncResult{
+		Stack: "my-feature",
+		Base:  "main",
+		Branches: []BranchResult{
+			{Branch: "feat-a", PR: 42, Action: "merged"},
+			{Branch: "feat-b", PR: 43, Action: "rebased", Pushed: true, BaseUpdated: true},
+			{Branch: "feat-c", Action: "blocked", Reason: "depends on a branch that failed"},
+		},
+		PRUpdates: []PRUpdate{
+			{PR: 43, Field: "nav", Status: "updated"},
+			{PR: 43, Field: "title", Status: "unchanged"},
+		},
+		Warnings: []string{"fetch failed"},
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	var roundtrip SyncResult
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if roundtrip.Stack != "my-feature" {
+		t.Errorf("stack: got %q, want %q", roundtrip.Stack, "my-feature")
+	}
+	if roundtrip.Base != "main" {
+		t.Errorf("base: got %q, want %q", roundtrip.Base, "main")
+	}
+	if len(roundtrip.Branches) != 3 {
+		t.Fatalf("branches: got %d, want 3", len(roundtrip.Branches))
+	}
+	if roundtrip.Branches[0].Action != "merged" {
+		t.Errorf("branches[0].action: got %q, want %q", roundtrip.Branches[0].Action, "merged")
+	}
+	if roundtrip.Branches[1].Action != "rebased" {
+		t.Errorf("branches[1].action: got %q, want %q", roundtrip.Branches[1].Action, "rebased")
+	}
+	if !roundtrip.Branches[1].Pushed {
+		t.Error("branches[1].pushed: got false, want true")
+	}
+	if !roundtrip.Branches[1].BaseUpdated {
+		t.Error("branches[1].base_updated: got false, want true")
+	}
+	if roundtrip.Branches[2].Reason != "depends on a branch that failed" {
+		t.Errorf("branches[2].reason: got %q", roundtrip.Branches[2].Reason)
+	}
+	if len(roundtrip.PRUpdates) != 2 {
+		t.Fatalf("pr_updates: got %d, want 2", len(roundtrip.PRUpdates))
+	}
+	if roundtrip.PRUpdates[0].Field != "nav" {
+		t.Errorf("pr_updates[0].field: got %q, want %q", roundtrip.PRUpdates[0].Field, "nav")
+	}
+	if len(roundtrip.Warnings) != 1 || roundtrip.Warnings[0] != "fetch failed" {
+		t.Errorf("warnings: got %v", roundtrip.Warnings)
+	}
+	if roundtrip.Error != "" {
+		t.Errorf("error: got %q, want empty", roundtrip.Error)
+	}
+}
+
+func TestSyncResultJSON_EmptyOmitsOptional(t *testing.T) {
+	result := SyncResult{Stack: "test", Base: "main"}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	s := string(data)
+	if strings.Contains(s, "pr_updates") {
+		t.Error("empty pr_updates should be omitted")
+	}
+	if strings.Contains(s, "warnings") {
+		t.Error("empty warnings should be omitted")
+	}
+	if strings.Contains(s, `"error"`) {
+		t.Error("empty error should be omitted")
+	}
+	// branches is NOT omitempty — it should always be present (as null or [])
+	if !strings.Contains(s, "branches") {
+		t.Error("branches should always be present")
+	}
+}
+
+func TestSyncResultJSON_WithError(t *testing.T) {
+	result := SyncResult{
+		Stack: "test",
+		Base:  "main",
+		Branches: []BranchResult{
+			{Branch: "feat-a", PR: 10, Action: "failed", Reason: "conflict"},
+		},
+		Error: "conflict in feat-a — cannot resolve in --json mode",
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	var roundtrip SyncResult
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if roundtrip.Error == "" {
+		t.Error("error should be present")
+	}
+	if roundtrip.Branches[0].Action != "failed" {
+		t.Errorf("action: got %q, want %q", roundtrip.Branches[0].Action, "failed")
+	}
+}
