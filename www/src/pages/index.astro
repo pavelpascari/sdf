@@ -62,10 +62,11 @@ const jsonLd = [
 
       <!-- Subheadline -->
       <p class="text-lg sm:text-xl text-fg-muted max-w-2xl mx-auto leading-relaxed mb-10">
-        SDF handles cascade rebasing for GitHub PR stacks.
-        Run <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf sync</code> after
-        a PR merges to rebase all downstream branches &mdash; with optional
-        Claude-powered conflict resolution.
+        Turn a big branch into a reviewable stack with
+        <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf split</code>, or
+        build one from scratch and keep it synced with
+        <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf sync</code> &mdash;
+        with optional Claude-powered conflict resolution.
       </p>
 
       <!-- CTAs -->
@@ -176,7 +177,7 @@ const jsonLd = [
           </h3>
           <p class="text-fg-muted text-sm leading-relaxed mb-3">
             <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf split</code> takes a large branch and decomposes it into a stack of focused, reviewable PRs.
-            Claude analyzes your commits, identifies semantic themes, and creates each layer in dependency order &mdash; with hunk-level precision when the same file spans multiple concerns.
+            Claude analyzes your diff, identifies semantic themes, and creates each layer in dependency order &mdash; with hunk-level precision when the same file spans multiple concerns.
             The original branch is never touched.
           </p>
           <a href="/blog/sdf-split-from-branch-to-stack" class="text-sm text-brand hover:text-brand-dim transition-colors">
@@ -243,11 +244,11 @@ const jsonLd = [
           class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
           style="font-family: var(--font-display); font-weight: 700;"
         >
-          From new to sync in three steps
+          Two ways to stack
         </h2>
         <p class="text-fg-muted max-w-xl mx-auto">
-          Split a large feature into reviewable layers. Let SDF handle the rebasing
-          when anything upstream changes.
+          Build a stack branch by branch, or split an existing branch into one automatically.
+          Either way, SDF handles the rebasing when anything upstream changes.
         </p>
       </div>
 
@@ -365,7 +366,7 @@ const jsonLd = [
         <!-- Alternative: Split -->
         <div class="mt-16 pt-12 border-t border-rim">
           <div class="text-center mb-8">
-            <p class="text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-3">
+            <p class="text-xs font-semibold uppercase tracking-widest text-brand mb-3">
               Already have a big branch?
             </p>
             <h3
@@ -382,12 +383,15 @@ const jsonLd = [
 
           <div class="grid lg:grid-cols-2 gap-8 items-center">
             <div>
-              <p class="text-fg-muted leading-relaxed text-sm">
+              <p class="text-fg-muted leading-relaxed text-sm mb-4">
                 Point <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf split</code> at any branch.
-                Claude analyzes commits, identifies semantic themes, and proposes a split plan.
+                Claude analyzes the diff, identifies semantic themes, and proposes a split plan.
                 Review the plan, refine if needed, then execute &mdash; SDF creates the branches,
                 verifies the split is lossless, pushes, and opens PRs.
               </p>
+              <a href="/blog/sdf-split-from-branch-to-stack" class="text-sm text-brand hover:text-brand-dim transition-colors">
+                How it works &rarr;
+              </a>
             </div>
             <div class="rounded-xl border border-rim bg-panel overflow-hidden">
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
