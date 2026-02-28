@@ -467,6 +467,85 @@ const jsonLd = [
         ))}
       </div>
 
+      <!-- Post-install setup -->
+      <div class="text-center mb-8 mt-16 pt-12 border-t border-rim">
+        <p class="text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-3">
+          After installing
+        </p>
+        <h3
+          class="font-display text-2xl sm:text-3xl font-bold text-fg tracking-tight mb-3"
+          style="font-family: var(--font-display); font-weight: 700;"
+        >
+          Set up your environment
+        </h3>
+      </div>
+
+      <div class="flex flex-col gap-12 text-left mb-12">
+
+        <!-- Shell completions -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              Shell completions
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              Tab-complete commands, flags, branch names, and stack names.
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf completion install</code>
+              auto-detects your shell and writes the completion script to the right location.
+            </p>
+          </div>
+          <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf completion install</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">Zsh completions installed to ~/.zsh/completions/_sdf</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">Updated ~/.zshrc with fpath entry</span>
+<span class="text-fg-muted">  Restart your shell to activate.</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Claude Code integration -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div class="lg:order-2">
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              Claude Code integration
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              One command teaches Claude how to use SDF &mdash; it creates a
+              <a href="https://docs.anthropic.com/en/docs/claude-code/skills" target="_blank" rel="noopener noreferrer" class="text-brand hover:text-brand-dim transition-colors">skill file</a>
+              so Claude remembers commands, workflows, and conventions across sessions.
+            </p>
+          </div>
+          <div class="lg:order-1 rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf ai intro</span>
+<span class="text-accent">&#8594;</span> <span class="text-fg-muted">Setting up SDF skill for Claude Code...</span>
+
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">Skill created. Claude Code will load SDF knowledge in future sessions.</span></code></pre>
+          </div>
+        </div>
+
+      </div>
+
       <a
         href="/docs/installation"
         class="inline-flex items-center gap-2 text-sm text-fg-muted hover:text-fg transition-colors"
