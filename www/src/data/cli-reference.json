@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T03:03:55Z",
+  "generated": "2026-02-28T03:06:28Z",
   "commands": [
     {
       "name": "ai",
@@ -75,7 +75,15 @@
       "use": "doctor",
       "short": "Check that dependencies are available",
       "long": "Reports the status of git (required), gh (needed for PR operations), and claude (needed for conflict resolution and PR descriptions).",
-      "example": "  sdf doctor"
+      "example": "  sdf doctor",
+      "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        }
+      ]
     },
     {
       "name": "fetch",
