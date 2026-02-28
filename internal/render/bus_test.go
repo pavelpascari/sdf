@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,7 +14,7 @@ import (
 
 func TestBus_RunBatch_ExecutesAllTasks(t *testing.T) {
 	var buf bytes.Buffer
-	bus := NewBus(&buf, Options{})
+	bus := NewBus(&buf, io.Discard, Options{})
 
 	var counter atomic.Int32
 
@@ -45,7 +47,7 @@ func TestBus_RunBatch_ExecutesAllTasks(t *testing.T) {
 
 func TestBus_RunBatch_PropagatesError(t *testing.T) {
 	var buf bytes.Buffer
-	bus := NewBus(&buf, Options{})
+	bus := NewBus(&buf, io.Discard, Options{})
 
 	bus.AddTask(TaskSpec{
 		ID:   "fail",
@@ -70,7 +72,7 @@ func TestBus_RunBatch_PropagatesError(t *testing.T) {
 
 func TestBus_Run_ExecutesSingleTask(t *testing.T) {
 	var buf bytes.Buffer
-	bus := NewBus(&buf, Options{})
+	bus := NewBus(&buf, io.Discard, Options{})
 
 	var ran bool
 	err := bus.Run(context.Background(), TaskSpec{
@@ -97,7 +99,7 @@ func TestBus_Run_ExecutesSingleTask(t *testing.T) {
 
 func TestBus_RunBatch_CancelsOnContext(t *testing.T) {
 	var buf bytes.Buffer
-	bus := NewBus(&buf, Options{})
+	bus := NewBus(&buf, io.Discard, Options{})
 
 	bus.AddTask(TaskSpec{
 		ID:   "cancel",
@@ -123,7 +125,7 @@ func TestBus_LogWriter_ProducesJSONL(t *testing.T) {
 	var logBuf bytes.Buffer
 
 	lw := NewLogWriter(&logBuf)
-	bus := NewBus(&output, Options{LogWriter: lw})
+	bus := NewBus(&output, io.Discard, Options{LogWriter: lw})
 
 	bus.AddTask(TaskSpec{
 		ID:   "logged",
@@ -149,7 +151,7 @@ func TestBus_LogWriter_ProducesJSONL(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(raw), "\n")
 
 	if len(lines) < 3 {
-		// Expect at least: task.start, task.log, task.end
+		// Expect at least: batch.start, task.start, task.log, task.end, batch.end
 		t.Fatalf("expected at least 3 JSONL lines, got %d: %q", len(lines), raw)
 	}
 
@@ -161,9 +163,6 @@ func TestBus_LogWriter_ProducesJSONL(t *testing.T) {
 		}
 		if ev.Seq == 0 {
 			t.Errorf("line %d: expected non-zero Seq", i)
-		}
-		if ev.TaskID == "" {
-			t.Errorf("line %d: expected non-empty TaskID", i)
 		}
 	}
 
@@ -178,5 +177,194 @@ func TestBus_LogWriter_ProducesJSONL(t *testing.T) {
 			t.Errorf("line %d: Seq %d not greater than previous %d", i, ev.Seq, lastSeq)
 		}
 		lastSeq = ev.Seq
+	}
+}
+
+func TestBus_PrintWarnErr_EmitEvents(t *testing.T) {
+	var logBuf bytes.Buffer
+
+	lw := NewLogWriter(&logBuf)
+	bus := NewBus(io.Discard, io.Discard, Options{LogWriter: lw})
+
+	bus.Print("hello")
+	bus.Printf("count: %d", 42)
+	bus.Warn("watch out")
+	bus.Warnf("danger: %s", "fire")
+	bus.Err(errors.New("something broke"))
+
+	if err := bus.Finish(); err != nil {
+		t.Fatalf("Finish returned error: %v", err)
+	}
+
+	raw := logBuf.String()
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 JSONL lines, got %d: %q", len(lines), raw)
+	}
+
+	// Verify event types and data.
+	expected := []struct {
+		typ  string
+		text string
+	}{
+		{EventPrint, "hello"},
+		{EventPrint, "count: 42"},
+		{EventWarn, "watch out"},
+		{EventWarn, "danger: fire"},
+		{EventErr, "something broke"},
+	}
+
+	for i, line := range lines {
+		var ev Event
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Errorf("line %d: invalid JSON: %v", i, err)
+			continue
+		}
+		if ev.Type != expected[i].typ {
+			t.Errorf("line %d: type = %q, want %q", i, ev.Type, expected[i].typ)
+		}
+		data, ok := ev.Data.(map[string]any)
+		if !ok {
+			t.Errorf("line %d: Data is not map[string]any", i)
+			continue
+		}
+		text, _ := data["text"].(string)
+		if text != expected[i].text {
+			t.Errorf("line %d: text = %q, want %q", i, text, expected[i].text)
+		}
+		if ev.TaskID != "" {
+			t.Errorf("line %d: expected empty TaskID, got %q", i, ev.TaskID)
+		}
+	}
+}
+
+func TestBus_RunThenRunBatch_Interleaved(t *testing.T) {
+	var buf bytes.Buffer
+	bus := NewBus(&buf, io.Discard, Options{})
+
+	// First: sequential Run
+	err := bus.Run(context.Background(), TaskSpec{
+		ID:   "seq-1",
+		Name: "sequential task",
+		Fn: func(ctx context.Context, r *Reporter) error {
+			r.Log("step one")
+			r.End("ok", "done")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	// Then: parallel RunBatch
+	bus.AddTask(TaskSpec{
+		ID:   "par-1",
+		Name: "parallel task",
+		Fn: func(ctx context.Context, r *Reporter) error {
+			r.End("ok", "batch done")
+			return nil
+		},
+	})
+	err = bus.RunBatch(context.Background())
+	if err != nil {
+		t.Fatalf("RunBatch returned error: %v", err)
+	}
+
+	if err := bus.Finish(); err != nil {
+		t.Fatalf("Finish returned error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "step one") {
+		t.Errorf("expected output to contain sequential task log, got:\n%s", out)
+	}
+}
+
+func TestBus_FullLifecycle_InterleavedOutput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	bus := NewBus(&stdout, &stderr, Options{})
+
+	bus.Print("Starting operation...")
+
+	err := bus.Run(context.Background(), TaskSpec{
+		ID: "fetch", Name: "fetch",
+		Fn: func(ctx context.Context, r *Reporter) error {
+			r.Log("fetching from origin")
+			r.End("ok", "fetched")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	bus.Warn("something went sideways")
+
+	for i := range 2 {
+		id := fmt.Sprintf("task-%d", i)
+		bus.AddTask(TaskSpec{
+			ID: id, Name: id,
+			Fn: func(ctx context.Context, r *Reporter) error {
+				r.End("ok", "done")
+				return nil
+			},
+		})
+	}
+	if err := bus.RunBatch(context.Background()); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+
+	bus.Print("All done.")
+
+	if err := bus.Finish(); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	out := stdout.String()
+	errOut := stderr.String()
+
+	if !strings.Contains(out, "Starting operation...") {
+		t.Errorf("stdout missing 'Starting operation...': %s", out)
+	}
+	if !strings.Contains(out, "All done.") {
+		t.Errorf("stdout missing 'All done.': %s", out)
+	}
+	if !strings.Contains(errOut, "something went sideways") {
+		t.Errorf("stderr missing warning: %s", errOut)
+	}
+}
+
+func TestBus_FullLifecycle_JSONRenderer(t *testing.T) {
+	jr := &JSONRenderer{}
+	bus := NewBus(io.Discard, io.Discard, Options{Renderer: jr})
+
+	bus.Print("ignored by JSON")
+	bus.Warn("collected warning")
+	bus.Err(errors.New("collected error"))
+
+	bus.AddTask(TaskSpec{
+		ID: "t1", Name: "task",
+		Fn: func(ctx context.Context, r *Reporter) error {
+			r.End("ok", "completed")
+			return nil
+		},
+	})
+	if err := bus.RunBatch(context.Background()); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+
+	if err := bus.Finish(); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	if len(jr.Results()) != 1 {
+		t.Errorf("expected 1 result, got %d", len(jr.Results()))
+	}
+	if len(jr.Warnings()) != 1 {
+		t.Errorf("expected 1 warning, got %d", len(jr.Warnings()))
+	}
+	if len(jr.Errors()) != 1 {
+		t.Errorf("expected 1 error, got %d", len(jr.Errors()))
 	}
 }

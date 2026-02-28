@@ -9,6 +9,15 @@ const (
 	EventTaskEnd   = "task.end"
 	EventPause     = "renderer.pause"
 	EventResume    = "renderer.resume"
+
+	// Bus-level output events.
+	EventPrint = "bus.print"
+	EventWarn  = "bus.warn"
+	EventErr   = "bus.err"
+
+	// Batch lifecycle events.
+	EventBatchStart = "batch.start"
+	EventBatchEnd   = "batch.end"
 )
 
 // Event represents a single occurrence in the render pipeline.
