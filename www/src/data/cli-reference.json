@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T02:48:53Z",
+  "generated": "2026-02-28T02:51:49Z",
   "commands": [
     {
       "name": "ai",
@@ -101,6 +101,12 @@
       "long": "Merges the first open PR in the stack, retargets the next PR's base,\nthen triggers a sync to cascade-rebase remaining branches.",
       "example": "  sdf merge                          # merge with squash (default)\n  sdf merge -y                       # skip confirmation\n  sdf merge --method merge           # use regular merge\n  sdf merge --stack my-feature       # target a specific stack",
       "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        },
         {
           "name": "method",
           "type": "string",

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -12,6 +13,18 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
+
+// MergeResult is the structured output of sdf merge when --json is used.
+type MergeResult struct {
+	Stack        string `json:"stack"`
+	MergedPR     int    `json:"merged_pr"`
+	MergedBranch string `json:"merged_branch"`
+	Method       string `json:"method"`
+	Base         string `json:"base"`
+	Retargeted   int    `json:"retargeted_pr,omitempty"`
+	Remaining    int    `json:"remaining"`
+	Error        string `json:"error,omitempty"`
+}
 
 var mergeCmd = &cobra.Command{
 	Use:   "merge",
@@ -31,14 +44,20 @@ func init() {
 	mergeCmd.Flags().String("stack", "", "stack to merge (default: auto-detect)")
 	mergeCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
 	mergeCmd.Flags().String("method", "squash", "merge method: squash, merge, or rebase")
+	mergeCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runMergeCmd(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	yes, _ := cmd.Flags().GetBool("yes")
 	method, _ := cmd.Flags().GetString("method")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 
-	return runMergeLogic(stackFlag, yes, method)
+	if jsonFlag && !yes {
+		return fmt.Errorf("--json requires --yes (-y) to skip confirmation")
+	}
+
+	return runMergeLogic(stackFlag, yes, method, jsonFlag)
 }
 
 // RunMerge is a compatibility wrapper for callers that use the old interface.
@@ -47,7 +66,7 @@ func RunMerge(args []string) error {
 	return rootCmd.Execute()
 }
 
-func runMergeLogic(stackFlag string, yes bool, method string) error {
+func runMergeLogic(stackFlag string, yes bool, method string, jsonMode bool) error {
 	switch method {
 	case "squash", "merge", "rebase":
 	default:
@@ -63,8 +82,14 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		return err
 	}
 
-	mergeBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-	defer func() { _ = mergeBus.Finish() }()
+	var rdr render.Renderer
+	if jsonMode {
+		rdr = &render.JSONRenderer{}
+	}
+	mergeBus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: rdr})
+	if !jsonMode {
+		defer func() { _ = mergeBus.Finish() }()
+	}
 
 	clean, err := gitpkg.IsClean()
 	if err != nil {
@@ -119,6 +144,15 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		}
 	}
 
+	result := &MergeResult{
+		Stack:        s.StackID,
+		MergedPR:     node.PR,
+		MergedBranch: node.Branch,
+		Method:       method,
+		Base:         parent,
+		Remaining:    remaining,
+	}
+
 	// Pre-merge: retarget the next open PR's base before the merge deletes
 	// the head branch. Without this, GitHub auto-closes the downstream PR
 	// when the base branch is deleted by --delete-branch.
@@ -129,12 +163,21 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		if err := ghpkg.PREditBase(nextNode.PR, newBase); err != nil {
 			mergeBus.Warnf("  %s could not retarget PR %s: %v", ui.SymWarn, ui.PR(nextNode.PR), err)
 			mergeBus.Warnf("    The PR may be auto-closed when the branch is deleted.")
+		} else {
+			result.Retargeted = nextNode.PR
 		}
 	}
 
 	// Merge
 	mergeBus.Printf("  Merging PR %s...", ui.PR(node.PR))
 	if err := ghpkg.PRMerge(node.PR, method); err != nil {
+		if jsonMode {
+			result.Error = fmt.Sprintf("merge failed: %v", err)
+			_ = mergeBus.Finish()
+			data, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
 		return fmt.Errorf("merge failed: %w", err)
 	}
 
@@ -160,11 +203,27 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		}
 
 		// Run sync with confirmation skipped (user already confirmed the merge)
-		if err := runSyncFull(root, s.StackID, true, false, false, nil, mergeBus); err != nil {
+		if err := runSyncFull(root, s.StackID, true, false, jsonMode, nil, mergeBus); err != nil {
+			if jsonMode {
+				result.Error = fmt.Sprintf("post-merge sync failed: %v", err)
+				_ = mergeBus.Finish()
+				data, _ := json.MarshalIndent(result, "", "  ")
+				fmt.Println(string(data))
+				return nil
+			}
 			return fmt.Errorf("post-merge sync failed: %w\n\nRun `sdf sync` to retry", err)
 		}
 	} else {
 		mergeBus.Printf("\n%s Stack %s fully merged.", ui.SymOK, ui.Bold.Render(s.StackID))
+	}
+
+	if jsonMode {
+		_ = mergeBus.Finish()
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("cannot marshal result: %w", err)
+		}
+		fmt.Println(string(data))
 	}
 
 	return nil
