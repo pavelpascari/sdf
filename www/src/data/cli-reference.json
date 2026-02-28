@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T03:01:02Z",
+  "generated": "2026-02-28T03:02:38Z",
   "commands": [
     {
       "name": "ai",
@@ -282,7 +282,15 @@
       "use": "switch [branch]",
       "short": "Switch to a branch and report its stack",
       "long": "Without arguments, lists all branches across all stacks.\nWith a branch name, checks it out and shows its stack position.",
-      "example": "  sdf switch db-schema              # switch to a specific branch\n  sdf switch                        # list all branches from all stacks"
+      "example": "  sdf switch db-schema              # switch to a specific branch\n  sdf switch                        # list all branches from all stacks",
+      "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        }
+      ]
     },
     {
       "name": "sync",
