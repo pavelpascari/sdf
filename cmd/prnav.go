@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -155,11 +154,11 @@ func updateStackNavForAllPRs(root string, s *stack.Stack, bus *render.Bus) error
 	var mu sync.Mutex
 	hashUpdates := make(map[int]string) // nodeIndex → hash
 
-	localBus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR navigation"})
-	localBus.Print("")
+	bus.SetLabel("Updating PR navigation")
+	bus.Print("")
 	for _, j := range jobs {
 		node := s.Nodes[j.nodeIndex]
-		localBus.AddTask(render.TaskSpec{
+		bus.AddTask(render.TaskSpec{
 			ID:   fmt.Sprintf("nav-%d", node.PR),
 			Name: fmt.Sprintf("PR %s nav", ui.PR(node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
@@ -185,8 +184,8 @@ func updateStackNavForAllPRs(root string, s *stack.Stack, bus *render.Bus) error
 		})
 	}
 
-	if err := localBus.RunBatch(context.Background()); err != nil {
-		localBus.Warnf("some nav updates failed: %v", err)
+	if err := bus.RunBatch(context.Background()); err != nil {
+		bus.Warnf("some nav updates failed: %v", err)
 	}
 
 	// Apply hash updates to stack nodes.
@@ -198,10 +197,7 @@ func updateStackNavForAllPRs(root string, s *stack.Stack, bus *render.Bus) error
 		if err := stack.Save(root, s); err != nil {
 			return fmt.Errorf("cannot save stack after nav update: %w", err)
 		}
-		localBus.Printf("\nUpdated %d PR description(s).", len(hashUpdates))
-	}
-	if err := localBus.Finish(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
+		bus.Printf("\nUpdated %d PR description(s).", len(hashUpdates))
 	}
 
 	return nil

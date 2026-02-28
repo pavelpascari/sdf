@@ -542,11 +542,11 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bu
 	}
 
 	var updated atomic.Int32
-	localBus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR content"})
-	localBus.Print("")
+	bus.SetLabel("Updating PR content")
+	bus.Print("")
 	for _, j := range jobs {
 		// Title task
-		localBus.AddTask(render.TaskSpec{
+		bus.AddTask(render.TaskSpec{
 			ID:   fmt.Sprintf("pr-%d-title", j.node.PR),
 			Name: fmt.Sprintf("PR %s title", ui.PR(j.node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
@@ -577,7 +577,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bu
 
 		// Description task (Claude only)
 		if hasClaude && j.descPrompt != "" {
-			localBus.AddTask(render.TaskSpec{
+			bus.AddTask(render.TaskSpec{
 				ID:   fmt.Sprintf("pr-%d-desc", j.node.PR),
 				Name: fmt.Sprintf("PR %s description", ui.PR(j.node.PR)),
 				Fn: func(ctx context.Context, r *render.Reporter) error {
@@ -605,17 +605,14 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bu
 			})
 		}
 	}
-	if err := localBus.RunBatch(context.Background()); err != nil {
-		localBus.Warnf("some PR updates failed: %v", err)
+	if err := bus.RunBatch(context.Background()); err != nil {
+		bus.Warnf("some PR updates failed: %v", err)
 	}
 	n := int(updated.Load())
 	if n > 0 {
-		localBus.Printf("\nUpdated %d PR(s).", n)
+		bus.Printf("\nUpdated %d PR(s).", n)
 	} else {
-		localBus.Print("\nAll PR content is up to date.")
-	}
-	if err := localBus.Finish(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
+		bus.Print("\nAll PR content is up to date.")
 	}
 }
 
