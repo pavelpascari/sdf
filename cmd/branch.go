@@ -8,6 +8,7 @@ import (
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/spf13/cobra"
 )
@@ -119,10 +120,13 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	// Push tracking branch to origin
 	if err := gitpkg.PushNew(branchName); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not push to origin: %v\n", err)
-		fmt.Fprintln(os.Stderr, "  You can push later with: git push -u origin", branchName)
+		bus.Warnf("could not push to origin: %v", err)
+		bus.Warnf("  You can push later with: git push -u origin %s", branchName)
 	}
 
 	// If there's a downstream node, update its PR base on GitHub
@@ -130,14 +134,14 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		downstream := &s.Nodes[insertAt+1]
 		if downstream.PR > 0 && ghpkg.Available() {
 			if err := ghpkg.PREditBase(downstream.PR, branchName); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update PR #%d base: %v\n", downstream.PR, err)
+				bus.Warnf("could not update PR #%d base: %v", downstream.PR, err)
 			} else {
-				fmt.Printf("  Updated PR #%d base → %s\n", downstream.PR, branchName)
+				bus.Printf("  Updated PR #%d base → %s", downstream.PR, branchName)
 			}
 		}
 	}
 
-	fmt.Printf("Created branch %q in stack %q (based on %s)\n", branchName, s.StackID, parent)
-	fmt.Println("Next: implement your changes, then run `sdf pr`.")
+	bus.Printf("Created branch %q in stack %q (based on %s)", branchName, s.StackID, parent)
+	bus.Print("Next: implement your changes, then run `sdf pr`.")
 	return nil
 }
