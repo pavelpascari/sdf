@@ -99,7 +99,7 @@ func replaceDescription(body, description string) string {
 
 // updateStackNavForAllPRs fetches PR info and updates the stack navigation
 // section in every PR's description.
-func updateStackNavForAllPRs(root string, s *stack.Stack, bus *render.Bus) error {
+func updateStackNavForAllPRs(root string, s *stack.Stack, result *SyncResult, bus *render.Bus) error {
 	// Collect branches that have PRs
 	var branches []string
 	for _, node := range s.Nodes {
@@ -176,6 +176,11 @@ func updateStackNavForAllPRs(root string, s *stack.Stack, bus *render.Bus) error
 
 				mu.Lock()
 				hashUpdates[j.nodeIndex] = j.hash
+				if result != nil {
+					result.PRUpdates = append(result.PRUpdates, PRUpdate{
+						PR: node.PR, Field: "nav", Status: "updated",
+					})
+				}
 				mu.Unlock()
 
 				r.End("succeeded", fmt.Sprintf("PR %s nav updated", ui.PR(node.PR)))

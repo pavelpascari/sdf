@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/charmbracelet/huh"
@@ -22,7 +24,35 @@ import (
 // syncOptions holds optional behavior flags for a sync run.
 type syncOptions struct {
 	withContent bool
+	jsonMode    bool
 	cfg         cfgpkg.Config
+}
+
+// SyncResult is the structured output of sdf sync when --json is used.
+type SyncResult struct {
+	Stack     string         `json:"stack"`
+	Base      string         `json:"base"`
+	Branches  []BranchResult `json:"branches"`
+	PRUpdates []PRUpdate     `json:"pr_updates,omitempty"`
+	Warnings  []string       `json:"warnings,omitempty"`
+	Error     string         `json:"error,omitempty"`
+}
+
+// BranchResult describes what happened to a single branch during sync.
+type BranchResult struct {
+	Branch      string `json:"branch"`
+	PR          int    `json:"pr,omitempty"`
+	Action      string `json:"action"`
+	Pushed      bool   `json:"pushed,omitempty"`
+	BaseUpdated bool   `json:"base_updated,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+// PRUpdate describes a PR field update during sync.
+type PRUpdate struct {
+	PR     int    `json:"pr"`
+	Field  string `json:"field"`
+	Status string `json:"status"`
 }
 
 // syncAction represents a single planned operation during sync.
@@ -56,6 +86,7 @@ func init() {
 	syncCmd.Flags().Bool("continue", false, "resume after manual conflict resolution")
 	syncCmd.Flags().String("stack", "", "stack to sync (default: auto-detect)")
 	syncCmd.Flags().Bool("with-content", false, "update PR titles and descriptions")
+	syncCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runSyncCmd(cmd *cobra.Command, args []string) error {
@@ -63,6 +94,7 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 	cont, _ := cmd.Flags().GetBool("continue")
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	withContent, _ := cmd.Flags().GetBool("with-content")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	stackName := stackFlag
 	if stackName == "" && len(args) > 0 {
@@ -74,14 +106,43 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-	defer func() { _ = bus.Finish() }()
+	var renderer render.Renderer
+	var jsonRenderer *render.JSONRenderer
+	if jsonFlag {
+		jsonRenderer = &render.JSONRenderer{}
+		renderer = jsonRenderer
+	}
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: renderer})
 
-	if cont {
-		return runSyncContinue(root, bus)
+	var result *SyncResult
+	if jsonFlag {
+		result = &SyncResult{Branches: []BranchResult{}}
 	}
 
-	return runSyncFull(root, stackName, yes, withContent, bus)
+	if cont {
+		err = runSyncContinue(root, result, bus)
+	} else {
+		err = runSyncFull(root, stackName, yes || jsonFlag, withContent, jsonFlag, result, bus)
+	}
+
+	if jsonFlag {
+		_ = bus.Finish()
+		if err != nil {
+			result.Error = err.Error()
+		}
+		if jsonRenderer != nil {
+			result.Warnings = append(result.Warnings, jsonRenderer.Warnings()...)
+		}
+		data, marshalErr := json.MarshalIndent(result, "", "  ")
+		if marshalErr != nil {
+			return fmt.Errorf("cannot marshal result: %w", marshalErr)
+		}
+		fmt.Println(string(data))
+		return nil // error is in the JSON output
+	}
+
+	_ = bus.Finish()
+	return err
 }
 
 // RunSync is a compatibility wrapper for callers that use the old interface.
@@ -91,7 +152,7 @@ func RunSync(args []string) error {
 }
 
 // runSyncContinue resumes a sync that was paused for manual conflict resolution.
-func runSyncContinue(root string, bus *render.Bus) error {
+func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	local, err := stack.LoadLocal(root)
 	if err != nil {
 		return err
@@ -117,7 +178,7 @@ func runSyncContinue(root string, bus *render.Bus) error {
 		bus.Printf("Rebase of %s was aborted. Starting a fresh sync.", ui.Branch(progress.PausedAt))
 		local.SyncProgress = nil
 		stack.SaveLocal(root, local)
-		return runSyncFull(root, "", false, false, bus)
+		return runSyncFull(root, "", false, false, false, result, bus)
 	}
 
 	s, err := stack.Load(root)
@@ -125,23 +186,42 @@ func runSyncContinue(root string, bus *render.Bus) error {
 		return err
 	}
 
+	if result != nil {
+		result.Stack = s.StackID
+		result.Base = s.Base
+	}
+
 	node := s.FindNode(progress.PausedAt)
 	if node != nil {
 		node.BaseTip = progress.ParentTip
 
+		pushOK := true
 		if err := gitpkg.Push(node.Branch); err != nil {
+			pushOK = false
 			bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
 		} else {
 			bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
 		}
 
 		parent := s.ParentBranch(node.Branch)
+		baseUpdated := false
 		if node.PR > 0 && ghpkg.Available() {
 			if err := ghpkg.PREditBase(node.PR, parent); err != nil {
 				bus.Warnf("  %s could not update PR %s base: %v", ui.SymWarn, ui.PR(node.PR), err)
 			} else {
+				baseUpdated = true
 				bus.Printf("  %s PR %s base updated to %s", ui.SymOK, ui.PR(node.PR), ui.Branch(parent))
 			}
+		}
+
+		if result != nil {
+			result.Branches = append(result.Branches, BranchResult{
+				Branch:      node.Branch,
+				PR:          node.PR,
+				Action:      "rebased",
+				Pushed:      pushOK,
+				BaseUpdated: baseUpdated,
+			})
 		}
 	}
 
@@ -155,11 +235,11 @@ func runSyncContinue(root string, bus *render.Bus) error {
 	gitpkg.Checkout(progress.OriginalBranch)
 
 	bus.Print("\nResuming sync for remaining branches...")
-	return runSyncFrom(root, s, progress.ResumeIndex+1, nil, bus)
+	return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus)
 }
 
 // runSyncFull runs a complete sync from scratch.
-func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus *render.Bus) error {
+func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode bool, result *SyncResult, bus *render.Bus) error {
 	// Check for stale sync progress
 	local, _ := stack.LoadLocal(root)
 	if local.SyncProgress != nil {
@@ -176,6 +256,11 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 	s, err := resolveStack(root, stackName)
 	if err != nil {
 		return err
+	}
+
+	if result != nil {
+		result.Stack = s.StackID
+		result.Base = s.Base
 	}
 
 	if len(s.Nodes) == 0 {
@@ -215,6 +300,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 
 	opts := syncOptions{
 		withContent: cfg.WithContentEnabled() || flagWithContent,
+		jsonMode:    jsonMode,
 		cfg:         cfg,
 	}
 
@@ -237,7 +323,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 			bus.Warnf("warning: could not save stack: %v", err)
 		}
 		// Still update stack navigation (catches empty/stale nav hashes)
-		if err := updateStackNavForAllPRs(root, s, bus); err != nil {
+		if err := updateStackNavForAllPRs(root, s, result, bus); err != nil {
 			bus.Warnf("warning: could not update PR descriptions: %v", err)
 		}
 		return nil
@@ -257,12 +343,12 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus 
 
 	bus.Print("")
 
-	return runSyncFrom(root, s, 0, &opts, bus)
+	return runSyncFrom(root, s, 0, &opts, result, bus)
 }
 
 // runSyncFrom runs sync starting at a given node index. Index 0 means full sync.
 // opts controls PR content updates (titles/descriptions); nil disables updates.
-func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions, bus *render.Bus) error {
+func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions, result *SyncResult, bus *render.Bus) error {
 	originalBranch, err := gitpkg.CurrentBranch()
 	if err != nil {
 		return fmt.Errorf("cannot determine current branch: %w", err)
@@ -297,6 +383,11 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 					bus.Printf("  %s %s merged", ui.SymOK, ui.Branch(node.Branch))
 				}
 			}
+			if result != nil {
+				result.Branches = append(result.Branches, BranchResult{
+					Branch: node.Branch, PR: node.PR, Action: "merged",
+				})
+			}
 			continue
 		}
 
@@ -306,6 +397,12 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 
 		if isBlocked(s, i, failed) {
 			bus.Printf("  %s skipping %s — depends on a branch that failed", ui.SymFail, ui.Branch(node.Branch))
+			if result != nil {
+				result.Branches = append(result.Branches, BranchResult{
+					Branch: node.Branch, PR: node.PR, Action: "blocked",
+					Reason: "depends on a branch that failed",
+				})
+			}
 			continue
 		}
 
@@ -320,6 +417,18 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			bus.Printf("  rebasing %s onto %s...", ui.Branch(node.Branch), ui.Branch(parent))
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
+				// In JSON mode, abort immediately — no interactive prompts.
+				if opts != nil && opts.jsonMode {
+					if result != nil {
+						result.Branches = append(result.Branches, BranchResult{
+							Branch: node.Branch, PR: node.PR, Action: "failed",
+							Reason: "conflict",
+						})
+					}
+					gitpkg.RebaseAbort()
+					return fmt.Errorf("conflict in %s — cannot resolve in --json mode", node.Branch)
+				}
+
 				action, err := promptOnConflict(root, s, node.Branch, originalBranch, i, err, bus)
 				if action == conflictPaused {
 					return err
@@ -337,7 +446,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			node.BaseTip = currentParentTip
 			modified = true
 
+			pushOK := true
 			if err := gitpkg.Push(node.Branch); err != nil {
+				pushOK = false
 				bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
 			} else {
 				bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
@@ -345,6 +456,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 
 			// Silently update PR base when the parent branch name changed
 			// (merged node skipped). Report in batch at end.
+			baseUpdated := false
 			if node.PR > 0 && ghpkg.Available() {
 				directParent := s.Base
 				if i > 0 {
@@ -355,8 +467,19 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 						bus.Warnf("  %s could not update PR %s base: %v", ui.SymWarn, ui.PR(node.PR), err)
 					} else {
 						prBasesUpdated++
+						baseUpdated = true
 					}
 				}
+			}
+
+			if result != nil {
+				result.Branches = append(result.Branches, BranchResult{
+					Branch:      node.Branch,
+					PR:          node.PR,
+					Action:      "rebased",
+					Pushed:      pushOK,
+					BaseUpdated: baseUpdated,
+				})
 			}
 		}
 	}
@@ -401,14 +524,14 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	}
 
 	// Offer to create PRs for branches that don't have one yet
-	promptCreateMissingPRs(root, s, opts, bus)
+	promptCreateMissingPRs(root, s, opts, result, bus)
 
 	// Update PR titles and descriptions if configured
-	updatePRContent(root, s, opts, bus)
+	updatePRContent(root, s, opts, result, bus)
 
 	// Update stack navigation in all PRs (runs even when in sync,
 	// to catch stale nav hashes from PRs created before this feature)
-	if err := updateStackNavForAllPRs(root, s, bus); err != nil {
+	if err := updateStackNavForAllPRs(root, s, result, bus); err != nil {
 		bus.Warnf("warning: could not update PR descriptions: %v", err)
 	}
 
@@ -417,7 +540,10 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 
 // promptCreateMissingPRs checks for open branches without PRs and offers
 // to create them. Runs after sync completes, before nav/content updates.
-func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, bus *render.Bus) {
+func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, result *SyncResult, bus *render.Bus) {
+	if opts != nil && opts.jsonMode {
+		return
+	}
 	if !ghpkg.Available() {
 		return
 	}
@@ -483,7 +609,7 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, bus 
 // updatePRContent updates PR titles and descriptions for open PRs in the stack.
 // Each title and description is its own parallel task, giving fine-grained
 // progress feedback and maximum concurrency.
-func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bus) {
+func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncResult, bus *render.Bus) {
 	if opts == nil || !opts.withContent {
 		return
 	}
@@ -542,6 +668,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bu
 	}
 
 	var updated atomic.Int32
+	var mu sync.Mutex
 	bus.SetLabel("Updating PR content")
 	bus.Print("")
 	for _, j := range jobs {
@@ -565,6 +692,13 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bu
 				if !similar(currentTitle, proposedTitle, 0.8) {
 					if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err == nil {
 						updated.Add(1)
+						if result != nil {
+							mu.Lock()
+							result.PRUpdates = append(result.PRUpdates, PRUpdate{
+								PR: j.node.PR, Field: "title", Status: "updated",
+							})
+							mu.Unlock()
+						}
 						r.End("succeeded", fmt.Sprintf("%s PR %s title updated", ui.SymOK, ui.PR(j.node.PR)))
 						return nil
 					}
@@ -594,6 +728,13 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bu
 						newBody := replaceDescription(currentBody, desc)
 						if err := ghpkg.PREditBody(j.node.PR, newBody); err == nil {
 							updated.Add(1)
+							if result != nil {
+								mu.Lock()
+								result.PRUpdates = append(result.PRUpdates, PRUpdate{
+									PR: j.node.PR, Field: "description", Status: "updated",
+								})
+								mu.Unlock()
+							}
 							r.End("succeeded", fmt.Sprintf("%s PR %s description updated", ui.SymOK, ui.PR(j.node.PR)))
 							return nil
 						}

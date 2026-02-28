@@ -456,7 +456,7 @@ func createSplitPRs(root string, s *stack.Stack, cfg cfgpkg.Config, originalBran
 	fmt.Println("Updating stack navigation...")
 	navBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = navBus.Finish() }()
-	if err := updateStackNavForAllPRs(root, s, navBus); err != nil {
+	if err := updateStackNavForAllPRs(root, s, nil, navBus); err != nil {
 		fmt.Fprintf(os.Stderr, "  %s could not update PR navigation: %v\n", ui.SymWarn, err)
 	}
 

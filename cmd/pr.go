@@ -145,7 +145,7 @@ func runPR(cmd *cobra.Command, args []string) error {
 		fmt.Println("Updating stack navigation in PR descriptions...")
 		navBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 		defer func() { _ = navBus.Finish() }()
-		if err := updateStackNavForAllPRs(root, s, navBus); err != nil {
+		if err := updateStackNavForAllPRs(root, s, nil, navBus); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
 		}
 	}

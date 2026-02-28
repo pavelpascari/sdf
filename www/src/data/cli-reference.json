@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T01:20:33Z",
+  "generated": "2026-02-28T02:17:03Z",
   "commands": [
     {
       "name": "ai",
@@ -273,6 +273,12 @@
           "type": "bool",
           "default": "false",
           "description": "resume after manual conflict resolution"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
         },
         {
           "name": "stack",
