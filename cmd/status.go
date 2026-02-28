@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 	"github.com/spf13/cobra"
@@ -43,14 +45,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	s, err := resolveStack(root, stackName)
 	if err != nil {
 		return err
 	}
 
 	if len(s.Nodes) == 0 {
-		fmt.Printf("  %s  (base: %s)\n\n", s.StackID, s.Base)
-		fmt.Println("  No branches in stack yet. Run `sdf branch <name>` to add one.")
+		bus.Printf("  %s  (base: %s)\n", s.StackID, s.Base)
+		bus.Print("  No branches in stack yet. Run `sdf branch <name>` to add one.")
 		return nil
 	}
 
@@ -96,7 +101,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print header
-	fmt.Printf("  %s  (base: %s)\n\n", ui.Bold.Render(s.StackID), ui.Branch(s.Base))
+	bus.Printf("  %s  (base: %s)\n", ui.Bold.Render(s.StackID), ui.Branch(s.Base))
 
 	// Print each node
 	needsSync := []string{}
@@ -153,23 +158,24 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			syncStr = "  " + syncStatus
 		}
 
-		fmt.Printf(" %s %s  %-30s %s %s%s\n", marker, icon, ui.Branch(node.Branch), prInfo, statusStr, syncStr)
+		bus.Printf(" %s %s  %-30s %s %s%s", marker, icon, ui.Branch(node.Branch), prInfo, statusStr, syncStr)
 	}
 
 	// Print sync suggestion
 	if len(needsSync) > 0 {
-		fmt.Println()
-		fmt.Printf("  run `sdf sync` to rebase %s\n", strings.Join(needsSync, ", "))
+		bus.Print("")
+		bus.Printf("  run `sdf sync` to rebase %s", strings.Join(needsSync, ", "))
 	}
 
 	// Print drift warnings
 	if len(driftWarnings) > 0 {
-		fmt.Println()
-		fmt.Printf("  %s Drift detected:\n", ui.SymWarn)
+		bus.Print("")
+		bus.Printf("  %s Drift detected:", ui.SymWarn)
 		for _, w := range driftWarnings {
-			fmt.Printf("    %s\n", w)
+			bus.Printf("    %s", w)
 		}
-		fmt.Printf("\n  Run `sdf fetch` to reconcile.\n")
+		bus.Print("")
+		bus.Print("  Run `sdf fetch` to reconcile.")
 	}
 
 	return nil
