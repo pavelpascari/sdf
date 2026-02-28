@@ -76,8 +76,9 @@ manual resolution (pausing sync), skip, or abort.`,
   sdf sync -y                       # skip confirmation prompt
   sdf sync --continue               # resume after manual conflict resolution
   sdf sync --with-content           # also update PR titles and descriptions`,
-	Annotations: map[string]string{"category": "stack"},
-	RunE:        runSyncCmd,
+	Annotations:       map[string]string{"category": "stack"},
+	ValidArgsFunction: completeStackNames,
+	RunE:              runSyncCmd,
 }
 
 func init() {
@@ -87,6 +88,7 @@ func init() {
 	syncCmd.Flags().String("stack", "", "stack to sync (default: auto-detect)")
 	syncCmd.Flags().Bool("with-content", false, "update PR titles and descriptions")
 	syncCmd.Flags().Bool("json", false, "output result as JSON")
+	_ = syncCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
 func runSyncCmd(cmd *cobra.Command, args []string) error {

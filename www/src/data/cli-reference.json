@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T19:51:18Z",
+  "generated": "2026-02-28T21:01:09Z",
   "commands": [
     {
       "name": "ai",
@@ -39,6 +39,21 @@
           "type": "string",
           "default": "",
           "description": "stack to add the branch to (default: auto-detect)"
+        }
+      ]
+    },
+    {
+      "name": "completion",
+      "category": "utility",
+      "use": "completion \u003cbash|zsh|fish|powershell\u003e",
+      "short": "Generate or install shell completion scripts",
+      "long": "Generate shell completion scripts for sdf.\n\nTo load completions manually:\n\n  Bash:\n    $ sdf completion bash \u003e ~/.local/share/bash-completion/completions/sdf\n\n  Zsh:\n    $ sdf completion zsh \u003e \"${fpath[1]}/_sdf\"\n\n  Fish:\n    $ sdf completion fish \u003e ~/.config/fish/completions/sdf.fish\n\n  PowerShell:\n    PS\u003e sdf completion powershell | Out-String | Invoke-Expression\n\nOr use 'sdf completion install' to auto-detect your shell and install.",
+      "subcommands": [
+        {
+          "name": "install",
+          "use": "install",
+          "short": "Auto-detect shell and install completion scripts",
+          "long": "Detects your current shell from $SHELL and writes completions to\nthe standard location so they load automatically in new sessions.\n\nSupported shells: bash, zsh, fish."
         }
       ]
     },

@@ -30,8 +30,9 @@ var configSetCmd = &cobra.Command{
 	Short: "Set a configuration value",
 	Example: `  sdf config set branch_prefix.enabled true
   sdf config set --global pr_title.conventional_commits true`,
-	Args: cobra.ExactArgs(2),
-	RunE: runConfigSetCmd,
+	Args:              cobra.ExactArgs(2),
+	ValidArgsFunction: completeConfigKeys,
+	RunE:              runConfigSetCmd,
 }
 
 func init() {

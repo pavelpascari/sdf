@@ -352,6 +352,18 @@ func DiffFiles(from, to string, files []string) (string, error) {
 	return out, nil
 }
 
+// LocalBranches returns the names of all local branches.
+func LocalBranches() ([]string, error) {
+	out, err := run("branch", "--format", "%(refname:short)")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // ApplyPatch applies a patch string using git apply --3way.
 // The patch is written to a temp file and applied.
 func ApplyPatch(patch string) error {

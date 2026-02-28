@@ -39,16 +39,18 @@ type StatusNodeResult struct {
 }
 
 var statusCmd = &cobra.Command{
-	Use:         "status [stack-name]",
-	Short:       "Show stack topology and sync state",
-	Annotations: map[string]string{"category": "stack"},
-	RunE:        runStatus,
+	Use:               "status [stack-name]",
+	Short:             "Show stack topology and sync state",
+	Annotations:       map[string]string{"category": "stack"},
+	ValidArgsFunction: completeStackNames,
+	RunE:              runStatus,
 }
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().String("stack", "", "stack to show (default: auto-detect)")
 	statusCmd.Flags().Bool("json", false, "output result as JSON")
+	_ = statusCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
 // RunStatus is a compatibility wrapper for callers that use the old interface.
