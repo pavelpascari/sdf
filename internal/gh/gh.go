@@ -8,15 +8,22 @@ import (
 	"strings"
 )
 
+// CheckRun represents a single CI check from GitHub's statusCheckRollup.
+type CheckRun struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`     // COMPLETED, IN_PROGRESS, QUEUED, etc.
+	Conclusion string `json:"conclusion"` // SUCCESS, FAILURE, SKIPPED, etc.
+}
+
 // PRInfo represents pull request information from gh.
 type PRInfo struct {
-	Number       int    `json:"number"`
-	HeadRefName  string `json:"headRefName"`
-	State        string `json:"state"` // "OPEN", "MERGED", "CLOSED"
-	BaseRefName  string `json:"baseRefName"`
-	URL          string `json:"url"`
-	MergeCommit  string `json:"mergeCommit"`
-	StatusChecks string `json:"statusCheckRollup"`
+	Number       int        `json:"number"`
+	HeadRefName  string     `json:"headRefName"`
+	State        string     `json:"state"` // "OPEN", "MERGED", "CLOSED"
+	BaseRefName  string     `json:"baseRefName"`
+	URL          string     `json:"url"`
+	MergeCommit  string     `json:"mergeCommit"`
+	StatusChecks []CheckRun `json:"statusCheckRollup"`
 }
 
 // Binary is the name (or path) of the gh executable.
@@ -56,7 +63,7 @@ func Version() (string, error) {
 func PRList(branches []string) ([]PRInfo, error) {
 	out, err := run("pr", "list",
 		"--state", "all",
-		"--json", "number,headRefName,state,baseRefName,url",
+		"--json", "number,headRefName,state,baseRefName,url,statusCheckRollup",
 		"--limit", "100",
 	)
 	if err != nil {
@@ -224,6 +231,30 @@ func LatestRelease() (*ReleaseInfo, error) {
 		return nil, fmt.Errorf("cannot parse gh release view output: %w", err)
 	}
 	return &rel, nil
+}
+
+// AggregateCheckStatus computes an overall CI status from individual check runs.
+// Returns "pass", "fail", "pending", or "" (no checks).
+func AggregateCheckStatus(checks []CheckRun) string {
+	if len(checks) == 0 {
+		return ""
+	}
+	hasPending := false
+	for _, c := range checks {
+		switch strings.ToUpper(c.Status) {
+		case "IN_PROGRESS", "QUEUED", "WAITING", "PENDING", "REQUESTED":
+			hasPending = true
+		case "COMPLETED":
+			switch strings.ToUpper(c.Conclusion) {
+			case "FAILURE", "CANCELED", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STALE": //nolint:misspell // GitHub API uses British spelling
+				return "fail"
+			}
+		}
+	}
+	if hasPending {
+		return "pending"
+	}
+	return "pass"
 }
 
 // prStatePriority returns a sort priority for PR states.

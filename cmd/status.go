@@ -32,6 +32,7 @@ type StatusNodeResult struct {
 	SyncState    string `json:"sync_state,omitempty"`
 	CommitsAhead int    `json:"commits_ahead,omitempty"`
 	IsCurrent    bool   `json:"is_current,omitempty"`
+	CIStatus     string `json:"ci_status,omitempty"`
 }
 
 var statusCmd = &cobra.Command{
@@ -117,6 +118,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	var driftWarnings []string
+	prInfoByBranch := make(map[string]gh.PRInfo)
 	if gh.Available() {
 		prs, err := gh.PRList(branches)
 		if err == nil {
@@ -129,6 +131,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					BaseRefName: pr.BaseRefName,
 					State:       pr.State,
 				}
+				prInfoByBranch[pr.HeadRefName] = pr
 			}
 
 			// Reconcile: apply routine changes, collect notable ones
@@ -153,6 +156,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			PR:        node.PR,
 			Status:    node.Status,
 			IsCurrent: node.Branch == currentBranch,
+		}
+
+		if prInfo, ok := prInfoByBranch[node.Branch]; ok {
+			nr.CIStatus = gh.AggregateCheckStatus(prInfo.StatusChecks)
 		}
 
 		status := node.Status
@@ -237,7 +244,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			syncStr = "  " + syncStatus
 		}
 
-		bus.Printf(" %s %s  %-30s %s %s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr)
+		ciStr := ""
+		switch nr.CIStatus {
+		case "pass":
+			ciStr = "  " + ui.Green.Render("CI ✓")
+		case "fail":
+			ciStr = "  " + ui.Red.Render("CI ✗")
+		case "pending":
+			ciStr = "  " + ui.Yellow.Render("CI ⏳")
+		}
+
+		bus.Printf(" %s %s  %-30s %s %s%s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr, ciStr)
 	}
 
 	// Print sync suggestion
