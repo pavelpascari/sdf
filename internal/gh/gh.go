@@ -17,13 +17,16 @@ type CheckRun struct {
 
 // PRInfo represents pull request information from gh.
 type PRInfo struct {
-	Number       int        `json:"number"`
-	HeadRefName  string     `json:"headRefName"`
-	State        string     `json:"state"` // "OPEN", "MERGED", "CLOSED"
-	BaseRefName  string     `json:"baseRefName"`
-	URL          string     `json:"url"`
-	MergeCommit  string     `json:"mergeCommit"`
-	StatusChecks []CheckRun `json:"statusCheckRollup"`
+	Number         int        `json:"number"`
+	HeadRefName    string     `json:"headRefName"`
+	State          string     `json:"state"` // "OPEN", "MERGED", "CLOSED"
+	BaseRefName    string     `json:"baseRefName"`
+	URL            string     `json:"url"`
+	MergeCommit    string     `json:"mergeCommit"`
+	StatusChecks   []CheckRun `json:"statusCheckRollup"`
+	ReviewDecision string     `json:"reviewDecision"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
+	Mergeable      string     `json:"mergeable"`      // MERGEABLE, CONFLICTING, UNKNOWN
+	IsDraft        bool       `json:"isDraft"`
 }
 
 // Binary is the name (or path) of the gh executable.
@@ -63,7 +66,7 @@ func Version() (string, error) {
 func PRList(branches []string) ([]PRInfo, error) {
 	out, err := run("pr", "list",
 		"--state", "all",
-		"--json", "number,headRefName,state,baseRefName,url,statusCheckRollup",
+		"--json", "number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft",
 		"--limit", "100",
 	)
 	if err != nil {

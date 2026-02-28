@@ -33,6 +33,9 @@ type StatusNodeResult struct {
 	CommitsAhead int    `json:"commits_ahead,omitempty"`
 	IsCurrent    bool   `json:"is_current,omitempty"`
 	CIStatus     string `json:"ci_status,omitempty"`
+	ReviewStatus string `json:"review_status,omitempty"`
+	Mergeable    string `json:"mergeable,omitempty"`
+	IsDraft      bool   `json:"is_draft,omitempty"`
 }
 
 var statusCmd = &cobra.Command{
@@ -160,6 +163,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 		if prInfo, ok := prInfoByBranch[node.Branch]; ok {
 			nr.CIStatus = gh.AggregateCheckStatus(prInfo.StatusChecks)
+			nr.ReviewStatus = strings.ToLower(prInfo.ReviewDecision)
+			nr.Mergeable = strings.ToLower(prInfo.Mergeable)
+			nr.IsDraft = prInfo.IsDraft
 		}
 
 		status := node.Status
@@ -244,17 +250,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			syncStr = "  " + syncStatus
 		}
 
-		ciStr := ""
-		switch nr.CIStatus {
-		case "pass":
-			ciStr = "  " + ui.Green.Render("CI ✓")
-		case "fail":
-			ciStr = "  " + ui.Red.Render("CI ✗")
-		case "pending":
-			ciStr = "  " + ui.Yellow.Render("CI ⏳")
-		}
+		mergeStr := formatMergeability(nr)
 
-		bus.Printf(" %s %s  %-30s %s %s%s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr, ciStr)
+		bus.Printf(" %s %s  %-30s %s %s%s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr, mergeStr)
 	}
 
 	// Print sync suggestion
@@ -275,4 +273,64 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// formatMergeability renders a combined mergeability indicator for TTY output.
+func formatMergeability(nr StatusNodeResult) string {
+	// Only show for open PRs
+	if nr.PR == 0 || nr.Status == "merged" || nr.Status == "closed" {
+		return ""
+	}
+
+	if nr.IsDraft {
+		return "  " + ui.Gray.Render("draft")
+	}
+
+	if nr.Mergeable == "conflicting" {
+		return "  " + ui.Red.Render("conflicting")
+	}
+
+	// Build CI part
+	var ciPart string
+	switch nr.CIStatus {
+	case "pass":
+		ciPart = "CI ✓"
+	case "fail":
+		ciPart = "CI ✗"
+	case "pending":
+		ciPart = "CI ⏳"
+	default:
+		ciPart = "CI –"
+	}
+
+	// Build review part
+	var reviewPart string
+	switch nr.ReviewStatus {
+	case "approved":
+		reviewPart = "approved"
+	case "changes_requested":
+		reviewPart = "changes requested"
+	case "review_required":
+		reviewPart = "review required"
+	}
+
+	// Build detail string
+	detail := ciPart
+	if reviewPart != "" {
+		detail += ", " + reviewPart
+	}
+
+	// Determine overall label and color
+	if nr.CIStatus == "pass" && nr.ReviewStatus == "approved" {
+		return "  " + ui.Green.Render(fmt.Sprintf("ready (%s)", detail))
+	}
+	if nr.CIStatus == "fail" || nr.ReviewStatus == "changes_requested" {
+		return "  " + ui.Red.Render(fmt.Sprintf("blocked (%s)", detail))
+	}
+	if nr.CIStatus == "pending" || nr.ReviewStatus == "review_required" {
+		return "  " + ui.Yellow.Render(fmt.Sprintf("pending (%s)", detail))
+	}
+
+	// Fallback: show detail without overall label
+	return "  " + ui.Gray.Render(fmt.Sprintf("(%s)", detail))
 }

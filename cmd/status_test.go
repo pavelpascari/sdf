@@ -12,8 +12,8 @@ func TestStatusResultJSON(t *testing.T) {
 		Base:          "main",
 		CurrentBranch: "feat-a",
 		Nodes: []StatusNodeResult{
-			{Branch: "feat-a", PR: 42, Status: "open", SyncState: "in_sync", CommitsAhead: 3, IsCurrent: true, CIStatus: "pass"},
-			{Branch: "feat-b", PR: 43, Status: "open", SyncState: "needs_sync", CommitsAhead: 1, CIStatus: "fail"},
+			{Branch: "feat-a", PR: 42, Status: "open", SyncState: "in_sync", CommitsAhead: 3, IsCurrent: true, CIStatus: "pass", ReviewStatus: "approved", Mergeable: "mergeable"},
+			{Branch: "feat-b", PR: 43, Status: "open", SyncState: "needs_sync", CommitsAhead: 1, CIStatus: "fail", ReviewStatus: "changes_requested", Mergeable: "conflicting"},
 		},
 		NeedsSync:     []string{"feat-b"},
 		DriftWarnings: []string{"PR #44 base changed"},
@@ -49,6 +49,41 @@ func TestStatusResultJSON(t *testing.T) {
 	}
 	if roundtrip.Nodes[1].CIStatus != "fail" {
 		t.Errorf("ci_status = %q, want %q", roundtrip.Nodes[1].CIStatus, "fail")
+	}
+	if roundtrip.Nodes[0].ReviewStatus != "approved" {
+		t.Errorf("review_status = %q, want %q", roundtrip.Nodes[0].ReviewStatus, "approved")
+	}
+	if roundtrip.Nodes[1].Mergeable != "conflicting" {
+		t.Errorf("mergeable = %q, want %q", roundtrip.Nodes[1].Mergeable, "conflicting")
+	}
+}
+
+func TestFormatMergeability(t *testing.T) {
+	tests := []struct {
+		name string
+		nr   StatusNodeResult
+		want string // substring to check (empty = expect empty result)
+	}{
+		{name: "no PR", nr: StatusNodeResult{Status: "open"}, want: ""},
+		{name: "merged", nr: StatusNodeResult{PR: 1, Status: "merged"}, want: ""},
+		{name: "draft", nr: StatusNodeResult{PR: 1, Status: "open", IsDraft: true}, want: "draft"},
+		{name: "conflicting", nr: StatusNodeResult{PR: 1, Status: "open", Mergeable: "conflicting"}, want: "conflicting"},
+		{name: "ready", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "approved"}, want: "ready"},
+		{name: "blocked by CI", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "fail", ReviewStatus: "approved"}, want: "blocked"},
+		{name: "blocked by review", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "changes_requested"}, want: "blocked"},
+		{name: "pending CI", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pending"}, want: "pending"},
+		{name: "pending review", nr: StatusNodeResult{PR: 1, Status: "open", CIStatus: "pass", ReviewStatus: "review_required"}, want: "pending"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatMergeability(tt.nr)
+			if tt.want == "" && got != "" {
+				t.Errorf("expected empty, got %q", got)
+			}
+			if tt.want != "" && !strings.Contains(got, tt.want) {
+				t.Errorf("expected %q to contain %q", got, tt.want)
+			}
+		})
 	}
 }
 

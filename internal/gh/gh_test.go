@@ -32,7 +32,7 @@ func TestPRList_ParsesJSON(t *testing.T) {
 	if len(log) != 1 {
 		t.Fatalf("expected 1 invocation, got %d", len(log))
 	}
-	if log[0] != "pr list --state all --json number,headRefName,state,baseRefName,url,statusCheckRollup --limit 100" {
+	if log[0] != "pr list --state all --json number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft --limit 100" {
 		t.Errorf("unexpected arguments: %s", log[0])
 	}
 
