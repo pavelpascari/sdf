@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T02:53:10Z",
+  "generated": "2026-02-28T02:55:12Z",
   "commands": [
     {
       "name": "ai",
@@ -22,6 +22,12 @@
       "use": "branch \u003cname\u003e",
       "short": "Add a new branch to the current stack",
       "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        },
         {
           "name": "no-prefix",
           "type": "bool",
