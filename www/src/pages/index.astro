@@ -426,6 +426,123 @@ const jsonLd = [
     </div>
   </section>
 
+  <!-- ── PR Experience ──────────────────────────────────── -->
+  <section class="py-24 border-t border-rim bg-surface/50">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      <div class="text-center mb-16">
+        <h2
+          class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
+          style="font-family: var(--font-display); font-weight: 700;"
+        >
+          PRs that document themselves
+        </h2>
+        <p class="text-fg-muted max-w-xl mx-auto">
+          Stack navigation links are injected into every PR description automatically.
+          Add <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">--with-content</code> and Claude
+          generates titles and descriptions from your diffs.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-12">
+
+        <!-- Stack navigation -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              Stack navigation in every PR
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf pr</code> and
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf sync</code> inject
+              a navigation section into every PR description. Reviewers see the full stack at a glance
+              and can jump between related PRs. Links update automatically as PRs merge.
+            </p>
+          </div>
+          <!-- GitHub PR description mockup -->
+          <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" class="text-success shrink-0" aria-hidden="true">
+                <path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/>
+              </svg>
+              <span class="text-fg text-xs font-semibold">PR description</span>
+              <span class="text-fg-subtle text-xs ml-auto font-mono">#143</span>
+            </div>
+            <div class="p-5 text-sm leading-relaxed">
+              <p class="text-fg-muted mb-4">Add the UserRepository with CRUD operations and pgx integration.</p>
+              <hr class="border-rim mb-4" />
+              <p class="text-fg-subtle text-xs mb-2">Stack: <code class="text-accent bg-panel px-1 py-0.5 rounded border border-rim text-xs">users-feature</code></p>
+              <ol class="list-decimal list-inside space-y-1.5 text-sm">
+                <li class="text-fg-muted">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="w-4 h-4 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-[10px]">&#10003;</span>
+                    <span>add users table migration</span>
+                    <span class="text-fg-subtle">#142</span>
+                  </span>
+                </li>
+                <li class="text-fg">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="w-4 h-4 rounded-full bg-success/20 text-success flex items-center justify-center text-[10px]">&#9679;</span>
+                    <span class="font-medium">add user repository</span>
+                    <span class="text-fg-subtle">#143</span>
+                    <span class="text-accent text-xs">&nbsp;&#9664; this PR</span>
+                  </span>
+                </li>
+                <li class="text-fg-muted">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="w-4 h-4 rounded-full bg-success/20 text-success flex items-center justify-center text-[10px]">&#9679;</span>
+                    <span>add user controller endpoints</span>
+                    <span class="text-fg-subtle">#144</span>
+                  </span>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI-generated PR content -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div class="lg:order-2">
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              AI-generated titles and descriptions
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf sync --with-content</code> uses Claude
+              to generate PR titles and descriptions from your diffs. Titles are kept concise, descriptions explain the what and why.
+              Only PRs with meaningful changes get updated &mdash; unchanged content is left alone.
+            </p>
+          </div>
+          <div class="lg:order-1 rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf sync --with-content</span>
+<span class="text-fg-muted">Syncing stack </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">...</span>
+<span class="text-fg-muted">  ...</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted"> title updated</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted"> description updated</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted"> title unchanged</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted"> description unchanged</span>
+
+<span class="text-fg-muted">Updated 1 PR(s).</span></code></pre>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   <!-- ── Install ────────────────────────────────────────── -->
   <section class="py-24 border-t border-rim bg-surface/50">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
