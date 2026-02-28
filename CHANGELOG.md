@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/pavelpascari/sdf/compare/v0.2.9...v0.2.10) (2026-02-28)
+
+
+### Bug Fixes
+
+* **ci:** pass -R flag to gh workflow run in release-please ([#129](https://github.com/pavelpascari/sdf/issues/129)) ([7939594](https://github.com/pavelpascari/sdf/commit/7939594c92a3c4c5b55d4b45d19d630a320d5fc1))
+
 ## [0.2.9](https://github.com/pavelpascari/sdf/compare/v0.2.8...v0.2.9) (2026-02-28)
 
 
