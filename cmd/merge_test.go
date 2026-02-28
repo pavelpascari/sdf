@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -95,6 +96,62 @@ func TestFindHeadPR_NoPRAfterMerged(t *testing.T) {
 	_, err := findHeadPR(s)
 	if err == nil {
 		t.Fatal("expected error when first open branch has no PR")
+	}
+}
+
+func TestMergeResultJSON(t *testing.T) {
+	result := MergeResult{
+		Stack:        "my-feature",
+		MergedPR:     42,
+		MergedBranch: "feat-a",
+		Method:       "squash",
+		Base:         "main",
+		Retargeted:   43,
+		Remaining:    2,
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var roundtrip MergeResult
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if roundtrip.MergedPR != 42 {
+		t.Errorf("merged_pr = %d, want 42", roundtrip.MergedPR)
+	}
+	if roundtrip.Retargeted != 43 {
+		t.Errorf("retargeted_pr = %d, want 43", roundtrip.Retargeted)
+	}
+	if roundtrip.Method != "squash" {
+		t.Errorf("method = %q, want %q", roundtrip.Method, "squash")
+	}
+}
+
+func TestMergeResultJSON_OmitsEmpty(t *testing.T) {
+	result := MergeResult{
+		Stack:        "my-feature",
+		MergedPR:     42,
+		MergedBranch: "feat-a",
+		Method:       "squash",
+		Base:         "main",
+		Remaining:    0,
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	s := string(data)
+	if contains(s, "retargeted_pr") {
+		t.Error("retargeted_pr should be omitted when zero")
+	}
+	if contains(s, "error") {
+		t.Error("error should be omitted when empty")
 	}
 }
 
