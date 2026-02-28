@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T03:07:49Z",
+  "generated": "2026-02-28T03:09:31Z",
   "commands": [
     {
       "name": "ai",
@@ -59,13 +59,27 @@
               "type": "bool",
               "default": "false",
               "description": "set value in global config (~/.config/sdf/config.json)"
+            },
+            {
+              "name": "json",
+              "type": "bool",
+              "default": "false",
+              "description": "output result as JSON"
             }
           ]
         },
         {
           "name": "show",
           "use": "show",
-          "short": "Display effective merged configuration"
+          "short": "Display effective merged configuration",
+          "flags": [
+            {
+              "name": "json",
+              "type": "bool",
+              "default": "false",
+              "description": "output config as JSON only"
+            }
+          ]
         }
       ]
     },

@@ -39,14 +39,18 @@ func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configSetCmd)
 	configSetCmd.Flags().Bool("global", false, "set value in global config (~/.config/sdf/config.json)")
+	configShowCmd.Flags().Bool("json", false, "output config as JSON only")
+	configSetCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runConfigShowCmd(cmd *cobra.Command, args []string) error {
-	return runConfigShow()
+	jsonFlag, _ := cmd.Flags().GetBool("json")
+	return runConfigShow(jsonFlag)
 }
 
 func runConfigSetCmd(cmd *cobra.Command, args []string) error {
 	global, _ := cmd.Flags().GetBool("global")
+	jsonFlag, _ := cmd.Flags().GetBool("json")
 	key := args[0]
 	value := args[1]
 
@@ -97,6 +101,13 @@ func runConfigSetCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if jsonFlag {
+		result := map[string]string{"key": key, "value": value, "path": path}
+		data, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
 	bus.Printf("Set %s = %s in %s", key, value, path)
@@ -109,14 +120,16 @@ func RunConfig(args []string) error {
 	return rootCmd.Execute()
 }
 
-func runConfigShow() error {
+func runConfigShow(jsonMode bool) error {
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
 
 	root, err := stack.FindRoot()
 	if err != nil {
 		// If not in a stack, try to show just global config
-		bus.Warnf("Not inside an sdf stack — showing global config only.")
+		if !jsonMode {
+			bus.Warnf("Not inside an sdf stack — showing global config only.")
+		}
 		globalPath, err := cfgpkg.GlobalPath()
 		if err != nil {
 			return err
@@ -125,12 +138,23 @@ func runConfigShow() error {
 		if err != nil {
 			return err
 		}
+		if jsonMode {
+			data, _ := json.MarshalIndent(cfg, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
 		return printConfig(cfg, globalPath, "", bus)
 	}
 
 	cfg, err := cfgpkg.Load(root)
 	if err != nil {
 		return err
+	}
+
+	if jsonMode {
+		data, _ := json.MarshalIndent(cfg, "", "  ")
+		fmt.Println(string(data))
+		return nil
 	}
 
 	globalPath, _ := cfgpkg.GlobalPath()
