@@ -58,14 +58,14 @@ Fetches from origin and fast-forwards the base branch to ensure sync state is ac
 
 <CommandRef command={cmd('split')} />
 
-Uses Claude to analyze the source branch's commits and full diff, identify semantic themes, and propose a split plan. The plan groups changes into layers ordered by dependency (types/schema first, then APIs, then business logic, then UI). Each layer becomes a branch in the new stack.
+Uses Claude to analyze the source branch's full diff, identify semantic themes, and propose a split plan. The plan groups changed files into layers ordered by dependency (types/schema first, then APIs, then business logic, then UI). Each layer becomes a branch in the new stack.
 
 **Pipeline:**
 
-1. **Analysis** — Claude classifies each commit (clean, mixed, messy, dependent, scattered) and extracts themes that cut across commits
-2. **Plan** — SDF generates a split plan showing layers, files, and estimated diffs. Saved as YAML for offline editing
+1. **Analysis** — Claude groups changed files into layers by semantic theme. If a file spans multiple layers, a follow-up phase assigns individual hunks
+2. **Plan** — SDF displays the split plan showing layers, files, and estimated diffs
 3. **Review** — Interactive prompt to accept, refine (via Claude session), or abort
-4. **Execute** — Creates branches using the appropriate strategy per layer: cherry-pick for clean commits, selective staging for mixed commits, hunk-level splitting for shared files
+4. **Execute** — Creates branches by extracting per-layer diffs and applying them as patches. Shared files are split at the hunk level
 5. **Validate** — Verifies `git diff original-branch stack/last-branch` is empty (lossless split)
 6. **Ship** — Pushes branches, creates PRs with stack navigation links
 

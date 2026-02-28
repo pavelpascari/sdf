@@ -36,9 +36,9 @@ The split runs through a pipeline of analysis, planning, execution, and validati
 
 ### Analysis
 
-Claude reads the full diff and every commit in the range. It classifies each commit by quality — clean single-concern commits are preserved as-is, mixed or messy commits get decomposed. Then it identifies semantic themes that cut across commits: schema changes, API endpoints, business logic, UI components. Each theme becomes a candidate PR.
+Claude reads the full diff and the changed file list. It identifies semantic themes that cut across the branch: schema changes, API endpoints, business logic, UI components. Each theme becomes a candidate PR layer, and every changed file is assigned to at least one layer.
 
-The themes are ordered by dependency: types and schemas first, then interfaces and APIs, then business logic, then presentation. Tests travel with the code they test.
+The layers are ordered by dependency: types and schemas first, then interfaces and APIs, then business logic, then presentation. Tests travel with the code they test.
 
 ### Plan review
 
@@ -60,21 +60,20 @@ Split plan for my-feature (base: main)
   Total: 23 files across 3 layers
 ```
 
-You can accept the plan, refine it interactively through a Claude session (move files between layers, rename PRs, merge layers), or abort entirely. Plans are saved as YAML so you can edit them offline and resume later.
+You can accept the plan, refine it interactively through a Claude session (move files between layers, rename PRs, merge layers), or abort entirely.
 
 ### Execution
 
-For each layer, SDF creates a branch from the previous layer's tip and applies the assigned changes. It uses the right strategy per layer:
+For each layer, SDF creates a branch from the previous layer's tip and applies the assigned changes:
 
-- **Clean commits** are cherry-picked directly
-- **Mixed commits** are cherry-picked without committing, then selectively staged by file
-- **Shared files** (same file in multiple layers) are split at the hunk level — each layer gets only the hunks it needs
+- **Whole files** — SDF extracts the diff between base and source for the layer's files and applies it as a patch
+- **Shared files** (same file in multiple layers) — SDF filters the diff at the hunk level, applying only the hunks assigned to each layer
 
 After all branches are created, SDF verifies the split is lossless: `git diff original-branch stack/last-branch` must be empty. If a single line was lost or invented, the split is rolled back.
 
 ### Ship
 
-By default, SDF pushes all branches and creates PRs immediately. Each PR body includes stack navigation links and a note about which layer of the split it represents. CI runs in parallel across all PRs.
+By default, SDF pushes all branches and creates PRs immediately. Each PR body includes stack navigation links and a note about which layer of the split it represents.
 
 ```bash
 # Or keep it local first

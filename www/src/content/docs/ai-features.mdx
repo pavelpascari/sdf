@@ -16,25 +16,15 @@ Conflict resolution and PR content generation are optional — without the Claud
 
 `sdf split` uses Claude as its analysis engine to decompose a large branch into a stack of focused PRs. This is the most AI-intensive feature in SDF — Claude is involved in every phase of the pipeline.
 
-### Commit classification
+### File-level grouping
 
-Claude reads each commit's diff and message to classify it:
+Claude receives the full diff and list of changed files between the base and source branches. It groups files into coherent layers — each representing a candidate PR — based on semantic themes: schema changes, API endpoints, business logic, UI components, etc.
 
-| Classification | Meaning | Action |
-|---|---|---|
-| **CLEAN** | Single concern, well-scoped | Preserve as-is |
-| **MIXED** | Multiple identifiable concerns | Decompose by concern |
-| **MESSY** | No clear structure | Full decomposition |
-| **DEPENDENT** | Fixes a prior commit | Squash into parent |
-| **SCATTERED** | Distributed review feedback | Distribute by concern |
-
-### Semantic theme extraction
-
-Claude analyzes the entire diff to identify logical themes that cut across commits. A "WIP" commit might contain schema changes, API code, and business logic — Claude separates these into distinct themes that each become a candidate PR layer.
+A file typically appears in exactly one layer. When a file's changes clearly serve multiple concerns, it may appear in multiple layers — SDF handles this with hunk-level splitting in a follow-up phase.
 
 ### Dependency ordering
 
-Claude determines the natural dependency order between themes: types and schemas before interfaces, APIs before business logic, business logic before UI. Tests travel with the code they test.
+Claude determines the natural dependency order between layers: types and schemas before interfaces, APIs before business logic, business logic before UI. Tests travel with the code they test.
 
 ### Hunk-level splitting
 
@@ -149,7 +139,7 @@ sdf doctor
 
 When SDF invokes Claude, it sends:
 
-- **For branch splitting:** the full diff between base and source branch, per-commit diffs and messages, and file lists with change stats
+- **For branch splitting:** the full diff between base and source branch, and the list of changed files. For shared files (Phase 2), individual file diffs with numbered hunks
 - **For conflict resolution:** upstream diff summaries, PR descriptions from GitHub, and file contents with conflict markers
 - **For PR content generation:** branch diffs, commit subjects, and existing PR titles/descriptions
 
