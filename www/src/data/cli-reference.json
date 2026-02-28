@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T02:57:07Z",
+  "generated": "2026-02-28T02:59:19Z",
   "commands": [
     {
       "name": "ai",
@@ -90,6 +90,12 @@
           "type": "string",
           "default": "",
           "description": "base branch (default: auto-detected)"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
         },
         {
           "name": "stack",
