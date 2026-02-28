@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"io"
 	"testing"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/testutil"
 )
@@ -35,7 +37,9 @@ func TestReconcileSyncPRStates_FillsFromGitHub(t *testing.T) {
 		}
 	}
 
-	reconcileSyncPRStates(s)
+	testBus := render.NewBus(io.Discard, io.Discard, render.Options{})
+	defer func() { _ = testBus.Finish() }()
+	reconcileSyncPRStates(s, testBus)
 
 	// After reconciliation, PRs should be filled
 	expected := map[string]int{
@@ -80,7 +84,9 @@ func TestReconcileSyncPRStates_DetectsMerged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reconcileSyncPRStates(s)
+	testBus := render.NewBus(io.Discard, io.Discard, render.Options{})
+	defer func() { _ = testBus.Finish() }()
+	reconcileSyncPRStates(s, testBus)
 
 	if s.Nodes[0].Status != "merged" {
 		t.Errorf("expected branchA status 'merged', got %q", s.Nodes[0].Status)
@@ -164,7 +170,9 @@ func TestReconcileSyncPRStates_GHError(t *testing.T) {
 	}
 
 	// Should not panic, should just print a warning
-	reconcileSyncPRStates(s)
+	testBus := render.NewBus(io.Discard, io.Discard, render.Options{})
+	defer func() { _ = testBus.Finish() }()
+	reconcileSyncPRStates(s, testBus)
 
 	// PRs should remain unchanged
 	for _, node := range s.Nodes {

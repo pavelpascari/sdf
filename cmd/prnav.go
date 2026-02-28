@@ -100,7 +100,7 @@ func replaceDescription(body, description string) string {
 
 // updateStackNavForAllPRs fetches PR info and updates the stack navigation
 // section in every PR's description.
-func updateStackNavForAllPRs(root string, s *stack.Stack) error {
+func updateStackNavForAllPRs(root string, s *stack.Stack, bus *render.Bus) error {
 	// Collect branches that have PRs
 	var branches []string
 	for _, node := range s.Nodes {
@@ -155,11 +155,11 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 	var mu sync.Mutex
 	hashUpdates := make(map[int]string) // nodeIndex → hash
 
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR navigation"})
-	bus.Print("")
+	localBus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR navigation"})
+	localBus.Print("")
 	for _, j := range jobs {
 		node := s.Nodes[j.nodeIndex]
-		bus.AddTask(render.TaskSpec{
+		localBus.AddTask(render.TaskSpec{
 			ID:   fmt.Sprintf("nav-%d", node.PR),
 			Name: fmt.Sprintf("PR %s nav", ui.PR(node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
@@ -185,8 +185,8 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 		})
 	}
 
-	if err := bus.RunBatch(context.Background()); err != nil {
-		bus.Warnf("some nav updates failed: %v", err)
+	if err := localBus.RunBatch(context.Background()); err != nil {
+		localBus.Warnf("some nav updates failed: %v", err)
 	}
 
 	// Apply hash updates to stack nodes.
@@ -198,9 +198,9 @@ func updateStackNavForAllPRs(root string, s *stack.Stack) error {
 		if err := stack.Save(root, s); err != nil {
 			return fmt.Errorf("cannot save stack after nav update: %w", err)
 		}
-		bus.Printf("\nUpdated %d PR description(s).", len(hashUpdates))
+		localBus.Printf("\nUpdated %d PR description(s).", len(hashUpdates))
 	}
-	if err := bus.Finish(); err != nil {
+	if err := localBus.Finish(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
 	}
 

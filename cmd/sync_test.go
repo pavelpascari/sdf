@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -468,12 +470,15 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{kind: "update-content", branch: "feat/api", pr: 42},
 	}
 
-	// Capture stdout
+	bus := render.NewBus(io.Discard, io.Discard, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
+	// Capture stdout (printSyncPlan still writes to os.Stdout for now)
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printSyncPlan(plan)
+	printSyncPlan(plan, bus)
 
 	w.Close()
 	os.Stdout = old

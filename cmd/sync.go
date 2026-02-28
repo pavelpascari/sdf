@@ -74,11 +74,14 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
 	if cont {
-		return runSyncContinue(root)
+		return runSyncContinue(root, bus)
 	}
 
-	return runSyncFull(root, stackName, yes, withContent)
+	return runSyncFull(root, stackName, yes, withContent, bus)
 }
 
 // RunSync is a compatibility wrapper for callers that use the old interface.
@@ -88,7 +91,7 @@ func RunSync(args []string) error {
 }
 
 // runSyncContinue resumes a sync that was paused for manual conflict resolution.
-func runSyncContinue(root string) error {
+func runSyncContinue(root string, bus *render.Bus) error {
 	local, err := stack.LoadLocal(root)
 	if err != nil {
 		return err
@@ -114,7 +117,7 @@ func runSyncContinue(root string) error {
 		fmt.Printf("Rebase of %s was aborted. Starting a fresh sync.\n", ui.Branch(progress.PausedAt))
 		local.SyncProgress = nil
 		stack.SaveLocal(root, local)
-		return runSyncFull(root, "", false, false)
+		return runSyncFull(root, "", false, false, bus)
 	}
 
 	s, err := stack.Load(root)
@@ -152,11 +155,11 @@ func runSyncContinue(root string) error {
 	gitpkg.Checkout(progress.OriginalBranch)
 
 	fmt.Println("\nResuming sync for remaining branches...")
-	return runSyncFrom(root, s, progress.ResumeIndex+1, nil)
+	return runSyncFrom(root, s, progress.ResumeIndex+1, nil, bus)
 }
 
 // runSyncFull runs a complete sync from scratch.
-func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) error {
+func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool, bus *render.Bus) error {
 	// Check for stale sync progress
 	local, _ := stack.LoadLocal(root)
 	if local.SyncProgress != nil {
@@ -200,7 +203,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 	}
 
 	if ghpkg.Available() {
-		reconcileSyncPRStates(s)
+		reconcileSyncPRStates(s, bus)
 	}
 
 	// Load config for PR update settings
@@ -234,13 +237,13 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 			fmt.Fprintf(os.Stderr, "warning: could not save stack: %v\n", err)
 		}
 		// Still update stack navigation (catches empty/stale nav hashes)
-		if err := updateStackNavForAllPRs(root, s); err != nil {
+		if err := updateStackNavForAllPRs(root, s, bus); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
 		}
 		return nil
 	}
 
-	printSyncPlan(plan)
+	printSyncPlan(plan, bus)
 
 	if !skipConfirm {
 		if !confirmSync() {
@@ -251,12 +254,12 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent bool) erro
 
 	fmt.Println()
 
-	return runSyncFrom(root, s, 0, &opts)
+	return runSyncFrom(root, s, 0, &opts, bus)
 }
 
 // runSyncFrom runs sync starting at a given node index. Index 0 means full sync.
 // opts controls PR content updates (titles/descriptions); nil disables updates.
-func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions) error {
+func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions, bus *render.Bus) error {
 	originalBranch, err := gitpkg.CurrentBranch()
 	if err != nil {
 		return fmt.Errorf("cannot determine current branch: %w", err)
@@ -314,7 +317,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 			fmt.Printf("  rebasing %s onto %s...\n", ui.Branch(node.Branch), ui.Branch(parent))
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
-				action, err := promptOnConflict(root, s, node.Branch, originalBranch, i, err)
+				action, err := promptOnConflict(root, s, node.Branch, originalBranch, i, err, bus)
 				if action == conflictPaused {
 					return err
 				}
@@ -395,14 +398,14 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 	}
 
 	// Offer to create PRs for branches that don't have one yet
-	promptCreateMissingPRs(root, s, opts)
+	promptCreateMissingPRs(root, s, opts, bus)
 
 	// Update PR titles and descriptions if configured
-	updatePRContent(root, s, opts)
+	updatePRContent(root, s, opts, bus)
 
 	// Update stack navigation in all PRs (runs even when in sync,
 	// to catch stale nav hashes from PRs created before this feature)
-	if err := updateStackNavForAllPRs(root, s); err != nil {
+	if err := updateStackNavForAllPRs(root, s, bus); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
 	}
 
@@ -411,7 +414,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions)
 
 // promptCreateMissingPRs checks for open branches without PRs and offers
 // to create them. Runs after sync completes, before nav/content updates.
-func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
+func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, bus *render.Bus) {
 	if !ghpkg.Available() {
 		return
 	}
@@ -474,7 +477,7 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions) {
 // updatePRContent updates PR titles and descriptions for open PRs in the stack.
 // Each title and description is its own parallel task, giving fine-grained
 // progress feedback and maximum concurrency.
-func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
+func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, bus *render.Bus) {
 	if opts == nil || !opts.withContent {
 		return
 	}
@@ -533,11 +536,11 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 	}
 
 	var updated atomic.Int32
-	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR content"})
-	bus.Print("")
+	localBus := render.NewBus(os.Stdout, os.Stderr, render.Options{Label: "Updating PR content"})
+	localBus.Print("")
 	for _, j := range jobs {
 		// Title task
-		bus.AddTask(render.TaskSpec{
+		localBus.AddTask(render.TaskSpec{
 			ID:   fmt.Sprintf("pr-%d-title", j.node.PR),
 			Name: fmt.Sprintf("PR %s title", ui.PR(j.node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
@@ -568,7 +571,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 
 		// Description task (Claude only)
 		if hasClaude && j.descPrompt != "" {
-			bus.AddTask(render.TaskSpec{
+			localBus.AddTask(render.TaskSpec{
 				ID:   fmt.Sprintf("pr-%d-desc", j.node.PR),
 				Name: fmt.Sprintf("PR %s description", ui.PR(j.node.PR)),
 				Fn: func(ctx context.Context, r *render.Reporter) error {
@@ -596,16 +599,16 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions) {
 			})
 		}
 	}
-	if err := bus.RunBatch(context.Background()); err != nil {
-		bus.Warnf("some PR updates failed: %v", err)
+	if err := localBus.RunBatch(context.Background()); err != nil {
+		localBus.Warnf("some PR updates failed: %v", err)
 	}
 	n := int(updated.Load())
 	if n > 0 {
-		bus.Printf("\nUpdated %d PR(s).", n)
+		localBus.Printf("\nUpdated %d PR(s).", n)
 	} else {
-		bus.Print("\nAll PR content is up to date.")
+		localBus.Print("\nAll PR content is up to date.")
 	}
-	if err := bus.Finish(); err != nil {
+	if err := localBus.Finish(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not flush render log: %v\n", err)
 	}
 }
@@ -760,7 +763,7 @@ func buildDescriptionPrompt(branch string, subjects []string, diff, currentDesc 
 // reconcileSyncPRStates polls GitHub for PR states and applies lightweight
 // reconciliation. Routine changes (status/PR fills) are applied directly;
 // structural drift (base mismatches, missing PRs) triggers warnings.
-func reconcileSyncPRStates(s *stack.Stack) {
+func reconcileSyncPRStates(s *stack.Stack, bus *render.Bus) {
 	branches := make([]string, len(s.Nodes))
 	for i, n := range s.Nodes {
 		branches[i] = n.Branch
@@ -874,7 +877,7 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 	return actions
 }
 
-func printSyncPlan(plan []syncAction) {
+func printSyncPlan(plan []syncAction, bus *render.Bus) {
 	fmt.Println("\nSync plan:")
 	for i := 0; i < len(plan); i++ {
 		a := plan[i]
@@ -918,7 +921,7 @@ const (
 	conflictAborted
 )
 
-func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, rebaseErr error) (conflictAction, error) {
+func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, rebaseErr error, bus *render.Bus) (conflictAction, error) {
 	conflicted, err := gitpkg.ConflictedFiles()
 	if err != nil || len(conflicted) == 0 {
 		gitpkg.RebaseAbort()
@@ -947,9 +950,9 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 
 	switch choice {
 	case "claude":
-		return tryClaude(root, s, branch, originalBranch, nodeIndex, rebaseErr, conflicted)
+		return tryClaude(root, s, branch, originalBranch, nodeIndex, rebaseErr, conflicted, bus)
 	case "manual":
-		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex)
+		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex, bus)
 	case "skip":
 		gitpkg.RebaseAbort()
 		fmt.Printf("  Skipped %s.\n", branch)
@@ -962,7 +965,7 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 	}
 }
 
-func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, rebaseErr error, conflicted []string) (conflictAction, error) {
+func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, rebaseErr error, conflicted []string, bus *render.Bus) (conflictAction, error) {
 	fmt.Println("  invoking Claude for conflict resolution...")
 
 	parent := s.ParentBranch(branch)
@@ -1009,7 +1012,7 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 
 	switch choice {
 	case "manual":
-		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex)
+		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex, bus)
 	case "skip":
 		gitpkg.RebaseAbort()
 		return conflictFailed, fmt.Errorf("conflicts in %s (Claude failed, skipped)", branch)
@@ -1022,7 +1025,7 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 	}
 }
 
-func pauseForManualResolution(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int) (conflictAction, error) {
+func pauseForManualResolution(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, bus *render.Bus) (conflictAction, error) {
 	parent := s.ParentBranch(branch)
 	parentTip, _ := gitpkg.RevParse(parent)
 
