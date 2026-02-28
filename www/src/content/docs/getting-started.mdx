@@ -129,8 +129,22 @@ Merged nodes stay in the stack as completed entries rather than being removed, s
 
 ---
 
+## Alternative: split an existing branch
+
+Already have a large branch you want to break into reviewable pieces? `sdf split` uses Claude to decompose it into a stack automatically:
+
+```bash
+sdf split --from feature/big-change --stack my-feature
+```
+
+Claude analyzes the commits, identifies semantic themes, and proposes a split plan. After your review, SDF creates the branches, validates the split is lossless, pushes, and creates PRs. The original branch is never modified.
+
+See [AI Features](/docs/ai-features) for details on how the analysis works, and the [Commands reference](/docs/commands) for all `sdf split` flags.
+
+---
+
 ## What's next
 
 - [Core Concepts](/docs/core-concepts) — understand stacks, nodes, and how branches are organized
 - [Commands](/docs/commands) — full command reference
-- [AI Features](/docs/ai-features) — how Claude integrates for conflict resolution
+- [AI Features](/docs/ai-features) — how Claude integrates for branch splitting, conflict resolution, and PR content

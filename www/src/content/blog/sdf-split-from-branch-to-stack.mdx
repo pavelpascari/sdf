@@ -1,0 +1,128 @@
+---
+title: "sdf split: Turn Any Branch into a Stack"
+description: "sdf split uses Claude to decompose a single large branch into a chain of focused, reviewable PRs — without touching the original branch."
+datePublished: 2026-02-26
+tags: [release]
+author: "Pavel Pascari"
+published: true
+---
+
+You know the moment. The feature branch started clean — a schema change, then an API layer, then some UI work. Three days later it's 800 lines across 20 files and 14 commits, half of them titled "WIP". The code is correct, but nobody wants to review it as one giant PR.
+
+The standard advice is "split it into smaller PRs." The standard reality is that splitting a branch after the fact is tedious and error-prone. You're cherry-picking commits, untangling mixed changes, creating branches in dependency order, hoping you didn't miss a file. Then you have to verify that each intermediate branch actually builds.
+
+`sdf split` does all of this automatically.
+
+## One command, full stack
+
+```bash
+sdf split --from feature/big-change --stack my-feature
+```
+
+SDF analyzes the branch, proposes a split plan, and — after your approval — creates a full stack of branches with PRs, ready for review:
+
+```
+Before:  main ← big-feature (847 insertions, 23 files, 15 commits)
+
+After:   main ← my-feature/1-schema ← my-feature/2-api ← my-feature/3-ui
+         (big-feature untouched)
+```
+
+The original branch is **never modified**. The split creates new branches and new commits. If the result looks wrong, delete the stack branches and try again. Your work is never at risk.
+
+## How it works
+
+The split runs through a pipeline of analysis, planning, execution, and validation.
+
+### Analysis
+
+Claude reads the full diff and the changed file list. It identifies semantic themes that cut across the branch: schema changes, API endpoints, business logic, UI components. Each theme becomes a candidate PR layer, and every changed file is assigned to at least one layer.
+
+The layers are ordered by dependency: types and schemas first, then interfaces and APIs, then business logic, then presentation. Tests travel with the code they test.
+
+### Plan review
+
+Before touching anything, SDF shows the proposed split:
+
+```
+Split plan for my-feature (base: main)
+──────────────────────────────────────────────────
+
+  Layer 1: schema (6 files, +142 -3)
+    Database schema and migration files
+
+  Layer 2: api (8 files, +310 -12)
+    API endpoints and request handlers
+
+  Layer 3: ui (9 files, +395 -28)
+    UI components and integration tests
+
+  Total: 23 files across 3 layers
+```
+
+You can accept the plan, refine it interactively through a Claude session (move files between layers, rename PRs, merge layers), or abort entirely.
+
+### Execution
+
+For each layer, SDF creates a branch from the previous layer's tip and applies the assigned changes:
+
+- **Whole files** — SDF extracts the diff between base and source for the layer's files and applies it as a patch
+- **Shared files** (same file in multiple layers) — SDF filters the diff at the hunk level, applying only the hunks assigned to each layer
+
+After all branches are created, SDF verifies the split is lossless: `git diff original-branch stack/last-branch` must be empty. If a single line was lost or invented, the split is rolled back.
+
+### Ship
+
+By default, SDF pushes all branches and creates PRs immediately. Each PR body includes stack navigation links and a note about which layer of the split it represents.
+
+```bash
+# Or keep it local first
+sdf split --from feature/big-change --stack my-feature --no-push
+```
+
+## Refining the plan
+
+The interactive refinement loop is the escape hatch for when Claude's initial grouping isn't quite right. After reviewing the plan, choose "Refine plan" to open a Claude session where you can give natural language instructions:
+
+- "Move `auth_middleware.go` from layer 2 to layer 1"
+- "Merge layers 3 and 4 into one"
+- "Rename layer 1 to 'migrations'"
+
+SDF re-extracts the updated plan from Claude and handles any shared file reassignment automatically.
+
+## The trust anchor
+
+The core guarantee is simple: **the tip of the last split branch must produce the exact same tree as the original branch.** SDF verifies this with `git diff` after every split. Nothing lost, nothing invented. If this check fails, the entire split is rolled back and you can try again or adjust the plan.
+
+This is what makes `sdf split` safe to use on real work. The original branch stays untouched, the validation is deterministic, and every intermediate step is reversible.
+
+## Integrates with everything else
+
+The split produces a standard SDF stack. All existing commands work on it immediately:
+
+- `sdf status` shows the split stack topology
+- `sdf sync` keeps it in sync if upstream changes
+- `sdf merge` lands PRs one at a time
+- `sdf pr` can recreate PRs if needed
+
+## Getting started
+
+```bash
+# Install or update
+brew install pavelpascari/tap/sdf
+
+# Claude CLI required for split
+sdf doctor
+
+# Split a branch
+sdf split --from feature/big-change --stack my-feature
+
+# Preview without executing
+sdf split --from feature/big-change --stack my-feature --dry-run
+```
+
+The [Commands reference](/docs/commands) documents all flags. The [AI Features](/docs/ai-features) page covers how Claude is used during analysis and plan refinement.
+
+---
+
+*`sdf split` requires the Claude CLI. Install it from [claude.ai/code](https://claude.ai/code).*

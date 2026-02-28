@@ -1,14 +1,42 @@
 ---
 title: AI Features
-description: How SDF uses Claude for conflict resolution and PR content generation.
+description: How SDF uses Claude for branch splitting, conflict resolution, and PR content generation.
 order: 6
 ---
 
 # AI Features
 
-SDF integrates with the [Claude CLI](https://claude.ai/code) to provide two AI-powered capabilities: **semantic conflict resolution** during sync and move operations, and **PR title and description generation**.
+SDF integrates with the [Claude CLI](https://claude.ai/code) to provide three AI-powered capabilities: **branch splitting** via `sdf split`, **semantic conflict resolution** during sync and move operations, and **PR title and description generation**.
 
-Both features are optional. Without the Claude CLI installed, SDF falls back to manual conflict resolution and local title generation from branch names and commit subjects.
+Conflict resolution and PR content generation are optional — without the Claude CLI installed, SDF falls back to manual conflict resolution and local title generation from branch names and commit subjects. Branch splitting requires the Claude CLI.
+
+---
+
+## Branch splitting
+
+`sdf split` uses Claude as its analysis engine to decompose a large branch into a stack of focused PRs. This is the most AI-intensive feature in SDF — Claude is involved in every phase of the pipeline.
+
+### File-level grouping
+
+Claude receives the full diff and list of changed files between the base and source branches. It groups files into coherent layers — each representing a candidate PR — based on semantic themes: schema changes, API endpoints, business logic, UI components, etc.
+
+A file typically appears in exactly one layer. When a file's changes clearly serve multiple concerns, it may appear in multiple layers — SDF handles this with hunk-level splitting in a follow-up phase.
+
+### Dependency ordering
+
+Claude determines the natural dependency order between layers: types and schemas before interfaces, APIs before business logic, business logic before UI. Tests travel with the code they test.
+
+### Hunk-level splitting
+
+When the same file contains changes from multiple themes, Claude assigns individual hunks to the appropriate layer. SDF validates these assignments against the actual diff to ensure every hunk is accounted for and no hunk appears in multiple layers.
+
+### Plan refinement
+
+After the initial plan is generated, you can open an interactive Claude session to refine it with natural language instructions. SDF re-extracts the updated plan and handles any shared file reassignment automatically.
+
+### Session management
+
+Split analysis uses a persistent Claude session named `split-analysis`. This session is reused during plan refinement, allowing Claude to maintain context across the full split workflow. The session ID is saved in `.sdf/local.json` so you can resume it later with `claude --resume <id>`.
 
 ---
 
@@ -111,6 +139,7 @@ sdf doctor
 
 When SDF invokes Claude, it sends:
 
+- **For branch splitting:** the full diff between base and source branch, and the list of changed files. For shared files (Phase 2), individual file diffs with numbered hunks
 - **For conflict resolution:** upstream diff summaries, PR descriptions from GitHub, and file contents with conflict markers
 - **For PR content generation:** branch diffs, commit subjects, and existing PR titles/descriptions
 
