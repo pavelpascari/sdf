@@ -437,14 +437,17 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, bus 
 		cfg = opts.cfg
 	}
 
-	fmt.Println()
+	bus.Print("")
 	for _, idx := range missing {
 		node := &s.Nodes[idx]
 		base := s.ParentBranch(node.Branch)
 		subjects, _ := gitpkg.LogSubjects(base, node.Branch)
 		prTitle := cfgpkg.GeneratePRTitle(cfg, s.StackID, node.Branch, subjects)
 
-		if !ui.Confirm(fmt.Sprintf("%s has no PR. Create one?", ui.Branch(node.Branch))) {
+		bus.Pause()
+		ok := ui.Confirm(fmt.Sprintf("%s has no PR. Create one?", ui.Branch(node.Branch)))
+		bus.Resume()
+		if !ok {
 			continue
 		}
 
@@ -452,14 +455,14 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, bus 
 
 		if err := gitpkg.Push(node.Branch); err != nil {
 			if err := gitpkg.PushNew(node.Branch); err != nil {
-				fmt.Fprintf(os.Stderr, "  %s could not push %s: %v\n", ui.SymFail, ui.Branch(node.Branch), err)
+				bus.Warnf("  %s could not push %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
 				continue
 			}
 		}
 
 		url, err := ghpkg.PRCreate(prTitle, body, base, node.Branch)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %s could not create PR: %v\n", ui.SymFail, err)
+			bus.Warnf("  %s could not create PR: %v", ui.SymFail, err)
 			continue
 		}
 
@@ -469,11 +472,11 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, bus 
 			node.Status = "open"
 		}
 
-		fmt.Printf("  %s PR created: %s\n", ui.SymOK, url)
+		bus.Printf("  %s PR created: %s", ui.SymOK, url)
 	}
 
 	if err := stack.Save(root, s); err != nil {
-		fmt.Fprintf(os.Stderr, "  %s could not save stack: %v\n", ui.SymWarn, err)
+		bus.Warnf("  %s could not save stack: %v", ui.SymWarn, err)
 	}
 }
 
@@ -774,7 +777,7 @@ func reconcileSyncPRStates(s *stack.Stack, bus *render.Bus) {
 
 	prs, err := ghpkg.PRList(branches)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not poll PR states: %v\n", err)
+		bus.Warnf("warning: could not poll PR states: %v", err)
 		return
 	}
 
@@ -803,14 +806,14 @@ func reconcileSyncPRStates(s *stack.Stack, bus *render.Bus) {
 	for _, c := range changes {
 		if c.Notable {
 			if !hasNotable {
-				fmt.Println()
+				bus.Print("")
 				hasNotable = true
 			}
-			fmt.Fprintf(os.Stderr, "  %s %s\n", ui.SymWarn, c.Detail)
+			bus.Warnf("  %s %s", ui.SymWarn, c.Detail)
 		}
 	}
 	if hasNotable {
-		fmt.Fprintf(os.Stderr, "\n  Run `sdf fetch` to reconcile structural changes.\n\n")
+		bus.Warn("\n  Run `sdf fetch` to reconcile structural changes.\n")
 	}
 }
 
@@ -881,33 +884,33 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 }
 
 func printSyncPlan(plan []syncAction, bus *render.Bus) {
-	fmt.Println("\nSync plan:")
+	bus.Print("\nSync plan:")
 	for i := 0; i < len(plan); i++ {
 		a := plan[i]
 		switch a.kind {
 		case "skip-merged":
 			if a.pr > 0 {
-				fmt.Printf("  %s PR %s (%s) merged\n", ui.SymOK, ui.PR(a.pr), ui.Branch(a.branch))
+				bus.Printf("  %s PR %s (%s) merged", ui.SymOK, ui.PR(a.pr), ui.Branch(a.branch))
 			} else {
-				fmt.Printf("  %s %s merged\n", ui.SymOK, ui.Branch(a.branch))
+				bus.Printf("  %s %s merged", ui.SymOK, ui.Branch(a.branch))
 			}
 		case "rebase":
 			// Combine with next push action for same branch
 			if i+1 < len(plan) && plan[i+1].kind == "push" && plan[i+1].branch == a.branch {
-				fmt.Printf("  %s rebase %s onto %s + push\n", ui.SymPlan, ui.Branch(a.branch), ui.Branch(a.onto))
+				bus.Printf("  %s rebase %s onto %s + push", ui.SymPlan, ui.Branch(a.branch), ui.Branch(a.onto))
 				i++ // skip the push
 			} else {
-				fmt.Printf("  %s rebase %s onto %s\n", ui.SymPlan, ui.Branch(a.branch), ui.Branch(a.onto))
+				bus.Printf("  %s rebase %s onto %s", ui.SymPlan, ui.Branch(a.branch), ui.Branch(a.onto))
 			}
 		case "push":
-			fmt.Printf("  %s push %s\n", ui.SymPlan, ui.Branch(a.branch))
+			bus.Printf("  %s push %s", ui.SymPlan, ui.Branch(a.branch))
 		case "update-pr-base":
-			fmt.Printf("  %s update PR %s base → %s\n", ui.SymPlan, ui.PR(a.pr), ui.Branch(a.onto))
+			bus.Printf("  %s update PR %s base → %s", ui.SymPlan, ui.PR(a.pr), ui.Branch(a.onto))
 		case "update-content":
-			fmt.Printf("  %s update PR %s content\n", ui.SymPlan, ui.PR(a.pr))
+			bus.Printf("  %s update PR %s content", ui.SymPlan, ui.PR(a.pr))
 		}
 	}
-	fmt.Println()
+	bus.Print("")
 }
 
 func confirmSync() bool {
@@ -931,11 +934,11 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 		return conflictFailed, rebaseErr
 	}
 
-	fmt.Printf("  %s conflict in %s — %d file(s):\n", ui.SymConflict, ui.Branch(branch), len(conflicted))
+	bus.Printf("  %s conflict in %s — %d file(s):", ui.SymConflict, ui.Branch(branch), len(conflicted))
 	for _, f := range conflicted {
-		fmt.Printf("    %s\n", f)
+		bus.Printf("    %s", f)
 	}
-	fmt.Println()
+	bus.Print("")
 
 	hasClaude := claudepkg.Available()
 
@@ -949,7 +952,9 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 		huh.NewOption("Abort sync", "abort"),
 	)
 
+	bus.Pause()
 	choice := ui.Select("How would you like to resolve?", options)
+	bus.Resume()
 
 	switch choice {
 	case "claude":
@@ -958,7 +963,7 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 		return pauseForManualResolution(root, s, branch, originalBranch, nodeIndex, bus)
 	case "skip":
 		gitpkg.RebaseAbort()
-		fmt.Printf("  Skipped %s.\n", branch)
+		bus.Printf("  Skipped %s.", branch)
 		return conflictFailed, fmt.Errorf("conflicts in %s (skipped by user)", branch)
 	case "abort", "":
 		gitpkg.RebaseAbort()
@@ -969,7 +974,7 @@ func promptOnConflict(root string, s *stack.Stack, branch, originalBranch string
 }
 
 func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeIndex int, rebaseErr error, conflicted []string, bus *render.Bus) (conflictAction, error) {
-	fmt.Println("  invoking Claude for conflict resolution...")
+	bus.Print("  invoking Claude for conflict resolution...")
 
 	parent := s.ParentBranch(branch)
 	upstreamSummary, _ := gitpkg.DiffSummary(s.FindNode(branch).BaseTip, parent)
@@ -997,21 +1002,23 @@ func tryClaude(root string, s *stack.Stack, branch, originalBranch string, nodeI
 		if err := applyResolutions(output, conflicted); err == nil {
 			if err := gitpkg.Add("."); err == nil {
 				if err := gitpkg.RebaseContinue(); err == nil {
-					fmt.Printf("  %s conflict resolved by Claude\n", ui.SymOK)
+					bus.Printf("  %s conflict resolved by Claude", ui.SymOK)
 					return conflictResolved, nil
 				}
 			}
 		}
 	}
 
-	fmt.Println("  Claude couldn't fully resolve the conflicts.")
-	fmt.Println()
+	bus.Print("  Claude couldn't fully resolve the conflicts.")
+	bus.Print("")
 
+	bus.Pause()
 	choice := ui.Select("What next?", []huh.Option[string]{
 		huh.NewOption("I'll fix the rest myself (pauses sync)", "manual"),
 		huh.NewOption("Skip this branch, continue with the rest", "skip"),
 		huh.NewOption("Abort sync entirely", "abort"),
 	})
+	bus.Resume()
 
 	switch choice {
 	case "manual":
@@ -1043,12 +1050,12 @@ func pauseForManualResolution(root string, s *stack.Stack, branch, originalBranc
 	}
 	stack.SaveLocal(root, local)
 
-	fmt.Printf("\n  Sync paused. Resolve conflicts in %s, then:\n", ui.Branch(branch))
-	fmt.Println()
-	fmt.Println("    1. Edit the conflicted files")
-	fmt.Println("    2. git add <resolved files>")
-	fmt.Println("    3. sdf sync --continue")
-	fmt.Println()
+	bus.Printf("\n  Sync paused. Resolve conflicts in %s, then:", ui.Branch(branch))
+	bus.Print("")
+	bus.Print("    1. Edit the conflicted files")
+	bus.Print("    2. git add <resolved files>")
+	bus.Print("    3. sdf sync --continue")
+	bus.Print("")
 
 	return conflictPaused, nil
 }

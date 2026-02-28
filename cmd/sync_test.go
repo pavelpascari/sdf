@@ -470,21 +470,13 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{kind: "update-content", branch: "feat/api", pr: 42},
 	}
 
-	bus := render.NewBus(io.Discard, io.Discard, render.Options{})
-	defer func() { _ = bus.Finish() }()
-
-	// Capture stdout (printSyncPlan still writes to os.Stdout for now)
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+	// printSyncPlan writes through the bus, so capture via the bus writer
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
 
 	printSyncPlan(plan, bus)
 
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_ = bus.Finish()
 	output := stripANSI(buf.String())
 
 	// Verify each action type appears in the output
