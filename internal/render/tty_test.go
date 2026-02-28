@@ -316,6 +316,49 @@ func TestTTYRenderer_BatchStartFloat64Count(t *testing.T) {
 	}
 }
 
+func TestTTYRenderer_BatchComplete_ShowsCheckmark(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTTYRenderer(&buf, io.Discard)
+
+	r.HandleEvent(Event{
+		Type: EventBatchStart,
+		TS:   time.Now(),
+		Data: map[string]any{"count": 2, "label": "Running tasks"},
+	})
+	r.HandleEvent(Event{
+		Type:   EventTaskStart,
+		TS:     time.Now(),
+		TaskID: "t1",
+		Data:   map[string]any{"name": "task one"},
+	})
+	r.HandleEvent(Event{
+		Type:   EventTaskStart,
+		TS:     time.Now(),
+		TaskID: "t2",
+		Data:   map[string]any{"name": "task two"},
+	})
+	r.HandleEvent(Event{
+		Type:   EventTaskEnd,
+		TS:     time.Now(),
+		TaskID: "t1",
+		Data:   map[string]any{"status": "ok", "message": "done 1"},
+	})
+	r.HandleEvent(Event{
+		Type:   EventTaskEnd,
+		TS:     time.Now(),
+		TaskID: "t2",
+		Data:   map[string]any{"status": "ok", "message": "done 2"},
+	})
+
+	buf.Reset()
+	r.Flush()
+
+	out := buf.String()
+	if !strings.Contains(out, "✓ Running tasks (2/2)") {
+		t.Errorf("expected checkmark when all tasks complete, got:\n%q", out)
+	}
+}
+
 func TestTTYRenderer_ImplementsRenderer(t *testing.T) {
 	// Compile-time check that TTYRenderer satisfies the Renderer interface.
 	var _ Renderer = (*TTYRenderer)(nil)

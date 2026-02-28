@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -468,18 +470,13 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 		{kind: "update-content", branch: "feat/api", pr: 42},
 	}
 
-	// Capture stdout
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printSyncPlan(plan)
-
-	w.Close()
-	os.Stdout = old
-
+	// printSyncPlan writes through the bus, so capture via the bus writer
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
 	output := stripANSI(buf.String())
 
 	// Verify each action type appears in the output

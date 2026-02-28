@@ -8,6 +8,7 @@ import (
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 	"github.com/spf13/cobra"
@@ -142,7 +143,9 @@ func runPR(cmd *cobra.Command, args []string) error {
 
 		// Update stack navigation in all PRs
 		fmt.Println("Updating stack navigation in PR descriptions...")
-		if err := updateStackNavForAllPRs(root, s); err != nil {
+		navBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+		defer func() { _ = navBus.Finish() }()
+		if err := updateStackNavForAllPRs(root, s, navBus); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
 		}
 	}

@@ -8,6 +8,7 @@ import (
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 )
@@ -62,6 +63,9 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		return err
 	}
 
+	mergeBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = mergeBus.Finish() }()
+
 	clean, err := gitpkg.IsClean()
 	if err != nil {
 		return fmt.Errorf("cannot check working tree status: %w", err)
@@ -84,7 +88,7 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		fmt.Fprintf(os.Stderr, "warning: could not fast-forward %s: %v\n", s.Base, err)
 	}
 
-	reconcileSyncPRStates(s)
+	reconcileSyncPRStates(s, mergeBus)
 	stack.Save(root, s)
 
 	// Find head PR
@@ -153,7 +157,7 @@ func runMergeLogic(stackFlag string, yes bool, method string) error {
 		}
 
 		// Run sync with confirmation skipped (user already confirmed the merge)
-		if err := runSyncFull(root, s.StackID, true, false); err != nil {
+		if err := runSyncFull(root, s.StackID, true, false, mergeBus); err != nil {
 			return fmt.Errorf("post-merge sync failed: %w\n\nRun `sdf sync` to retry", err)
 		}
 	} else {

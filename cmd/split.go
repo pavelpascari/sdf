@@ -12,6 +12,7 @@ import (
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	splitpkg "github.com/pavelpascari/sdf/internal/split"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
@@ -453,7 +454,9 @@ func createSplitPRs(root string, s *stack.Stack, cfg cfgpkg.Config, originalBran
 	}
 
 	fmt.Println("Updating stack navigation...")
-	if err := updateStackNavForAllPRs(root, s); err != nil {
+	navBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = navBus.Finish() }()
+	if err := updateStackNavForAllPRs(root, s, navBus); err != nil {
 		fmt.Fprintf(os.Stderr, "  %s could not update PR navigation: %v\n", ui.SymWarn, err)
 	}
 

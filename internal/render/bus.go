@@ -131,6 +131,11 @@ func (b *Bus) Resume() {
 	})
 }
 
+// SetLabel changes the label used for the next RunBatch spinner line.
+func (b *Bus) SetLabel(label string) {
+	b.label = label
+}
+
 // Run executes a single task sequentially (no parallel spinner).
 func (b *Bus) Run(ctx context.Context, task TaskSpec) error {
 	reporter := NewReporter(task.ID, b.events)
