@@ -724,11 +724,17 @@ const jsonLd = [
 <script>
   const btn = document.getElementById('copy-brew');
   if (btn) {
+    const copyIcon = btn.innerHTML;
+    const checkIcon = `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M3.5 7.5L6.5 10.5L11.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     btn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText('brew install pavelpascari/tap/sdf');
-        btn.setAttribute('aria-label', 'Copied!');
-        setTimeout(() => btn.setAttribute('aria-label', 'Copy install command'), 2000);
+        btn.innerHTML = checkIcon;
+        btn.classList.add('text-success');
+        setTimeout(() => {
+          btn.innerHTML = copyIcon;
+          btn.classList.remove('text-success');
+        }, 2000);
       } catch {}
     });
   }
