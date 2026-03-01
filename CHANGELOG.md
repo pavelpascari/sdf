@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/pavelpascari/sdf/compare/v0.3.2...v0.3.3) (2026-03-01)
+
+
+### Features
+
+* **prnav:** add sdf attribution note to stack navigation ([#144](https://github.com/pavelpascari/sdf/issues/144)) ([b44b5ca](https://github.com/pavelpascari/sdf/commit/b44b5ca08b98052f8ba625540b0f0c9a9d041f35))
+
 ## [0.3.2](https://github.com/pavelpascari/sdf/compare/v0.3.1...v0.3.2) (2026-03-01)
 
 
