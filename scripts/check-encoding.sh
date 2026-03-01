@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-DIR="www"
+DIRS=("www/src" "www/public")
 
 # Match UTF-8 byte sequences for the forbidden characters.
 PATTERN='\xe2\x80(\x94|\x9c|\x9d|\x98|\x99)'
@@ -26,10 +26,10 @@ for ext in "${EXTENSIONS[@]}"; do
   INCLUDE_ARGS+=(--include="$ext")
 done
 
-echo "=== Encoding check: no curly quotes or em dashes in $DIR ==="
+echo "=== Encoding check: no curly quotes or em dashes in www/ sources ==="
 echo ""
 
-MATCHES=$(grep -rPn "${INCLUDE_ARGS[@]}" "$PATTERN" "$DIR" 2>/dev/null || true)
+MATCHES=$(grep -rPn "${INCLUDE_ARGS[@]}" "$PATTERN" "${DIRS[@]}" 2>/dev/null || true)
 
 if [ -n "$MATCHES" ]; then
   echo "FAIL: Found curly quotes or em dashes in the following files:"
