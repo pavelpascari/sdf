@@ -48,6 +48,7 @@ func buildStackNav(s *stack.Stack, prs map[int]ghpkg.PRInfo, currentBranch strin
 		b.WriteString("\n")
 	}
 
+	b.WriteString("\n<sub>This stack is managed with [sdf](https://stacked-diffs-flow.com).</sub>\n")
 	b.WriteString(stackNavClose)
 	return b.String()
 }

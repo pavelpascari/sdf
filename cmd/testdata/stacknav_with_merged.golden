@@ -4,4 +4,6 @@ Stack: `payments`
 1. https://github.com/test/repo/pull/20
 2. https://github.com/test/repo/pull/21 ◀ this PR
 3. pay/ui
+
+<sub>This stack is managed with [sdf](https://stacked-diffs-flow.com).</sub>
 <!-- /sdf:stack-nav -->
