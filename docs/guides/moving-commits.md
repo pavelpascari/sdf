@@ -24,63 +24,42 @@ This:
 - At least one commit must remain on the source branch
 - Working tree must be clean
 
-## Splitting a Branch into a New Branch
+## Splitting a Branch: Move to Parent
 
-When you want to extract commits into a **new** branch (not the existing parent), combine `sdf branch` with `sdf move`:
-
-### Pattern: Extract work into a new child branch
+This is the primary `sdf move` use case — you've been working on a branch and realize the first few commits should be their own PR:
 
 ```bash
-# Current stack: main ← feature/auth [a1, a2, a3, a4, a5]
-# You realize a4 and a5 are a separate concern
+# Stack: main ← feature/auth [setup, schema, handlers, tests]
+# You want "setup" and "schema" in the parent branch
 
-# 1. Create a new branch (appended to stack)
-sdf branch api-layer
-
-# 2. Switch back to the source branch
-sdf switch feature/auth
-
-# 3. Move the newer commits to the new branch
-#    (move works parent→child direction, so we need a different approach)
+sdf move setup schema
+# Moves "setup" and "schema" to the parent branch
+# feature/auth now only has [handlers, tests]
 ```
 
-This pattern doesn't work directly because `sdf move` only moves commits **down** (to the parent). To move commits **up** (to a child), use git directly:
+## Caveat: Moving Commits Up (to a Child)
+
+`sdf move` currently only moves commits **down** to the parent branch. Moving commits **up** to a child branch is not yet supported natively.
+
+> **Tracking issue:** [pavelpascari/sdf#TODO](https://github.com/pavelpascari/sdf/issues/TODO) — follow for updates on upward move support.
+<!-- TODO: replace #TODO with the actual issue number after creating the issue -->
+
+For now, you can work around this with git directly:
 
 ```bash
 # 1. Create the new branch at the current tip
 sdf branch api-layer
-# api-layer now has commits a1-a5 (same as feature/auth)
+# api-layer now has the same commits as the source branch
 
-# 2. Reset feature/auth to drop the commits you want to move
+# 2. Reset the source branch to drop the commits you want in the child
 git checkout feature/auth
-git reset --hard HEAD~2  # drops a4, a5
+git reset --hard HEAD~2  # drops the last 2 commits
 
 # 3. Force-push the trimmed branch
 git push --force-with-lease
 
 # 4. Sync to update the stack state
 sdf sync
-```
-
-### Pattern: Split current work into parent PR
-
-This is the primary `sdf move` use case — you've been working on a branch and realize the first few commits should be their own PR:
-
-```bash
-# Stack: main ← feature/auth [setup, schema, handlers, tests]
-# You want "setup" and "schema" to be a separate PR
-
-# 1. Create a branch before feature/auth for the foundation work
-#    (requires stack-resilience/insert-branch — not yet implemented)
-#    For now, use manual approach:
-
-# Option A: Move commits to the existing parent
-sdf move setup schema
-# Moves "setup" and "schema" to main (or whatever the parent is)
-# feature/auth now only has [handlers, tests]
-
-# Option B: Create a new branch, reorder the stack manually
-# (Advanced — involves editing .sdf/stacks/*.json)
 ```
 
 ## How It Works Internally
