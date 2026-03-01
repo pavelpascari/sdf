@@ -48,6 +48,8 @@ After choosing "I'll fix it myself", resolve the conflicts manually, stage the f
 
 <CommandRef command={cmd('merge')} />
 
+Merges the first open PR in the stack (the "head"), then runs `sdf sync` on the remaining branches. The safe pattern for draining a stack is to run `sdf merge` repeatedly — this keeps conflicts small by only crossing one squash boundary at a time. See the [Sync Deep Dive](/docs/sync-deep-dive#sdf-merge-vs-sdf-sync) for details.
+
 <CommandRef command={cmd('status')} />
 
 Fetches from origin and fast-forwards the base branch to ensure sync state is accurate. Shows each branch with its PR number, status (open/merged/closed), and whether it needs syncing. Also performs lightweight reconciliation against GitHub PR states and warns about structural drift.
@@ -100,6 +102,27 @@ Short alias: `sdf <branch>` (if no subcommand matches the name).
 <CommandRef command={cmd('doctor')} />
 
 <CommandRef command={cmd('version')} />
+
+<CommandRef command={cmd('completion')} />
+
+Install shell completions for tab-completion of commands, stack names, branch names, and config keys:
+
+```bash
+sdf completion install          # auto-detects your shell
+sdf completion bash > ~/.local/share/bash-completion/completions/sdf
+sdf completion zsh > ~/.zsh/completions/_sdf
+sdf completion fish > ~/.config/fish/completions/sdf.fish
+```
+
+### `sdf ai intro`
+
+Teaches Claude about SDF by spawning a Claude session that introduces the tool's commands, workflows, and conventions. Claude creates a skill file for future sessions so it remembers SDF context.
+
+```bash
+sdf ai intro
+```
+
+Requires the Claude CLI.
 
 ### `sdf help`
 

@@ -1,0 +1,156 @@
+---
+title: Multiple Stacks
+description: Managing several independent stacks in a single repository.
+order: 9
+---
+
+# Multiple Stacks
+
+A single repository can have multiple independent stacks, each with its own base branch and set of branches. This is useful when you're working on several features in parallel.
+
+---
+
+## Creating multiple stacks
+
+Each `sdf new` call creates a separate stack:
+
+```bash
+# First stack: authentication feature
+sdf new auth-feature --branch login-page
+# ... work on auth ...
+sdf branch session-api
+sdf branch logout
+
+# Second stack: billing feature
+sdf new billing --branch models
+# ... work on billing ...
+sdf branch stripe-integration
+```
+
+You now have two independent stacks:
+
+```
+auth-feature (base: main)
+  └─ auth-feature/login-page
+      └─ auth-feature/session-api
+          └─ auth-feature/logout
+
+billing (base: main)
+  └─ billing/models
+      └─ billing/stripe-integration
+```
+
+Each stack has its own JSON file in `.sdf/stacks/`:
+
+```
+.sdf/
+  stacks/
+    auth-feature.json
+    billing.json
+```
+
+---
+
+## Stack resolution
+
+When you run a command like `sdf sync`, `sdf status`, or `sdf branch`, SDF needs to know which stack you mean. It resolves the stack using this logic:
+
+1. **Explicit flag** — if you pass `--stack <name>`, that stack is used
+2. **Positional argument** — for commands that accept it (e.g., `sdf sync auth-feature`)
+3. **Current branch** — if your current branch belongs to a stack, that stack is used
+4. **Single stack** — if there's only one stack in the repo, it's used automatically
+
+If none of these apply (e.g., you're on `main` with multiple stacks), SDF asks you to specify:
+
+```
+$ sdf status
+Error: multiple stacks found — specify one with --stack <name> or switch to a stack branch
+
+Available stacks:
+  auth-feature  (3 branches)
+  billing       (2 branches)
+```
+
+---
+
+## Switching between stacks
+
+Use `sdf switch` to navigate:
+
+```bash
+# List all branches across all stacks
+sdf switch
+
+# Switch to a specific branch
+sdf switch auth-feature/login-page
+
+# Shorthand
+sdf auth-feature/login-page
+```
+
+When you run `sdf switch` without arguments, it lists every branch from every stack, grouped by stack, with the current branch marked:
+
+```
+$ sdf switch
+
+auth-feature (base: main)
+  → auth-feature/login-page     PR #12  open
+    auth-feature/session-api    PR #13  open
+    auth-feature/logout         PR #14  open
+
+billing (base: main)
+    billing/models              PR #15  open
+    billing/stripe-integration  PR #16  open
+```
+
+---
+
+## Syncing specific stacks
+
+When you're on a branch that belongs to a stack, `sdf sync` syncs that stack automatically. To sync a different stack:
+
+```bash
+# Sync by name
+sdf sync auth-feature
+
+# Or use the flag
+sdf sync --stack billing
+```
+
+---
+
+## Different base branches
+
+Stacks can have different base branches:
+
+```bash
+sdf new hotfix-stack --base release/v2.1 --branch fix-crash
+sdf new feature-stack --base main --branch new-widget
+```
+
+Each stack's sync operates independently against its own base branch.
+
+---
+
+## Branch uniqueness
+
+A branch can only belong to one stack. If you try to add a branch that already exists in another stack, SDF reports an error:
+
+```
+Error: branch "shared-utils" is already in stack "auth-feature"
+```
+
+This prevents ambiguity in stack resolution and ensures each branch has a clear home.
+
+---
+
+## Checking status across stacks
+
+To see the status of a specific stack:
+
+```bash
+sdf status auth-feature
+sdf status billing
+```
+
+Or switch to any branch in the stack and run `sdf status` without arguments.

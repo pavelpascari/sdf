@@ -118,12 +118,36 @@ The entire `.sdf/` directory is **local-only** — it is listed in `.gitignore` 
 
 ---
 
+## Stack resolution
+
+When you run a command that operates on a stack (`sdf sync`, `sdf status`, `sdf branch`, etc.), SDF determines which stack to use with this logic:
+
+1. **Explicit `--stack` flag** — always takes priority
+2. **Positional argument** — e.g. `sdf sync my-feature`
+3. **Current branch** — if your checked-out branch belongs to a stack, that stack is used
+4. **Single stack** — if there's only one stack in the repo, it's used automatically
+
+If none of these resolve to a stack (e.g. you're on `main` with multiple stacks and didn't specify one), SDF reports an error listing the available stacks.
+
+---
+
+## Local state
+
+The file `.sdf/local.json` stores ephemeral state that should not be shared between developers:
+
+- **Sync progress** — when a sync is paused for manual conflict resolution, the paused branch, resume index, and original branch are saved here. `sdf sync --continue` reads this to resume.
+- **Split sessions** — maps stack names to Claude session IDs so split refinement can resume across invocations.
+
+This file is automatically created when needed and can be safely deleted — SDF recreates it as necessary.
+
+---
+
 ## Design principles
 
 SDF is built around three principles:
 
 **Shell out, don't reimplement.** SDF delegates to `git`, `gh`, and `claude` CLIs. It is pure orchestration — no custom git library, no custom GitHub API client. This means you get the behavior of the tools you already know and trust.
 
-**PR descriptions are the source of truth.** Since `.sdf/` is local-only, the authoritative record of stack structure and intent lives in the PR descriptions on GitHub. SDF can reconstruct stack topology from the PR graph via `sdf register`, making the workflow resilient to lost local state.
+**PR descriptions are the source of truth.** Since `.sdf/` is local-only, the authoritative record of stack structure and intent lives in the PR descriptions on GitHub. SDF can reconstruct stack topology from the PR graph via `sdf fetch`, making the workflow resilient to lost local state.
 
 **Fail loudly, recover clearly.** When something goes wrong, SDF leaves the repository in a known state and tells you exactly what to run to recover. It never silently swallows errors.

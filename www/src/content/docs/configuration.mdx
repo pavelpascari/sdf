@@ -15,10 +15,10 @@ SDF uses a two-tier configuration system that separates team-wide settings from 
 
 ## Config files
 
-| File | Scope | Committed |
+| File | Scope | Location |
 |---|---|---|
-| `.sdf/config.json` | Repository | Yes — shared with the team |
-| `~/.config/sdf/config.json` | User (global) | No |
+| `.sdf/config.json` | Repository | Local-only (inside gitignored `.sdf/` directory) |
+| `~/.config/sdf/config.json` | User (global) | Per-machine |
 
 When both files exist, repository config takes precedence on a field-by-field basis. Missing files are not errors — SDF works without any config file, using built-in defaults.
 
@@ -157,7 +157,7 @@ Or edit the JSON files directly — they are plain JSON with no schema enforceme
 }
 ```
 
-Commit this as `.sdf/config.json` to apply it across the whole team.
+Save this as `.sdf/config.json` in any repo to use these settings. Since `.sdf/` is local-only, each developer creates this file on their own machine (or it is created automatically by `sdf new` and `sdf fetch`).
 
 ---
 
@@ -166,7 +166,7 @@ Commit this as `.sdf/config.json` to apply it across the whole team.
 ```json
 {
   "branch_prefix": {
-    "prefix": "my-username"
+    "scope": "my-username"
   },
   "sync": {
     "with_content": true

@@ -1,0 +1,112 @@
+---
+title: Why SDF
+description: What stacked diffs solve, how SDF compares to alternatives, and whether it's the right fit for your team.
+order: 0
+---
+
+# Why SDF
+
+## The problem: large PRs
+
+Most teams develop features that span multiple files, layers, or concerns. The natural instinct is to work on a single branch and open one pull request when the feature is ready. But large PRs create problems:
+
+- **Reviews take longer and are less thorough.** A 2,000-line PR overwhelms reviewers. They skim instead of reading carefully, and bugs slip through.
+- **Feedback arrives late.** If a reviewer questions a design decision made in the first 200 lines, the remaining 1,800 lines may need to be reworked.
+- **CI takes longer.** Large diffs increase test flakiness and make failures harder to diagnose.
+- **Merging is risky.** The bigger the diff, the higher the chance of a conflict with other work happening in parallel.
+
+The solution is to break work into a chain of small, dependent PRs — each one building on the last, each one reviewable on its own. This is the stacked diffs workflow.
+
+## What stacked diffs give you
+
+A stack is a linear chain of branches where each branch is based on the one before it:
+
+```
+main ← db-schema ← repository ← controller
+         PR #1        PR #2        PR #3
+```
+
+Each PR shows only its own diff — not the accumulated diff of every layer below it. Reviewers see focused changes. Authors get feedback early on foundational decisions. PRs can be approved and merged independently, from the bottom up.
+
+The catch is that stacking requires rebasing. When the bottom PR is updated or merged, every branch above it must be rebased and force-pushed. The PR bases on GitHub must be updated. This is tedious and error-prone by hand — which is why tools like SDF exist.
+
+## What SDF does
+
+SDF is a CLI tool that manages the full lifecycle of stacked PRs on GitHub:
+
+- **Creates stacks** with `sdf new` and adds branches with `sdf branch`
+- **Creates PRs** with `sdf pr`, automatically setting the correct base branch and adding stack navigation links to each PR description
+- **Syncs after merges** with `sdf sync` — detects merged PRs, cascade-rebases all downstream branches, force-pushes, and updates PR bases on GitHub
+- **Resolves conflicts with AI** — when a rebase conflict occurs during sync, Claude receives the full context (upstream changes, PR description, conflicted files) and resolves the conflict in place
+- **Splits large branches** with `sdf split` — Claude analyzes a branch and decomposes it into a stack of focused PRs
+
+## How SDF compares to alternatives
+
+### vs. Graphite
+
+[Graphite](https://graphite.dev) is a commercial SaaS platform with a CLI, a VS Code extension, a web-based PR inbox, a merge queue, AI code review, and engineering metrics. It is the most fully-featured option in this space.
+
+**Where Graphite does more:** Graphite is a platform, not just a CLI. Its web UI, merge queue, and analytics go far beyond what SDF offers. If you need those features, Graphite is the better choice.
+
+**Where SDF differs:** SDF stores state locally (no cloud dependency, no account required). An individual engineer can install SDF with `brew install` and start using it today — no procurement process, vendor approval, or team-wide mandate. SDF also provides AI-powered conflict resolution during rebases, which Graphite does not. Graphite requires the team to operate within its ecosystem; SDF works alongside the existing GitHub workflow.
+
+### vs. ghstack
+
+[ghstack](https://github.com/ezyang/ghstack) is an open-source Python CLI widely used in the PyTorch/Meta ecosystem. It treats each commit as a PR — one commit, one PR, no separate branches in your working tree.
+
+**Where ghstack differs:** ghstack is commit-centric rather than branch-centric. This is a fundamental design difference. With ghstack, you work on a single branch and each commit becomes a PR. With SDF, each PR is a separate branch. ghstack PRs cannot be merged through the normal GitHub UI — they require `ghstack land` or a custom GitHub Action. SDF PRs are standard GitHub PRs that anyone can merge normally.
+
+### vs. git town
+
+[git town](https://git-town.com) is a mature open-source Go CLI that provides high-level Git workflow commands. It supports stacking as one of many workflow modes and works with GitHub, GitLab, Bitbucket, and Gitea.
+
+**Where git town does more:** git town supports multiple Git hosts and is a general-purpose workflow tool with a much larger community and extensive documentation.
+
+**Where SDF differs:** SDF is stacking-first — every feature is designed around the stacked PRs workflow. SDF provides GitHub PR automation (creation, base updates, navigation links) and AI-assisted conflict resolution, which git town does not.
+
+### vs. spr
+
+[spr](https://github.com/ejoffe/spr) is an open-source Go CLI with a similar philosophy to ghstack — each commit is an atomic PR. Run `git spr update` and it syncs your commit stack to GitHub as individual PRs.
+
+**Where spr differs:** Like ghstack, spr is commit-centric. The trade-off is the same: simpler mental model (one branch, one stack) at the cost of less flexibility. SDF's branch-centric model lets you work on any branch independently and create PRs at any point.
+
+### vs. Sapling
+
+[Sapling](https://sapling-scm.com) is a full source control system from Meta with native stacking support. It can interact with Git repositories and GitHub but is fundamentally a different SCM — not a Git addon.
+
+**Where Sapling differs:** Sapling replaces Git entirely. The adoption cost is significant: new commands, new mental model, new tooling. Most teams don't need a Meta-scale SCM. SDF works with the Git and GitHub workflow your team already uses.
+
+### vs. manual `git rebase --update-refs`
+
+Git 2.38 added `--update-refs` to `git rebase`, which automatically updates stacked branch refs during a rebase. This reduces manual work but does not handle PR base updates on GitHub, does not create PRs, does not detect merges, does not resolve conflicts with AI, and does not support multiple named stacks.
+
+SDF automates everything that `--update-refs` leaves manual.
+
+## When to use SDF
+
+SDF is a good fit when:
+
+- You develop on **GitHub** and want to use stacked PRs
+- You prefer **branch-centric** workflows (one branch per PR)
+- You want a tool that works **alongside** your existing workflow, not a platform that replaces it
+- You value **local-first** tooling — no accounts, no servers, no vendor dependencies
+- You want **AI-assisted conflict resolution** to reduce the pain of cascade rebases
+
+## When NOT to use SDF
+
+SDF is not the right choice when:
+
+- You use **GitLab, Bitbucket, or another non-GitHub host** — SDF is GitHub-only
+- You prefer **commit-centric** stacking (one commit = one PR) — use ghstack or spr instead
+- You need a **platform** with merge queues, analytics, and a web inbox — use Graphite
+- You need **non-linear** dependency graphs — SDF supports only linear stacks
+
+## Maturity and status
+
+SDF is in active development (v0.3.x). The command surface is stable and the tool is used in production by its author and early adopters. It is MIT-licensed, open-source, and has no server-side component.
+
+The Claude CLI dependency is **optional**. Without it, SDF falls back to manual conflict resolution and generates PR titles from branch names and commit subjects. Branch splitting (`sdf split`) requires the Claude CLI.
+
+**Install:** `brew install pavelpascari/tap/sdf`
+**Repository:** [github.com/pavelpascari/sdf](https://github.com/pavelpascari/sdf)
+**License:** MIT

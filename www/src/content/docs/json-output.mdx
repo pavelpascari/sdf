@@ -1,0 +1,233 @@
+---
+title: JSON Output & Scripting
+description: Using sdf's --json flag for automation, CI pipelines, and AI agent integration.
+order: 11
+---
+
+# JSON Output & Scripting
+
+Every major SDF command supports a `--json` flag that outputs structured JSON instead of human-readable terminal output. This enables integration with CI pipelines, shell scripts, and AI agents.
+
+---
+
+## Commands with JSON support
+
+| Command | Flag | Notes |
+|---|---|---|
+| `sdf new` | `--json` | |
+| `sdf branch` | `--json` | |
+| `sdf status` | `--json` | |
+| `sdf sync` | `--json` | Implies `--yes`; aborts on conflict |
+| `sdf merge` | `--json` | Requires `--yes` |
+| `sdf pr` | `--json` | |
+| `sdf move` | `--json` | |
+| `sdf fetch` | `--json` | Auto-selects if one stack found |
+| `sdf switch` | `--json` | |
+| `sdf config show` | `--json` | |
+| `sdf config set` | `--json` | |
+| `sdf doctor` | `--json` | |
+
+---
+
+## Output shapes
+
+### sdf new --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "branch": "my-feature/my-feature",
+  "pushed": true
+}
+```
+
+### sdf branch --json
+
+```json
+{
+  "branch": "my-feature/api-layer",
+  "stack": "my-feature",
+  "parent": "my-feature/db-schema"
+}
+```
+
+### sdf status --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "current_branch": "my-feature/api-layer",
+  "nodes": [
+    {
+      "branch": "my-feature/db-schema",
+      "pr": 142,
+      "status": "merged",
+      "sync_state": "in_sync"
+    },
+    {
+      "branch": "my-feature/api-layer",
+      "pr": 143,
+      "status": "open",
+      "sync_state": "needs_sync",
+      "commits_ahead": 3,
+      "is_current": true,
+      "ci_status": "success",
+      "review_status": "approved",
+      "mergeable": "mergeable"
+    }
+  ],
+  "needs_sync": ["my-feature/api-layer"]
+}
+```
+
+### sdf sync --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "branches": [
+    {
+      "branch": "my-feature/db-schema",
+      "pr": 142,
+      "action": "merged"
+    },
+    {
+      "branch": "my-feature/api-layer",
+      "pr": 143,
+      "action": "rebased",
+      "pushed": true,
+      "base_updated": true
+    }
+  ],
+  "pr_updates": [
+    { "pr": 143, "field": "title", "status": "updated" }
+  ]
+}
+```
+
+Possible `action` values: `"merged"`, `"rebased"`, `"in_sync"`, `"failed"`, `"blocked"`.
+
+### sdf merge --json
+
+```json
+{
+  "stack": "my-feature",
+  "merged_pr": 142,
+  "merged_branch": "my-feature/db-schema",
+  "method": "squash",
+  "base": "main",
+  "retargeted_pr": 143,
+  "remaining": 2
+}
+```
+
+### sdf pr --json
+
+```json
+{
+  "number": 145,
+  "url": "https://github.com/org/repo/pull/145",
+  "title": "feat(my-feature): add API endpoints"
+}
+```
+
+### sdf move --json
+
+```json
+{
+  "source": "my-feature/api-layer",
+  "target": "my-feature/db-schema",
+  "commits": ["abc1234", "def5678"]
+}
+```
+
+### sdf fetch --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "nodes": [
+    { "branch": "my-feature/db-schema", "pr": 142 },
+    { "branch": "my-feature/api-layer", "pr": 143 }
+  ],
+  "action": "registered"
+}
+```
+
+Possible `action` values: `"registered"`, `"reconciled"`, `"up_to_date"`.
+
+### sdf switch --json
+
+```json
+{
+  "branch": "my-feature/api-layer",
+  "stack": "my-feature",
+  "layer": 2,
+  "total": 3
+}
+```
+
+### sdf doctor --json
+
+```json
+{
+  "dependencies": [
+    { "name": "git", "found": true, "version": "2.43.0", "path": "/usr/bin/git", "required": true },
+    { "name": "gh", "found": true, "version": "2.40.1", "path": "/usr/bin/gh", "required": false },
+    { "name": "claude", "found": false, "required": false }
+  ],
+  "ok": true
+}
+```
+
+---
+
+## Scripting examples
+
+### Check if sync is needed
+
+```bash
+needs_sync=$(sdf status --json | jq -r '.needs_sync | length')
+if [ "$needs_sync" -gt 0 ]; then
+  echo "Stack needs sync"
+  sdf sync -y
+fi
+```
+
+### Get the current branch's PR number
+
+```bash
+pr=$(sdf status --json | jq -r '.nodes[] | select(.is_current) | .pr')
+echo "Current PR: #$pr"
+```
+
+### Check all CI statuses
+
+```bash
+sdf status --json | jq -r '.nodes[] | select(.status == "open") | "\(.branch): CI=\(.ci_status) Review=\(.review_status)"'
+```
+
+### Merge the head PR and report
+
+```bash
+result=$(sdf merge --json --yes)
+merged=$(echo "$result" | jq -r '.merged_pr')
+remaining=$(echo "$result" | jq -r '.remaining')
+echo "Merged PR #$merged, $remaining remaining"
+```
+
+---
+
+## Gotchas
+
+**`sdf sync --json` aborts on conflict.** Since JSON mode cannot display the interactive conflict resolution menu, any rebase conflict causes an immediate abort. The error is included in the JSON output as the `error` field. Run `sdf sync` without `--json` to resolve conflicts interactively.
+
+**`sdf merge --json` requires `--yes`.** The merge command requires explicit confirmation in JSON mode since it performs a destructive operation.
+
+**`sdf fetch --json` with multiple stacks.** If `sdf fetch` discovers multiple stacks and `--json` is specified, it returns an error. Use `--base` to narrow the results to one stack.
+
+**Errors in JSON output.** When a command fails in JSON mode, the error is included in the JSON output as an `error` field rather than being printed to stderr. The command still exits with code 0 so the JSON can be parsed.

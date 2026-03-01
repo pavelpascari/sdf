@@ -117,6 +117,24 @@ The prefix (`conflict`, `pr-title`, `pr-desc`) is determined by the call site. B
 
 ---
 
+## Teaching Claude about SDF
+
+The `sdf ai intro` command spawns a Claude session that teaches Claude about SDF's commands, workflows, and conventions. Claude then creates a skill file so it remembers SDF context in future sessions:
+
+```bash
+sdf ai intro
+```
+
+This is useful when you want Claude to assist with SDF-managed repositories — after running `ai intro`, Claude understands stack topology, branch naming conventions, and how to use SDF commands correctly.
+
+---
+
+## AI and JSON mode
+
+When `sdf sync --json` encounters a conflict, it cannot display the interactive resolution menu. Instead, the conflict is reported in the JSON output and the sync aborts. To use AI conflict resolution with automation, run `sdf sync` interactively first to resolve any conflicts, then use `--json` for subsequent scripted syncs.
+
+---
+
 ## Installing the Claude CLI
 
 ```bash
