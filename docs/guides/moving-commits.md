@@ -41,8 +41,7 @@ sdf move setup schema
 
 `sdf move` currently only moves commits **down** to the parent branch. Moving commits **up** to a child branch is not yet supported natively.
 
-> **Tracking issue:** [pavelpascari/sdf#TODO](https://github.com/pavelpascari/sdf/issues/TODO) — follow for updates on upward move support.
-<!-- TODO: replace #TODO with the actual issue number after creating the issue -->
+> **Tracking issue:** [#149](https://github.com/pavelpascari/sdf/issues/149) — follow for updates on upward move support.
 
 For now, you can work around this with git directly:
 
