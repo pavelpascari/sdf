@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/pavelpascari/sdf/compare/v0.3.1...v0.3.2) (2026-03-01)
+
+
+### Bug Fixes
+
+* **ci:** check out main branch in release checklist workflow ([#142](https://github.com/pavelpascari/sdf/issues/142)) ([11dfc98](https://github.com/pavelpascari/sdf/commit/11dfc9847749b8747630ec1453a912a5d731eec6))
+
 ## [0.3.1](https://github.com/pavelpascari/sdf/compare/v0.3.0...v0.3.1) (2026-03-01)
 
 
