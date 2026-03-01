@@ -46,41 +46,49 @@ SDF is a CLI tool that manages the full lifecycle of stacked PRs on GitHub:
 
 [Graphite](https://graphite.dev) is a commercial SaaS platform with a CLI, a VS Code extension, a web-based PR inbox, a merge queue, AI code review, and engineering metrics. It is the most fully-featured option in this space.
 
-**Where Graphite does more:** Graphite is a platform, not just a CLI. Its web UI, merge queue, and analytics go far beyond what SDF offers. If you need those features, Graphite is the better choice.
+**Where Graphite shines:** Graphite is a platform, not just a CLI. Its web UI provides a purpose-built PR inbox, merge queue, CI skip for intermediate PRs, and engineering analytics. If your team wants an integrated experience that replaces parts of the GitHub UI, Graphite delivers that. The CLI is polished with excellent tab completion and a well-documented command set.
 
-**Where SDF differs:** SDF stores state locally (no cloud dependency, no account required). An individual engineer can install SDF with `brew install` and start using it today — no procurement process, vendor approval, or team-wide mandate. SDF also provides AI-powered conflict resolution during rebases, which Graphite does not. Graphite requires the team to operate within its ecosystem; SDF works alongside the existing GitHub workflow.
+**Where SDF differs:** SDF stores state locally — no cloud dependency, no account, no vendor approval. An individual engineer can `brew install` it and start stacking today without a team-wide mandate. SDF's AI-powered conflict resolution during rebases is unique — when a cascade rebase hits a conflict, Claude resolves it in-place using the PR description and upstream diff as context. SDF also provides `sdf split` for AI-powered decomposition of large branches into stacks. Graphite requires the team to operate within its ecosystem; SDF works alongside your existing GitHub workflow without replacing any part of it.
 
 ### vs. ghstack
 
 [ghstack](https://github.com/ezyang/ghstack) is an open-source Python CLI widely used in the PyTorch/Meta ecosystem. It treats each commit as a PR — one commit, one PR, no separate branches in your working tree.
 
-**Where ghstack differs:** ghstack is commit-centric rather than branch-centric. This is a fundamental design difference. With ghstack, you work on a single branch and each commit becomes a PR. With SDF, each PR is a separate branch. ghstack PRs cannot be merged through the normal GitHub UI — they require `ghstack land` or a custom GitHub Action. SDF PRs are standard GitHub PRs that anyone can merge normally.
+**Where ghstack shines:** ghstack's commit-centric model is elegant for its use case: you work on a single branch, each commit becomes a separate PR, and `ghstack push` syncs everything. There's no branch management overhead — your working tree stays simple. The mental model is straightforward once internalized, and it has a strong track record in large-scale open source projects.
+
+**Where SDF differs:** SDF is branch-centric — each PR lives on its own branch. This means you can work on any layer independently (add commits, run tests, iterate on review feedback) without affecting other PRs in the stack. SDF PRs are standard GitHub PRs that anyone can review and merge through the normal GitHub UI; ghstack PRs require `ghstack land` or a custom GitHub Action to merge. SDF also provides AI conflict resolution, PR content generation, and `sdf split` for decomposing branches — features ghstack doesn't offer.
 
 ### vs. git town
 
 [git town](https://git-town.com) is a mature open-source Go CLI that provides high-level Git workflow commands. It supports stacking as one of many workflow modes and works with GitHub, GitLab, Bitbucket, and Gitea.
 
-**Where git town does more:** git town supports multiple Git hosts and is a general-purpose workflow tool with a much larger community and extensive documentation.
+**Where git town shines:** git town supports multiple Git hosting platforms (GitHub, GitLab, Bitbucket, Gitea) and is a general-purpose workflow tool, not just a stacking tool. It has a large community, extensive documentation, and covers a wide range of Git workflows beyond stacking (feature branches, contribution, ship/sync patterns). If your team uses something other than GitHub or wants one tool for multiple workflow styles, git town is the more versatile choice.
 
-**Where SDF differs:** SDF is stacking-first — every feature is designed around the stacked PRs workflow. SDF provides GitHub PR automation (creation, base updates, navigation links) and AI-assisted conflict resolution, which git town does not.
+**Where SDF differs:** SDF is stacking-first — every feature is designed specifically for the stacked PRs workflow. It provides PR creation with automatic base targeting and stack navigation links, AI-assisted conflict resolution during cascade rebases, and AI-powered branch splitting. These are purpose-built for stacking and not available in git town.
 
 ### vs. spr
 
 [spr](https://github.com/ejoffe/spr) is an open-source Go CLI with a similar philosophy to ghstack — each commit is an atomic PR. Run `git spr update` and it syncs your commit stack to GitHub as individual PRs.
 
-**Where spr differs:** Like ghstack, spr is commit-centric. The trade-off is the same: simpler mental model (one branch, one stack) at the cost of less flexibility. SDF's branch-centric model lets you work on any branch independently and create PRs at any point.
+**Where spr shines:** spr has the simplest interface of any stacking tool: one command (`git spr update`) syncs your entire stack. Like ghstack, the commit-centric model keeps your working tree clean — one branch, one stack. It integrates as a git subcommand, which feels native. The tool is lightweight and focused.
+
+**Where SDF differs:** SDF's branch-centric model provides more flexibility — you can work on branches independently, add multiple commits per PR, and switch between layers freely. SDF handles the full PR lifecycle (creation, base updates, navigation links, content generation) rather than just syncing state. The AI features (conflict resolution, branch splitting, PR descriptions) address the pain points that make stacking hard at scale.
 
 ### vs. Sapling
 
-[Sapling](https://sapling-scm.com) is a full source control system from Meta with native stacking support. It can interact with Git repositories and GitHub but is fundamentally a different SCM — not a Git addon.
+[Sapling](https://sapling-scm.com) is a full source control system from Meta with native stacking support. It can interact with Git repositories and GitHub but is fundamentally a different SCM.
 
-**Where Sapling differs:** Sapling replaces Git entirely. The adoption cost is significant: new commands, new mental model, new tooling. Most teams don't need a Meta-scale SCM. SDF works with the Git and GitHub workflow your team already uses.
+**Where Sapling shines:** Sapling has first-class stacking built into the SCM itself — not bolted on as a separate tool. Its `sl` commands, smartlog visualization, and commit-centric model are refined by years of use at Meta scale. If you're willing to adopt a new SCM, it offers the deepest stacking integration of any tool in this list. It also supports non-linear stack topologies that SDF doesn't.
+
+**Where SDF differs:** SDF works with the Git and GitHub workflow your team already uses — no new SCM to learn, no migration, no tooling changes for CI or code review. The adoption cost is minimal: install a single binary and keep using `git`, `gh`, and GitHub as before. SDF also provides AI features (conflict resolution, branch splitting) that Sapling doesn't have.
 
 ### vs. manual `git rebase --update-refs`
 
-Git 2.38 added `--update-refs` to `git rebase`, which automatically updates stacked branch refs during a rebase. This reduces manual work but does not handle PR base updates on GitHub, does not create PRs, does not detect merges, does not resolve conflicts with AI, and does not support multiple named stacks.
+Git 2.38 added `--update-refs` to `git rebase`, which automatically updates stacked branch refs during a rebase.
 
-SDF automates everything that `--update-refs` leaves manual.
+**Where `--update-refs` shines:** It's built into Git — zero dependencies, zero installation. For engineers who are comfortable with rebase mechanics and only need occasional stacking, it eliminates the most tedious part (updating sibling branch pointers) without adding any tooling.
+
+**Where SDF differs:** `--update-refs` handles local branch ref updates but nothing else. SDF automates the full workflow: PR base updates on GitHub (without which diffs render incorrectly after rebasing), PR creation with correct base targeting, stack navigation links in PR descriptions, merge detection and reconciliation, AI-powered conflict resolution, and branch splitting. If you stack PRs regularly, the remaining manual steps after `--update-refs` add up quickly.
 
 ## When to use SDF
 
