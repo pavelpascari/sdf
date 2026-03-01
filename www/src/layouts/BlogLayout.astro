@@ -18,7 +18,7 @@ const formatDate = (d: Date) =>
 const formattedDate = formatDate(datePublished);
 const formattedDateModified = dateModified ? formatDate(dateModified) : null;
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf-tool.com');
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://stacked-diffs-flow.com');
 
 const jsonLd = {
   '@context': 'https://schema.org',

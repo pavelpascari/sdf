@@ -4,7 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  site: 'https://sdf-tool.com',
+  site: 'https://stacked-diffs-flow.com',
   integrations: [mdx(), sitemap()],
   output: 'static',
   vite: {

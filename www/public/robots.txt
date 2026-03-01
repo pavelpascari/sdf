@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://sdf-tool.com/sitemap-index.xml
+Sitemap: https://stacked-diffs-flow.com/sitemap-index.xml
