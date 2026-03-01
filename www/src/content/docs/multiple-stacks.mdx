@@ -79,13 +79,13 @@ Use `sdf switch` to navigate:
 
 ```bash
 # List all branches across all stacks
-sdf switch
+$ sdf switch
 
 # Switch to a specific branch
-sdf switch auth-feature/login-page
+$ sdf switch auth-feature/login-page
 
-# Shorthand
-sdf auth-feature/login-page
+# Shorthand — omit "switch" when the argument contains a "/"
+$ sdf auth-feature/login-page
 ```
 
 When you run `sdf switch` without arguments, it lists every branch from every stack, grouped by stack, with the current branch marked:
