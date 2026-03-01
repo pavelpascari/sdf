@@ -14,9 +14,31 @@ const allDocs = await getCollection('docs');
 const sorted = allDocs.sort((a, b) => (a.data.order ?? 99) - (b.data.order ?? 99));
 
 const currentSlug = Astro.url.pathname.replace(/^\/docs\/?/, '').replace(/\/$/, '') || 'index';
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://sdf-tool.com');
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'TechArticle',
+  headline: title,
+  description: description ?? `${title} — SDF documentation`,
+  url: canonicalURL.href,
+  about: {
+    '@type': 'SoftwareApplication',
+    name: 'SDF',
+    applicationCategory: 'DeveloperApplication',
+    url: 'https://sdf-tool.com',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'SDF',
+    url: 'https://sdf-tool.com',
+  },
+};
 ---
 
 <BaseLayout title={`${title} — SDF Docs`} description={description}>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <div class="flex gap-12">
       <!-- Sidebar -->

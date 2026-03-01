@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sdf-tool.com/sitemap-index.xml

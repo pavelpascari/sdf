@@ -53,3 +53,26 @@ jobs:
       - name: Blog content check
         if: github.event_name == 'pull_request'
         run: make blog-check
+
+  seo:
+    name: SEO & AI-discoverability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: www/package-lock.json
+
+      - name: Install dependencies
+        working-directory: www
+        run: npm ci
+
+      - name: Build site
+        working-directory: www
+        run: npm run build
+
+      - name: SEO checks
+        run: scripts/check-seo.sh

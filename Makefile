@@ -142,6 +142,7 @@ help:
 	@echo "  make clean             Remove build artifacts"
 	@echo "  make hooks             Install git hooks (pre-commit)"
 	@echo "  make blog-check        Verify dateModified on changed blog posts"
+	@echo "  make seo-check         Build site and validate SEO + AI-discoverability"
 	@echo "  make docs              Generate CLI reference JSON"
 	@echo "  make docs-check        Check docs freshness and validate references"
 	@echo "  make release-checklist Verify blog content exists for the release"
@@ -180,6 +181,14 @@ docs-check:
 .PHONY: blog-check
 blog-check:
 	@scripts/check-blog-updated-at.sh
+
+# ── SEO & AI-discoverability checks ─────────────────────────────
+
+# Build the site and validate SEO requirements
+.PHONY: seo-check
+seo-check:
+	@cd www && npm run build
+	@scripts/check-seo.sh
 
 # ── Release checklist ────────────────────────────────────────────
 
