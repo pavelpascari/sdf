@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/pavelpascari/sdf/compare/v0.3.0...v0.3.1) (2026-03-01)
+
+
+### Bug Fixes
+
+* use datePublished in release checklist script ([#140](https://github.com/pavelpascari/sdf/issues/140)) ([ed364a1](https://github.com/pavelpascari/sdf/commit/ed364a1717947e171c89151b00c19c05bed05627))
+
 ## [0.3.0](https://github.com/pavelpascari/sdf/compare/v0.2.11...v0.3.0) (2026-03-01)
 
 
