@@ -10,7 +10,7 @@ order: 3
 
 SDF is built around three principles:
 
-**Shell out, don't reimplement.** SDF delegates to `git`, `gh`, and `claude` CLIs. It is pure orchestration -- no custom git library, no custom GitHub API client. This means you get the behavior of the tools you already know and trust.
+**Shell out, don't reimplement.** SDF delegates to `git`, `gh`, and `claude` CLIs. It is pure orchestration &mdash; no custom git library, no custom GitHub API client. This means you get the behavior of the tools you already know and trust.
 
 **PR descriptions are the source of truth.** Since `.sdf/` is local-only, the authoritative record of stack structure and intent lives in the PR descriptions on GitHub. SDF can reconstruct stack topology from the PR graph via `sdf fetch`, making the workflow resilient to lost local state.
 
@@ -33,7 +33,7 @@ main
          └─ users-feature/controller ← PR #144
 ```
 
-A repository can have **multiple independent stacks** -- one for each feature being developed in parallel. Each stack has its own JSON file in `.sdf/stacks/<name>.json`, stored locally on your machine.
+A repository can have **multiple independent stacks** &mdash; one for each feature being developed in parallel. Each stack has its own JSON file in `.sdf/stacks/<name>.json`, stored locally on your machine.
 
 ### Stack JSON
 
@@ -51,13 +51,13 @@ A repository can have **multiple independent stacks** -- one for each feature be
 
 The `base_tip` records the commit hash at the tip of the parent branch at the time of the last sync. This allows SDF to detect when a parent has moved and a rebase is needed.
 
-The optional `nav_hash` is a SHA-256 hash of the PR stack navigation section. SDF uses it to avoid redundant API calls when updating PR descriptions -- if the hash hasn't changed, the description update is skipped.
+The optional `nav_hash` is a SHA-256 hash of the PR stack navigation section. SDF uses it to avoid redundant API calls when updating PR descriptions &mdash; if the hash hasn't changed, the description update is skipped.
 
 ---
 
 ## Nodes
 
-A *node* is one branch (and its corresponding PR) within a stack. Nodes are ordered -- the first node's parent is the stack base, and each subsequent node's parent is the node above it.
+A *node* is one branch (and its corresponding PR) within a stack. Nodes are ordered &mdash; the first node's parent is the stack base, and each subsequent node's parent is the node above it.
 
 ### Node status
 
@@ -72,7 +72,7 @@ Each node tracks its PR status. The possible values are:
 
 ### Merged nodes stay in the stack
 
-When a node's PR merges, `sdf sync` does **not** remove it from the stack. Instead, the node remains in the stack JSON with status `"merged"`. The `ParentBranch()` function skips over merged nodes when computing the effective parent for downstream branches -- so downstream nodes rebase onto the stack base (or the nearest non-merged ancestor) automatically.
+When a node's PR merges, `sdf sync` does **not** remove it from the stack. Instead, the node remains in the stack JSON with status `"merged"`. The `ParentBranch()` function skips over merged nodes when computing the effective parent for downstream branches &mdash; so downstream nodes rebase onto the stack base (or the nearest non-merged ancestor) automatically.
 
 This means merged PRs are shown as completed in the stack topology rather than silently disappearing.
 
@@ -82,8 +82,8 @@ This means merged PRs are shown as completed in the stack topology rather than s
 
 SDF uses a two-tier configuration system:
 
-- **Global config** -- `~/.config/sdf/config.json`, user-specific defaults
-- **Repo config** -- `.sdf/config.json`, per-repo overrides
+- **Global config** &mdash; `~/.config/sdf/config.json`, user-specific defaults
+- **Repo config** &mdash; `.sdf/config.json`, per-repo overrides
 
 Repo config takes precedence over global config on a field-by-field basis. Run `sdf config show` to see the effective merged config.
 
@@ -126,7 +126,7 @@ Repo config takes precedence over global config on a field-by-field basis. Run `
   local.json                                ← ephemeral state (sync progress, etc.)
 ```
 
-The entire `.sdf/` directory is **local-only** -- it is listed in `.gitignore` and is never pushed to the remote. Each developer's machine maintains its own copy of the stack metadata. PR descriptions on GitHub serve as the shared source of truth for stack structure and context.
+The entire `.sdf/` directory is **local-only** &mdash; it is listed in `.gitignore` and is never pushed to the remote. Each developer's machine maintains its own copy of the stack metadata. PR descriptions on GitHub serve as the shared source of truth for stack structure and context.
 
 ---
 
@@ -134,12 +134,12 @@ The entire `.sdf/` directory is **local-only** -- it is listed in `.gitignore` a
 
 When you run a command that operates on a stack (`sdf sync`, `sdf status`, `sdf branch`, etc.), SDF determines which stack to use with this logic:
 
-1. **Explicit `--stack` flag** -- always takes priority
-2. **Positional argument** -- e.g. `sdf sync my-feature`
-3. **Current branch** -- if your checked-out branch belongs to a stack, that stack is used
-4. **Single stack** -- if there's only one stack in the repo, it's used automatically
+1. **Explicit `--stack` flag** &mdash; always takes priority
+2. **Positional argument** &mdash; e.g. `sdf sync my-feature`
+3. **Current branch** &mdash; if your checked-out branch belongs to a stack, that stack is used
+4. **Single stack** &mdash; if there's only one stack in the repo, it's used automatically
 
-If none of these resolve to a stack (e.g. you're on `main` with multiple stacks and didn't specify one), SDF reports an error listing the available stacks. With [shell completions](/docs/getting-started#prerequisites) installed, you can tab-complete stack names directly -- useful when working with multiple stacks.
+If none of these resolve to a stack (e.g. you're on `main` with multiple stacks and didn't specify one), SDF reports an error listing the available stacks. With [shell completions](/docs/getting-started#prerequisites) installed, you can tab-complete stack names directly &mdash; useful when working with multiple stacks.
 
 ---
 
@@ -147,8 +147,8 @@ If none of these resolve to a stack (e.g. you're on `main` with multiple stacks 
 
 The file `.sdf/local.json` stores ephemeral state that should not be shared between developers:
 
-- **Sync progress** -- when a sync is paused for manual conflict resolution, the paused branch, resume index, and original branch are saved here. `sdf sync --continue` reads this to resume.
-- **Split sessions** -- maps stack names to Claude session IDs so split refinement can resume across invocations.
+- **Sync progress** &mdash; when a sync is paused for manual conflict resolution, the paused branch, resume index, and original branch are saved here. `sdf sync --continue` reads this to resume.
+- **Split sessions** &mdash; maps stack names to Claude session IDs so split refinement can resume across invocations.
 
-This file is automatically created when needed and can be safely deleted -- SDF recreates it as necessary.
+This file is automatically created when needed and can be safely deleted &mdash; SDF recreates it as necessary.
 

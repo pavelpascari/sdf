@@ -8,7 +8,7 @@ author: "Pavel Pascari"
 published: true
 ---
 
-SDF started as a tool for humans. You type commands, you read output, you make decisions. That hasn't changed -- but v0.3.0 makes SDF equally useful for scripts, CI pipelines, and AI agents.
+SDF started as a tool for humans. You type commands, you read output, you make decisions. That hasn't changed &mdash; but v0.3.0 makes SDF equally useful for scripts, CI pipelines, and AI agents.
 
 The theme of this release: every command now speaks two languages. Pretty terminal output for humans, structured JSON for machines. Along the way, we added shell completions, AI-powered features, and better visibility into your stack's CI status.
 
@@ -23,9 +23,9 @@ sdf branch --json
 sdf doctor --json
 ```
 
-This isn't a bolt-on flag. Under the hood, we built a new **event-driven render engine** -- a `render.Bus` that every command writes to. The bus has two renderers: a TTY renderer that produces the colored, human-friendly output you're used to, and a JSON renderer that captures the same events as structured data. Same information, different format, zero divergence.
+This isn't a bolt-on flag. Under the hood, we built a new **event-driven render engine** &mdash; a `render.Bus` that every command writes to. The bus has two renderers: a TTY renderer that produces the colored, human-friendly output you're used to, and a JSON renderer that captures the same events as structured data. Same information, different format, zero divergence.
 
-If you're building automation around stacked PRs -- whether that's a CI check, a Slack bot, or an AI agent that manages your stack -- `--json` gives you a stable contract.
+If you're building automation around stacked PRs &mdash; whether that's a CI check, a Slack bot, or an AI agent that manages your stack &mdash; `--json` gives you a stable contract.
 
 ## Smart shell completions
 
@@ -44,9 +44,9 @@ sdf completions install
 
 It detects your shell automatically and installs completions in the right place.
 
-## `sdf ai intro` -- onboarding with Claude
+## `sdf ai intro` &mdash; onboarding with Claude
 
-New to a repo that uses stacked PRs? `sdf ai intro` uses Claude to analyze your repository and explain how stacked diffs work in the context of *your* codebase -- the branching patterns, the PR structure, the review workflow your team follows.
+New to a repo that uses stacked PRs? `sdf ai intro` uses Claude to analyze your repository and explain how stacked diffs work in the context of *your* codebase &mdash; the branching patterns, the PR structure, the review workflow your team follows.
 
 ```bash
 sdf ai intro
@@ -54,9 +54,9 @@ sdf ai intro
 
 It's a one-shot explainer, not a chat. Claude reads your repo's git history and open PRs, then gives you a concise briefing. Useful for onboarding new team members or when you pick up a repo you haven't touched in a while.
 
-Requires the Claude CLI (`claude`). SDF checks for it automatically -- run `sdf doctor` to verify.
+Requires the Claude CLI (`claude`). SDF checks for it automatically &mdash; run `sdf doctor` to verify.
 
-## `sdf split` -- decompose branches with AI
+## `sdf split` &mdash; decompose branches with AI
 
 Got a branch that grew too large for a single PR? `sdf split` uses Claude to analyze your diff at the hunk level and propose a decomposition into a stack of focused branches:
 
@@ -64,7 +64,7 @@ Got a branch that grew too large for a single PR? `sdf split` uses Claude to ana
 sdf split
 ```
 
-Claude reads the unified diff, groups related hunks by logical concern, and produces a split plan. You review the plan, adjust if needed, and SDF executes it -- creating the branches, cherry-picking the right hunks, and wiring everything into the stack.
+Claude reads the unified diff, groups related hunks by logical concern, and produces a split plan. You review the plan, adjust if needed, and SDF executes it &mdash; creating the branches, cherry-picking the right hunks, and wiring everything into the stack.
 
 This is the kind of task that's tedious to do manually (interactive rebase, careful `git add -p`, hoping you didn't break imports) and surprisingly well-suited for an AI that can read the full diff at once.
 
@@ -91,14 +91,14 @@ feat/add-auth  →  feat(add-auth): ...
 fix/null-check →  fix(null-check): ...
 ```
 
-No configuration needed. If your branch has a recognized prefix (`feat/`, `fix/`, `refactor/`, etc.), SDF uses it. If not, it falls back to the plain branch name. When you run `sdf sync --with-content`, Claude factors in the conventional commit prefix too -- so generated PR titles stay consistent with your commit style. Disable it in config if it doesn't match your team's conventions.
+No configuration needed. If your branch has a recognized prefix (`feat/`, `fix/`, `refactor/`, etc.), SDF uses it. If not, it falls back to the plain branch name. When you run `sdf sync --with-content`, Claude factors in the conventional commit prefix too &mdash; so generated PR titles stay consistent with your commit style. Disable it in config if it doesn't match your team's conventions.
 
 ## Everything else
 
-- **`sdf new`** -- `sdf init` has been renamed to `sdf new` (the old name still works as an alias)
-- **Version check** -- SDF now notifies you when a newer version is available
-- **Overwrite protection** -- `sdf new` and `sdf register` refuse to overwrite existing stack config, preventing accidental data loss
-- **Upgraded website** -- new landing page with shell completions and AI feature showcases, getting started guide, and improved documentation
+- **`sdf new`** &mdash; `sdf init` has been renamed to `sdf new` (the old name still works as an alias)
+- **Version check** &mdash; SDF now notifies you when a newer version is available
+- **Overwrite protection** &mdash; `sdf new` and `sdf register` refuse to overwrite existing stack config, preventing accidental data loss
+- **Upgraded website** &mdash; new landing page with shell completions and AI feature showcases, getting started guide, and improved documentation
 
 ## Get started
 

@@ -21,7 +21,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'TechArticle',
   headline: title,
-  description: description ?? `${title} -- SDF documentation`,
+  description: description ?? `${title} \u2014 SDF documentation`,
   url: canonicalURL.href,
   about: {
     '@type': 'SoftwareApplication',
@@ -37,7 +37,7 @@ const jsonLd = {
 };
 ---
 
-<BaseLayout title={`${title} -- SDF Docs`} description={description}>
+<BaseLayout title={`${title} \u2014 SDF Docs`} description={description}>
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <div class="flex gap-12">

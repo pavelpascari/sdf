@@ -6,7 +6,7 @@ order: 8
 
 # Splitting Branches
 
-`sdf split` takes a large branch and decomposes it into a stack of smaller, focused PRs. Claude analyzes the diff and proposes a split plan -- grouping files by theme, ordering layers by dependency, and handling shared files at the hunk level. The original branch is never modified.
+`sdf split` takes a large branch and decomposes it into a stack of smaller, focused PRs. Claude analyzes the diff and proposes a split plan &mdash; grouping files by theme, ordering layers by dependency, and handling shared files at the hunk level. The original branch is never modified.
 
 ---
 
@@ -24,8 +24,8 @@ If you're starting fresh, use `sdf new` and `sdf branch` to build the stack incr
 
 ## Prerequisites
 
-- **Claude CLI** -- required. Split uses Claude for analysis, plan generation, and hunk assignment. Install from [claude.ai/code](https://claude.ai/code).
-- **Clean working tree** -- no uncommitted changes
+- **Claude CLI** &mdash; required. Split uses Claude for analysis, plan generation, and hunk assignment. Install from [claude.ai/code](https://claude.ai/code).
+- **Clean working tree** &mdash; no uncommitted changes
 - **Source branch must not already be in a stack**
 - **Source branch must have 2+ changed files** relative to the base
 
@@ -38,14 +38,14 @@ sdf split --from feature/big-change --stack my-feature
 ```
 
 Required flags:
-- `--from <branch>` -- the source branch to split
-- `--stack <name>` -- the name for the new stack that will hold the split layers
+- `--from <branch>` &mdash; the source branch to split
+- `--stack <name>` &mdash; the name for the new stack that will hold the split layers
 
 Optional flags:
-- `--base <branch>` -- base branch (default: auto-detected from `origin/HEAD`)
-- `--dry-run` -- show the plan without executing
-- `--yes`, `-y` -- skip the confirmation prompt
-- `--no-push` -- create branches locally without pushing or creating PRs
+- `--base <branch>` &mdash; base branch (default: auto-detected from `origin/HEAD`)
+- `--dry-run` &mdash; show the plan without executing
+- `--yes`, `-y` &mdash; skip the confirmation prompt
+- `--no-push` &mdash; create branches locally without pushing or creating PRs
 
 ---
 
@@ -53,7 +53,7 @@ Optional flags:
 
 ### Phase 1: Analysis
 
-Claude receives the full diff between the base branch and the source branch, including the list of changed files, commit log, and file tree. It groups the files into coherent layers -- each representing a candidate PR -- based on semantic themes.
+Claude receives the full diff between the base branch and the source branch, including the list of changed files, commit log, and file tree. It groups the files into coherent layers &mdash; each representing a candidate PR &mdash; based on semantic themes.
 
 For example, a feature branch touching database migrations, API endpoints, business logic, and tests might be split into:
 
@@ -71,7 +71,7 @@ Layer 4: Tests (6 files, +450 -0)
   Unit and integration tests
 ```
 
-Each file typically appears in exactly one layer. When a file's changes serve multiple concerns, it may appear in multiple layers -- SDF handles this in the hunk assignment phase.
+Each file typically appears in exactly one layer. When a file's changes serve multiple concerns, it may appear in multiple layers &mdash; SDF handles this in the hunk assignment phase.
 
 ### Phase 2: Dependency ordering
 
@@ -81,9 +81,9 @@ Claude determines the natural dependency order between layers. Types and schemas
 
 After analysis, SDF displays the split plan showing each layer's name, description, file count, and line statistics. You then choose one of three actions:
 
-- **Execute** -- proceed with the split as proposed
-- **Refine** -- open an interactive Claude session to adjust the plan with natural language instructions (e.g., "move the validation files to layer 2" or "merge layers 3 and 4")
-- **Abort** -- cancel the split
+- **Execute** &mdash; proceed with the split as proposed
+- **Refine** &mdash; open an interactive Claude session to adjust the plan with natural language instructions (e.g., "move the validation files to layer 2" or "merge layers 3 and 4")
+- **Abort** &mdash; cancel the split
 
 ### Phase 4: Hunk-level splitting (if needed)
 
@@ -97,11 +97,11 @@ SDF creates the stack and branches:
 
 1. Initializes the stack with `sdf new`
 2. For each layer, creates a branch and applies the layer's changes
-3. Validates tree identity -- confirms that the tip of the last branch is identical to the source branch (lossless split)
+3. Validates tree identity &mdash; confirms that the tip of the last branch is identical to the source branch (lossless split)
 4. Pushes all branches to origin
 5. Creates PRs for each branch with auto-generated titles
 
-If validation fails (the split is not lossless), SDF rolls back -- deletes the created branches and stack -- and reports the error.
+If validation fails (the split is not lossless), SDF rolls back &mdash; deletes the created branches and stack &mdash; and reports the error.
 
 ### Phase 6: Session management
 
@@ -213,7 +213,7 @@ You can then inspect the branches locally, push them manually, and create PRs wi
 
 **Analysis fails:** If Claude can't produce a valid split plan, the command fails without modifying anything.
 
-**Validation fails (not lossless):** If the final tree doesn't match the source branch exactly, SDF rolls back all created branches and the stack. This means a bug in the splitting logic -- report it.
+**Validation fails (not lossless):** If the final tree doesn't match the source branch exactly, SDF rolls back all created branches and the stack. This means a bug in the splitting logic &mdash; report it.
 
 **Hunk assignment fails:** If shared files can't be split at the hunk level, SDF falls back to keeping each shared file in whichever layer it first appears. The split may still be valid, but some files might not land in their ideal layer.
 

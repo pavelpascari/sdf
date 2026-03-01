@@ -7,7 +7,7 @@ const allPosts = await getCollection('blog', ({ data }) => data.published);
 const sorted = allPosts.sort((a, b) => b.data.datePublished.getTime() - a.data.datePublished.getTime());
 ---
 
-<BaseLayout title="Blog -- SDF" description="Release notes, case studies, and tutorials for SDF.">
+<BaseLayout title="Blog \u2014 SDF" description="Release notes, case studies, and tutorials for SDF.">
   <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
 
     <header class="mb-12">

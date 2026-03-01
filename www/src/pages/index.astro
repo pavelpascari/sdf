@@ -26,7 +26,7 @@ const jsonLd = [
 ];
 ---
 
-<BaseLayout title="SDF -- Stacked Diffs That Stay in Sync">
+<BaseLayout title="SDF \u2014 Stacked Diffs That Stay in Sync">
   {jsonLd.map((item) => (
     <script slot="head" type="application/ld+json" set:html={JSON.stringify(item)} />
   ))}
@@ -115,7 +115,7 @@ const jsonLd = [
   <section class="border-y border-rim bg-surface/50 py-20">
     <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
       <p class="text-center text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-12">
-        The pain of stacked PRs -- solved
+        The pain of stacked PRs &mdash; solved
       </p>
       <div class="grid sm:grid-cols-3 gap-5">
         {[
@@ -160,7 +160,7 @@ const jsonLd = [
         </h2>
         <p class="text-fg-muted max-w-xl mx-auto">
           A thin layer built on git and gh.
-          No servers, no extra auth -- just the tools you already use, working together.
+          No servers, no extra auth &mdash; just the tools you already use, working together.
         </p>
       </div>
 

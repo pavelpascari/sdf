@@ -7,7 +7,7 @@ author: "SDF Team"
 published: true
 ---
 
-Large features are hard to review as monolithic PRs. Stacked PRs solve this by splitting work into focused, reviewable layers. But managing the dependency chain -- rebasing, updating bases, resolving conflicts -- is tedious enough that most teams avoid the approach entirely.
+Large features are hard to review as monolithic PRs. Stacked PRs solve this by splitting work into focused, reviewable layers. But managing the dependency chain &mdash; rebasing, updating bases, resolving conflicts &mdash; is tedious enough that most teams avoid the approach entirely.
 
 This case study walks through how a team used SDF to ship a user management feature across four stacked PRs without manual rebasing.
 
@@ -15,10 +15,10 @@ This case study walks through how a team used SDF to ship a user management feat
 
 The feature broke down into four layers:
 
-1. **db-schema** -- migration to create the `users` table
-2. **repository** -- `UserRepository` with CRUD operations
-3. **controller** -- HTTP endpoints for user management
-4. **frontend** -- React components for the user settings page
+1. **db-schema** &mdash; migration to create the `users` table
+2. **repository** &mdash; `UserRepository` with CRUD operations
+3. **controller** &mdash; HTTP endpoints for user management
+4. **frontend** &mdash; React components for the user settings page
 
 ```bash
 sdf init --branch db-schema users-feature
@@ -63,7 +63,7 @@ SDF detected the merge, rebased `repository` onto `main`, then `controller` onto
 
 ## Handling a conflict
 
-When `repository` was merged next, `controller` had a conflict in `internal/handler/user.go` -- the merged code restructured a function signature that `controller` depended on.
+When `repository` was merged next, `controller` had a conflict in `internal/handler/user.go` &mdash; the merged code restructured a function signature that `controller` depended on.
 
 ```bash
 sdf sync
@@ -71,16 +71,16 @@ sdf sync
 
 SDF detected the conflict and offered options:
 
-- **Ask Claude to resolve** -- Claude read the upstream changes, the PR diff, and the conflict markers, then produced a clean resolution
-- **Fix manually** -- pause the sync for manual resolution
-- **Skip** -- skip the branch and continue
+- **Ask Claude to resolve** &mdash; Claude read the upstream changes, the PR diff, and the conflict markers, then produced a clean resolution
+- **Fix manually** &mdash; pause the sync for manual resolution
+- **Skip** &mdash; skip the branch and continue
 
 The team chose Claude, which resolved the conflict correctly. The sync continued and finished without further issues.
 
 ## Results
 
 - **4 PRs** merged over 3 days
-- **0 manual rebases** -- SDF handled all cascade rebasing
+- **0 manual rebases** &mdash; SDF handled all cascade rebasing
 - **1 conflict** resolved automatically by Claude
 - Every reviewer saw focused, single-concern diffs instead of a 2,000-line monolith
 
