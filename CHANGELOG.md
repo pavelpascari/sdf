@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.12](https://github.com/pavelpascari/sdf/compare/v0.2.11...v0.2.12) (2026-03-01)
+
+
+### Features
+
+* **landing:** add shell completions and ai intro showcases ([#135](https://github.com/pavelpascari/sdf/issues/135)) ([2e04c14](https://github.com/pavelpascari/sdf/commit/2e04c143144bb4ea5cd3390788ff3c0be92468ac))
+
+
+### Bug Fixes
+
+* **landing:** correct terminal output to match actual commands ([#134](https://github.com/pavelpascari/sdf/issues/134)) ([eeedd5c](https://github.com/pavelpascari/sdf/commit/eeedd5c46cbce795a01dcdda0f5a326191cbc2bf))
+
+
+### Documentation
+
+* add sdf split blog post and update landing page features ([#96](https://github.com/pavelpascari/sdf/issues/96)) ([066a071](https://github.com/pavelpascari/sdf/commit/066a071da38e77ec402979338afd8923d56edc7e))
+
 ## [0.2.11](https://github.com/pavelpascari/sdf/compare/v0.2.10...v0.2.11) (2026-02-28)
 
 
