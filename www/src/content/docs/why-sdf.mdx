@@ -88,7 +88,29 @@ Git 2.38 added `--update-refs` to `git rebase`, which automatically updates stac
 
 **Where `--update-refs` shines:** It's built into Git — zero dependencies, zero installation. For engineers who are comfortable with rebase mechanics and only need occasional stacking, it eliminates the most tedious part (updating sibling branch pointers) without adding any tooling.
 
-**Where SDF differs:** `--update-refs` handles local branch ref updates but nothing else. SDF automates the full workflow: PR base updates on GitHub (without which diffs render incorrectly after rebasing), PR creation with correct base targeting, stack navigation links in PR descriptions, merge detection and reconciliation, AI-powered conflict resolution, and branch splitting. If you stack PRs regularly, the remaining manual steps after `--update-refs` add up quickly.
+**Where SDF differs:** `--update-refs` handles local branch ref updates but leaves everything else manual. Here's what a typical sync looks like with `--update-refs` vs. SDF after the bottom PR in a 3-branch stack merges:
+
+With `--update-refs`:
+
+```bash
+git fetch origin
+git checkout main && git pull
+git rebase --update-refs main branch-3
+# resolve any conflicts manually...
+git push --force-with-lease origin branch-2
+git push --force-with-lease origin branch-3
+gh pr edit 201 --base main           # fix PR base (otherwise diff shows all of main)
+gh pr edit 202 --base branch-2       # fix next PR base too
+# manually update PR descriptions if you maintain stack navigation links
+```
+
+With SDF:
+
+```bash
+sdf sync
+```
+
+That single command detects the merge, cascade-rebases both branches, force-pushes them, updates PR bases on GitHub, and refreshes the stack navigation links in every PR description. If a conflict occurs, Claude resolves it using the PR description and upstream diff as context. The manual workflow works, but it scales linearly with the number of branches — and forgetting the `gh pr edit --base` step leaves GitHub showing broken diffs until you notice.
 
 ## When to use SDF
 
