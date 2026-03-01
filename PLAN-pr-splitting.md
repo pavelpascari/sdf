@@ -318,9 +318,8 @@ Starting Claude Code session with stack context...
 
 This works by:
 1. Completing the split
-2. Writing context docs for each layer (`.sdf/context/<layer>.md`)
-3. Launching `claude` with `sdf context show` piped in as initial context
-4. The session name is deterministic: `split-<stack_name>` so it's resumable
+2. Launching `claude` with the split plan piped in as initial context
+3. The session name is deterministic: `split-<stack_name>` so it's resumable
 
 ---
 
@@ -453,19 +452,17 @@ func EditPlan(plan *Plan) (*Plan, error) {
 }
 ```
 
-### Phase 4: PR Creation and Context
+### Phase 4: PR Creation
 
 After execution, for each layer:
-1. Create a context doc (`.sdf/context/<stack>/<layer>.md`) with the description
-2. Run `sdf pr` to create the GitHub PR with the context doc as body
-3. Update stack navigation links across all PRs
+1. Run `sdf pr` to create the GitHub PR with the layer description as body
+2. Update stack navigation links across all PRs
 
 ### Phase 5: Session Continuity (--session flag)
 
 After split + PR creation:
-1. Assemble full stack context via `sdf context show`
-2. Launch `claude --session split-<stack_name>` with the context piped in
-3. The session inherits awareness of all layers
+1. Launch `claude --session split-<stack_name>` with the split plan piped in as context
+2. The session inherits awareness of all layers
 
 ---
 
