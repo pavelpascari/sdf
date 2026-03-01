@@ -1,0 +1,112 @@
+---
+title: "SDF v0.3.0: Machine-Friendly, Human-First"
+description: "SDF v0.3.0 adds structured JSON output to every command, smart shell completions, AI-powered onboarding and branch splitting, CI status visibility, and a new event-driven rendering engine."
+datePublished: 2026-03-01
+tags: [release]
+version: "0.3.0"
+author: "Pavel Pascari"
+published: true
+---
+
+SDF started as a tool for humans. You type commands, you read output, you make decisions. That hasn't changed — but v0.3.0 makes SDF equally useful for scripts, CI pipelines, and AI agents.
+
+The theme of this release: every command now speaks two languages. Pretty terminal output for humans, structured JSON for machines. Along the way, we added shell completions, AI-powered features, and better visibility into your stack's CI status.
+
+## `--json` everywhere
+
+Every command now supports `--json`. The output is structured, predictable, and designed for piping:
+
+```bash
+sdf status --json | jq '.nodes[] | select(.status == "open")'
+sdf sync --json
+sdf branch --json
+sdf doctor --json
+```
+
+This isn't a bolt-on flag. Under the hood, we built a new **event-driven render engine** — a `render.Bus` that every command writes to. The bus has two renderers: a TTY renderer that produces the colored, human-friendly output you're used to, and a JSON renderer that captures the same events as structured data. Same information, different format, zero divergence.
+
+If you're building automation around stacked PRs — whether that's a CI check, a Slack bot, or an AI agent that manages your stack — `--json` gives you a stable contract.
+
+## Smart shell completions
+
+Tab completion now works across all commands. SDF is context-aware: it knows which stack you're on and suggests relevant branch names, stack IDs, and flags.
+
+```bash
+sdf switch <TAB>    # suggests branches in the current stack
+sdf <TAB>           # suggests subcommands and stack branches
+```
+
+Set it up once:
+
+```bash
+sdf completions install
+```
+
+It detects your shell automatically and installs completions in the right place.
+
+## `sdf ai intro` — onboarding with Claude
+
+New to a repo that uses stacked PRs? `sdf ai intro` uses Claude to analyze your repository and explain how stacked diffs work in the context of *your* codebase — the branching patterns, the PR structure, the review workflow your team follows.
+
+```bash
+sdf ai intro
+```
+
+It's a one-shot explainer, not a chat. Claude reads your repo's git history and open PRs, then gives you a concise briefing. Useful for onboarding new team members or when you pick up a repo you haven't touched in a while.
+
+Requires the Claude CLI (`claude`). SDF checks for it automatically — run `sdf doctor` to verify.
+
+## `sdf split` — decompose branches with AI
+
+Got a branch that grew too large for a single PR? `sdf split` uses Claude to analyze your diff at the hunk level and propose a decomposition into a stack of focused branches:
+
+```bash
+sdf split
+```
+
+Claude reads the unified diff, groups related hunks by logical concern, and produces a split plan. You review the plan, adjust if needed, and SDF executes it — creating the branches, cherry-picking the right hunks, and wiring everything into the stack.
+
+This is the kind of task that's tedious to do manually (interactive rebase, careful `git add -p`, hoping you didn't break imports) and surprisingly well-suited for an AI that can read the full diff at once.
+
+## CI status in `sdf status`
+
+`sdf status` now shows CI check results and mergeability for each PR:
+
+```
+  my-stack  (base: main)
+
+   ✓  db-schema                PR #142  merged
+   ●  repository               PR #143  open    3 commits ahead, in sync  [CI:✓] [R:✓]
+ → ●  controller               PR #144  open    1 commits ahead, needs sync  [CI:✗] [R:?]
+```
+
+No more switching to the browser to check if CI is green. If a PR has failing checks or merge conflicts, you see it right in the terminal alongside the rest of the stack topology.
+
+## Conventional commits by default
+
+`sdf pr` now generates conventional commit-style PR titles automatically, using the branch prefix as the scope:
+
+```
+feat/add-auth  →  feat(add-auth): ...
+fix/null-check →  fix(null-check): ...
+```
+
+No configuration needed. If your branch has a recognized prefix (`feat/`, `fix/`, `refactor/`, etc.), SDF uses it. If not, it falls back to the plain branch name. When you run `sdf sync --with-content`, Claude factors in the conventional commit prefix too — so generated PR titles stay consistent with your commit style. Disable it in config if it doesn't match your team's conventions.
+
+## Everything else
+
+- **`sdf new`** — `sdf init` has been renamed to `sdf new` (the old name still works as an alias)
+- **Version check** — SDF now notifies you when a newer version is available
+- **Overwrite protection** — `sdf new` and `sdf register` refuse to overwrite existing stack config, preventing accidental data loss
+- **Upgraded website** — new landing page with shell completions and AI feature showcases, getting started guide, and improved documentation
+
+## Get started
+
+```bash
+brew install pavelpascari/tap/sdf
+sdf doctor
+```
+
+If you're upgrading, `brew upgrade sdf` gets you there. The [Getting Started guide](/docs/getting-started) covers the full workflow from first branch to merged stack.
+
+SDF is open source under the MIT license. Feedback, bug reports, and contributions are welcome on the [GitHub repo](https://github.com/pavelpascari/sdf).
