@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.12](https://github.com/pavelpascari/sdf/compare/v0.2.11...v0.2.12) (2026-03-01)
+## [0.3.0](https://github.com/pavelpascari/sdf/compare/v0.2.11...v0.3.0) (2026-03-01)
 
 
 ### Features
