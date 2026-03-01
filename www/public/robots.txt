@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://stacked-diffs-flow.com/sitemap-index.xml
