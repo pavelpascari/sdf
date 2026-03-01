@@ -49,7 +49,7 @@ Reconciliation compares the local stack state (in `.sdf/stacks/<name>.json`) aga
 - A branch that was in the local stack is no longer in the PR chain on GitHub
 - Branches have been reordered relative to the local stack
 
-Notable changes are not applied automatically. If the drift is significant, use `sdf fetch` to re-discover the stack from GitHub's PR graph.
+Notable changes are not applied automatically. If the drift is significant, use `sdf fetch` to re-discover the stack from GitHub's PR graph. Note that `sdf fetch` creates a **new local stack** to track the discovered PR chain — it does not modify the existing stack in place. You may need to remove the stale stack manually after verifying the fetched one is correct.
 
 ### 4. Compute the sync plan
 
