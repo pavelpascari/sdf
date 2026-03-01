@@ -1,6 +1,6 @@
 ---
 title: Sync Deep Dive
-description: How sdf sync works — cascade rebase, reconciliation, conflict resolution, and PR updates.
+description: How sdf sync works -- cascade rebase, reconciliation, conflict resolution, and PR updates.
 order: 7
 ---
 
@@ -16,13 +16,13 @@ When you run `sdf sync`, SDF executes this sequence:
 
 1. **Fetch from origin** and fast-forward the base branch (e.g. `main`)
 2. **Query GitHub** for the status of each PR in the stack
-3. **Reconcile** PR states — mark merged nodes, fill in PR numbers, warn on drift
-4. **Compute a sync plan** — determine which branches need rebasing
+3. **Reconcile** PR states &mdash; mark merged nodes, fill in PR numbers, warn on drift
+4. **Compute a sync plan** &mdash; determine which branches need rebasing
 5. **Show the plan** and ask for confirmation (unless `-y`)
 6. **Cascade rebase** each branch that needs updating, push, and update PR bases
 7. **Offer to create PRs** for branches that don't have one
-8. **Update PR content** — titles and descriptions (if `--with-content`)
-9. **Update stack navigation** — the linked list of PRs in each PR description
+8. **Update PR content** &mdash; titles and descriptions (if `--with-content`)
+9. **Update stack navigation** &mdash; the linked list of PRs in each PR description
 
 ---
 
@@ -34,31 +34,31 @@ SDF runs `git fetch` to get the latest remote state, then fast-forwards the base
 
 ### 2. Query GitHub for PR states
 
-SDF calls `gh` to fetch the current state of every PR in the stack — open, merged, closed, plus the base branch and CI/review status. This is the data that drives reconciliation.
+SDF calls `gh` to fetch the current state of every PR in the stack &mdash; open, merged, closed, plus the base branch and CI/review status. This is the data that drives reconciliation.
 
 ### 3. Reconcile
 
 Reconciliation compares the local stack state (in `.sdf/stacks/<name>.json`) against what GitHub reports. Changes fall into two categories:
 
 **Routine changes** are applied automatically and silently:
-- A PR's status changed (e.g. `open → merged`) — the node is updated
-- A PR number was discovered for a branch that had none — the number is filled in
+- A PR's status changed (e.g. `open → merged`) &mdash; the node is updated
+- A PR number was discovered for a branch that had none &mdash; the number is filled in
 
 **Notable changes** are displayed as warnings and require attention:
 - A PR's base branch on GitHub doesn't match the expected parent in the stack
 - A branch that was in the local stack is no longer in the PR chain on GitHub
 - Branches have been reordered relative to the local stack
 
-Notable changes are not applied automatically. If the drift is significant, use `sdf fetch` to re-discover the stack from GitHub's PR graph. Note that `sdf fetch` creates a **new local stack** to track the discovered PR chain — it does not modify the existing stack in place. You may need to remove the stale stack manually after verifying the fetched one is correct.
+Notable changes are not applied automatically. If the drift is significant, use `sdf fetch` to re-discover the stack from GitHub's PR graph. Note that `sdf fetch` creates a **new local stack** to track the discovered PR chain &mdash; it does not modify the existing stack in place. You may need to remove the stale stack manually after verifying the fetched one is correct.
 
 ### 4. Compute the sync plan
 
 SDF walks the stack from bottom to top. For each non-merged node, it compares the node's `base_tip` (the commit hash of the parent branch at the time of the last sync) against the current tip of the parent branch. If they differ, the branch needs rebasing.
 
 The plan is a list of actions:
-- **skip-merged** — acknowledge that a node's PR was merged (no rebase needed)
-- **rebase** — the parent branch has moved; this branch needs `git rebase --onto`
-- **update-pr-base** — the PR's base branch on GitHub needs changing (because a merged node was skipped)
+- **skip-merged** &mdash; acknowledge that a node's PR was merged (no rebase needed)
+- **rebase** &mdash; the parent branch has moved; this branch needs `git rebase --onto`
+- **update-pr-base** &mdash; the PR's base branch on GitHub needs changing (because a merged node was skipped)
 
 ### 5. Cascade rebase
 
@@ -77,7 +77,7 @@ After a successful rebase, SDF:
 
 #### How `base_tip` works
 
-Every node in the stack stores a `base_tip` — the commit SHA at the tip of its parent branch at the time of the last sync. This is how SDF knows whether a branch is "in sync" or "needs sync":
+Every node in the stack stores a `base_tip` &mdash; the commit SHA at the tip of its parent branch at the time of the last sync. This is how SDF knows whether a branch is "in sync" or "needs sync":
 
 ```
 Before sync:
@@ -105,7 +105,7 @@ After sync:
   main ← api ← ui
 ```
 
-SDF detects the merge during reconciliation, marks the node as `merged`, then rebases `api` onto `main` (skipping the merged `auth` node). It also runs `gh pr edit <api-PR> --base main` to update the PR's base on GitHub — without this step, GitHub would show every commit from `main` in the PR diff.
+SDF detects the merge during reconciliation, marks the node as `merged`, then rebases `api` onto `main` (skipping the merged `auth` node). It also runs `gh pr edit <api-PR> --base main` to update the PR's base on GitHub &mdash; without this step, GitHub would show every commit from `main` in the PR diff.
 
 The `ParentBranch()` function handles this transparently: it walks backward through the node list, skipping merged nodes, until it finds an open node or reaches the base branch.
 
@@ -113,13 +113,13 @@ The `ParentBranch()` function handles this transparently: it walks backward thro
 
 When a rebase produces conflicts, SDF presents an interactive menu with four options:
 
-**Claude resolution** — SDF builds a prompt containing the upstream change summary, the PR description from GitHub, and the full content of every conflicted file (with conflict markers). Claude resolves the conflicts in place, SDF stages the resolved files, and the rebase continues. If Claude fails to produce valid resolutions, SDF falls back to the other options.
+**Claude resolution** &mdash; SDF builds a prompt containing the upstream change summary, the PR description from GitHub, and the full content of every conflicted file (with conflict markers). Claude resolves the conflicts in place, SDF stages the resolved files, and the rebase continues. If Claude fails to produce valid resolutions, SDF falls back to the other options.
 
-**Manual resolution (pause)** — SDF saves the sync progress to `.sdf/local.json` and exits. You resolve the conflicts in your editor, stage the files, and run `sdf sync --continue` to resume. The saved state includes which branch was paused, which node index to resume from, and which branch you were on before the sync started.
+**Manual resolution (pause)** &mdash; SDF saves the sync progress to `.sdf/local.json` and exits. You resolve the conflicts in your editor, stage the files, and run `sdf sync --continue` to resume. The saved state includes which branch was paused, which node index to resume from, and which branch you were on before the sync started.
 
-**Skip branch** — SDF aborts the rebase for this branch and continues with the rest of the stack. Branches that depend on the skipped branch are also skipped (blocked). Run `sdf sync` again later to retry.
+**Skip branch** &mdash; SDF aborts the rebase for this branch and continues with the rest of the stack. Branches that depend on the skipped branch are also skipped (blocked). Run `sdf sync` again later to retry.
 
-**Abort** — SDF aborts the rebase and stops the sync entirely. No branches are left in a partial state.
+**Abort** &mdash; SDF aborts the rebase and stops the sync entirely. No branches are left in a partial state.
 
 ### 7. Offer to create missing PRs
 
@@ -144,9 +144,9 @@ SDF maintains a navigation section in each PR description that shows the full st
 
 When a sync was paused for manual conflict resolution, `--continue` resumes it. SDF checks three conditions:
 
-1. **Rebase still in progress** — runs `git rebase --continue` (you must have staged all resolved files first)
-2. **Rebase completed externally** — if the parent tip is an ancestor of the paused branch, the rebase was completed outside SDF (e.g. you ran `git rebase --continue` manually). SDF acknowledges this and continues.
-3. **Rebase was aborted** — if the parent tip is NOT an ancestor, the rebase was aborted. SDF clears the saved progress and starts a fresh sync.
+1. **Rebase still in progress** &mdash; runs `git rebase --continue` (you must have staged all resolved files first)
+2. **Rebase completed externally** &mdash; if the parent tip is an ancestor of the paused branch, the rebase was completed outside SDF (e.g. you ran `git rebase --continue` manually). SDF acknowledges this and continues.
+3. **Rebase was aborted** &mdash; if the parent tip is NOT an ancestor, the rebase was aborted. SDF clears the saved progress and starts a fresh sync.
 
 After handling the paused branch, SDF resumes the sync loop from the next node.
 

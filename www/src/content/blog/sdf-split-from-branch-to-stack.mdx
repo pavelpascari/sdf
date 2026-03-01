@@ -1,13 +1,13 @@
 ---
 title: "sdf split: Turn Any Branch into a Stack"
-description: "sdf split uses Claude to decompose a single large branch into a chain of focused, reviewable PRs — without touching the original branch."
+description: "sdf split uses Claude to decompose a single large branch into a chain of focused, reviewable PRs -- without touching the original branch."
 datePublished: 2026-02-26
 tags: [release]
 author: "Pavel Pascari"
 published: true
 ---
 
-You know the moment. The feature branch started clean — a schema change, then an API layer, then some UI work. Three days later it's 800 lines across 20 files and 14 commits, half of them titled "WIP". The code is correct, but nobody wants to review it as one giant PR.
+You know the moment. The feature branch started clean &mdash; a schema change, then an API layer, then some UI work. Three days later it's 800 lines across 20 files and 14 commits, half of them titled "WIP". The code is correct, but nobody wants to review it as one giant PR.
 
 The standard advice is "split it into smaller PRs." The standard reality is that splitting a branch after the fact is tedious and error-prone. You're cherry-picking commits, untangling mixed changes, creating branches in dependency order, hoping you didn't miss a file. Then you have to verify that each intermediate branch actually builds.
 
@@ -19,7 +19,7 @@ The standard advice is "split it into smaller PRs." The standard reality is that
 sdf split --from feature/big-change --stack my-feature
 ```
 
-SDF analyzes the branch, proposes a split plan, and — after your approval — creates a full stack of branches with PRs, ready for review:
+SDF analyzes the branch, proposes a split plan, and &mdash; after your approval &mdash; creates a full stack of branches with PRs, ready for review:
 
 ```
 Before:  main ← big-feature (847 insertions, 23 files, 15 commits)
@@ -66,8 +66,8 @@ You can accept the plan, refine it interactively through a Claude session (move 
 
 For each layer, SDF creates a branch from the previous layer's tip and applies the assigned changes:
 
-- **Whole files** — SDF extracts the diff between base and source for the layer's files and applies it as a patch
-- **Shared files** (same file in multiple layers) — SDF filters the diff at the hunk level, applying only the hunks assigned to each layer
+- **Whole files** &mdash; SDF extracts the diff between base and source for the layer's files and applies it as a patch
+- **Shared files** (same file in multiple layers) &mdash; SDF filters the diff at the hunk level, applying only the hunks assigned to each layer
 
 After all branches are created, SDF verifies the split is lossless: `git diff original-branch stack/last-branch` must be empty. If a single line was lost or invented, the split is rolled back.
 

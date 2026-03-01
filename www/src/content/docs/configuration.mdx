@@ -20,7 +20,7 @@ SDF uses a two-tier configuration system that separates team-wide settings from 
 | `.sdf/config.json` | Repository | Local-only (inside gitignored `.sdf/` directory) |
 | `~/.config/sdf/config.json` | User (global) | Per-machine |
 
-When both files exist, repository config takes precedence on a field-by-field basis. Missing files are not errors — SDF works without any config file, using built-in defaults.
+When both files exist, repository config takes precedence on a field-by-field basis. Missing files are not errors &mdash; SDF works without any config file, using built-in defaults.
 
 Run `sdf config show` to see the effective merged result.
 
@@ -134,7 +134,7 @@ sdf config set sync.with_content true
 sdf config set --global branch_prefix.scope my-username
 ```
 
-Or edit the JSON files directly — they are plain JSON with no schema enforcement beyond what SDF reads.
+Or edit the JSON files directly &mdash; they are plain JSON with no schema enforcement beyond what SDF reads.
 
 ### Valid keys
 

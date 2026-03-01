@@ -25,7 +25,7 @@ const { flags } = Astro.props;
       {flags.map(f => (
         <tr>
           <td><code>{f.shorthand ? `-${f.shorthand}, ` : ''}{`--${f.name}`}</code></td>
-          <td>{f.default === '' || f.default === 'false' ? '—' : <code>{f.default}</code>}</td>
+          <td>{f.default === '' || f.default === 'false' ? '--' : <code>{f.default}</code>}</td>
           <td>{f.description}</td>
         </tr>
       ))}

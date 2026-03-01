@@ -1,6 +1,6 @@
 ---
 title: "Introducing SDF: Stacked Diffs That Stay in Sync"
-description: "SDF v0.1.0 is here — a CLI tool that automates cascade rebasing for GitHub PR stacks, with optional AI-powered conflict resolution."
+description: "SDF v0.1.0 is here -- a CLI tool that automates cascade rebasing for GitHub PR stacks, with optional AI-powered conflict resolution."
 datePublished: 2025-02-21
 dateModified: 2026-02-21
 tags: [release]
@@ -9,34 +9,34 @@ author: "Pavel Pascari"
 published: true
 ---
 
-I've been working with stacked pull requests for years. If you've ever broken a large feature into a chain of small, focused PRs — each one building on the last — you know how good the workflow *feels*. Reviewers get digestible diffs. CI runs against coherent slices. You can land parts of a feature independently.
+I've been working with stacked pull requests for years. If you've ever broken a large feature into a chain of small, focused PRs &mdash; each one building on the last &mdash; you know how good the workflow *feels*. Reviewers get digestible diffs. CI runs against coherent slices. You can land parts of a feature independently.
 
 But you also know the other side: keeping the stack in sync is a constant, manual grind.
 
 ## The overhead nobody talks about
 
-Every team that adopts stacked PRs eventually hits the same wall. It's not the stacking itself — it's everything that happens *after*.
+Every team that adopts stacked PRs eventually hits the same wall. It's not the stacking itself &mdash; it's everything that happens *after*.
 
-Your first PR in the stack gets approved and merged. Now you need to rebase the second branch onto `main`, then rebase the third onto the second. Update the base branch settings on GitHub for each downstream PR. Check that the PR descriptions still make sense — the "depends on #42" link now points to a merged PR, the stack navigation table is wrong, the context you wrote for reviewers is stale.
+Your first PR in the stack gets approved and merged. Now you need to rebase the second branch onto `main`, then rebase the third onto the second. Update the base branch settings on GitHub for each downstream PR. Check that the PR descriptions still make sense &mdash; the "depends on #42" link now points to a merged PR, the stack navigation table is wrong, the context you wrote for reviewers is stale.
 
 And if any of those rebases produce a conflict? Now you're resolving merge conflicts across multiple branches, one at a time, hoping you don't introduce regressions in a layer that was already reviewed.
 
-Over the years I've patched this with git aliases, small bash scripts, bits of automation here and there. Each one solved a piece of the puzzle — but never the whole thing. The overhead always crept back.
+Over the years I've patched this with git aliases, small bash scripts, bits of automation here and there. Each one solved a piece of the puzzle &mdash; but never the whole thing. The overhead always crept back.
 
 ## SDF: the whole picture
 
-SDF is the tool I kept wanting to exist. It understands the full lifecycle of a PR stack — not just the rebasing, but the descriptions, the base branches, the navigation links between PRs, and the merge strategy.
+SDF is the tool I kept wanting to exist. It understands the full lifecycle of a PR stack &mdash; not just the rebasing, but the descriptions, the base branches, the navigation links between PRs, and the merge strategy.
 
 The commands map to how you already think about stacked work:
 
-- **`sdf init`** and **`sdf branch`** — create a stack and add branches to it
-- **`sdf status`** — see where every branch and PR stands at a glance
-- **`sdf pr`** — open GitHub PRs with correct bases and stack navigation injected into descriptions
-- **`sdf sync`** — the core: after an upstream PR merges, cascade-rebase every downstream branch, update PR bases, and refresh descriptions — all in one command
-- **`sdf merge`** — squash-merge the head PR and cascade-rebase the rest of the stack
-- **`sdf fetch`** — discover existing PR stacks from GitHub and rebuild local state
+- **`sdf init`** and **`sdf branch`** &mdash; create a stack and add branches to it
+- **`sdf status`** &mdash; see where every branch and PR stands at a glance
+- **`sdf pr`** &mdash; open GitHub PRs with correct bases and stack navigation injected into descriptions
+- **`sdf sync`** &mdash; the core: after an upstream PR merges, cascade-rebase every downstream branch, update PR bases, and refresh descriptions &mdash; all in one command
+- **`sdf merge`** &mdash; squash-merge the head PR and cascade-rebase the rest of the stack
+- **`sdf fetch`** &mdash; discover existing PR stacks from GitHub and rebuild local state
 
-The key insight is that `sdf sync` and `sdf pr` don't just move branches around — they keep PR descriptions and metadata in sync too. Before you ask for a review, before you hit merge, the stack navigation and context are already accurate. That's the overhead that scripts and aliases never fully solved.
+The key insight is that `sdf sync` and `sdf pr` don't just move branches around &mdash; they keep PR descriptions and metadata in sync too. Before you ask for a review, before you hit merge, the stack navigation and context are already accurate. That's the overhead that scripts and aliases never fully solved.
 
 ## Just install it and go
 
@@ -44,13 +44,13 @@ One thing that mattered to me from day one: an engineer should be able to try SD
 
 There are good stacked-diff tools out there, but most of them are platforms. They need org-wide adoption, admin setup, management buy-in. That's a real barrier. If you're an individual contributor who wants to improve your own workflow, you shouldn't have to convince your VP of Engineering first.
 
-SDF is a CLI you install locally. You try it on your next feature branch. If it works for you, you tell a teammate. If it works for your team, great — but that adoption happens bottom-up, one engineer at a time.
+SDF is a CLI you install locally. You try it on your next feature branch. If it works for you, you tell a teammate. If it works for your team, great &mdash; but that adoption happens bottom-up, one engineer at a time.
 
-This also shaped the security and architecture decisions. SDF is fully open source. It doesn't implement its own GitHub API client — it delegates to `gh`, the official GitHub CLI you already have installed and authenticated. It doesn't try to replace GitHub or wrap it in a proprietary layer. It builds *on top* of the tools you already trust: `git` for version control, `gh` for GitHub operations. What SDF adds is the orchestration layer — PR navigation, stack metadata, cascade rebasing, description maintenance — the glue that makes stacked workflows actually sustainable.
+This also shaped the security and architecture decisions. SDF is fully open source. It doesn't implement its own GitHub API client &mdash; it delegates to `gh`, the official GitHub CLI you already have installed and authenticated. It doesn't try to replace GitHub or wrap it in a proprietary layer. It builds *on top* of the tools you already trust: `git` for version control, `gh` for GitHub operations. What SDF adds is the orchestration layer &mdash; PR navigation, stack metadata, cascade rebasing, description maintenance &mdash; the glue that makes stacked workflows actually sustainable.
 
 ## AI-powered conflict resolution
 
-Rebases will sometimes produce conflicts — that's unavoidable. What's new is how SDF can handle them.
+Rebases will sometimes produce conflicts &mdash; that's unavoidable. What's new is how SDF can handle them.
 
 With opt-in Claude integration, SDF resolves rebase conflicts semantically. Instead of dumping conflict markers for you to sort out manually, it reads the surrounding context, understands the intent of both sides, and produces a resolution. You review the result and move on.
 
@@ -68,9 +68,9 @@ Read the full [Getting Started guide](/docs/getting-started) for a complete walk
 
 ## What's next
 
-This is v0.1.0 — the foundation. The core workflow is solid, and I'm using it daily. The plan from here is to keep iterating and make the tool more resilient: better edge-case handling, smoother recovery when things go sideways, and tighter integration with the tools you already use.
+This is v0.1.0 &mdash; the foundation. The core workflow is solid, and I'm using it daily. The plan from here is to keep iterating and make the tool more resilient: better edge-case handling, smoother recovery when things go sideways, and tighter integration with the tools you already use.
 
-**Update:** [SDF v0.2.0](/blog/v0-2-0-ship-it) is now available — with `sdf merge`, `sdf fetch`, drift detection, polished terminal UI, and more.
+**Update:** [SDF v0.2.0](/blog/v0-2-0-ship-it) is now available &mdash; with `sdf merge`, `sdf fetch`, drift detection, polished terminal UI, and more.
 
 If stacked PRs are part of your workflow, I'd love for you to give SDF a try. Feedback, bug reports, and contributions are all welcome on the [GitHub repo](https://github.com/pavelpascari/sdf).
 

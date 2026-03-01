@@ -28,7 +28,7 @@ git stash pop
 
 **When it happens:** Running `sdf sync` when a previous sync was paused for manual conflict resolution and the rebase was never completed or aborted.
 
-**Fix — if you want to continue resolving:**
+**Fix &mdash; if you want to continue resolving:**
 
 ```bash
 # Resolve the remaining conflicts in your editor
@@ -36,7 +36,7 @@ git add <resolved-files>
 sdf sync --continue
 ```
 
-**Fix — if you want to start over:**
+**Fix &mdash; if you want to start over:**
 
 ```bash
 git rebase --abort
@@ -149,7 +149,7 @@ This scans all open PRs for branch chains and lets you re-register the stack.
 sdf fetch
 ```
 
-SDF scans open PRs, discovers branch chains (sequences of 2+ PRs where each PR's base is the previous PR's head), and creates the local stack metadata. Your PRs and branches on GitHub are not affected — only local metadata was lost.
+SDF scans open PRs, discovers branch chains (sequences of 2+ PRs where each PR's base is the previous PR's head), and creates the local stack metadata. Your PRs and branches on GitHub are not affected &mdash; only local metadata was lost.
 
 ---
 
@@ -171,7 +171,7 @@ sdf fetch --base develop
 
 ---
 
-## "conflict in &lt;branch&gt; — cannot resolve in --json mode"
+## "conflict in &lt;branch&gt; &mdash; cannot resolve in --json mode"
 
 **When it happens:** Running `sdf sync --json` when a rebase conflict occurs. JSON mode cannot display the interactive conflict resolution menu.
 

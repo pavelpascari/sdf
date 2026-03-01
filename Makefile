@@ -142,6 +142,7 @@ help:
 	@echo "  make clean             Remove build artifacts"
 	@echo "  make hooks             Install git hooks (pre-commit)"
 	@echo "  make blog-check        Verify dateModified on changed blog posts"
+	@echo "  make encoding-check    Reject curly quotes and em dashes in www/"
 	@echo "  make seo-check         Build site and validate SEO + AI-discoverability"
 	@echo "  make docs              Generate CLI reference JSON"
 	@echo "  make docs-check        Check docs freshness and validate references"
@@ -181,6 +182,13 @@ docs-check:
 .PHONY: blog-check
 blog-check:
 	@scripts/check-blog-updated-at.sh
+
+# ── Encoding checks ──────────────────────────────────────────────
+
+# Reject curly quotes and em dashes in www/ source files
+.PHONY: encoding-check
+encoding-check:
+	@scripts/check-encoding.sh
 
 # ── SEO & AI-discoverability checks ─────────────────────────────
 

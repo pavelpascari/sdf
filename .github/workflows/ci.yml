@@ -50,6 +50,9 @@ jobs:
       - name: Docs check
         run: make docs-check
 
+      - name: Encoding check
+        run: make encoding-check
+
       - name: Blog content check
         if: github.event_name == 'pull_request'
         run: make blog-check
