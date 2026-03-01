@@ -30,6 +30,8 @@ Each PR shows only its own diff — not the accumulated diff of every layer belo
 
 The catch is that stacking requires rebasing. When the bottom PR is updated or merged, every branch above it must be rebased and force-pushed. The PR bases on GitHub must be updated. This is tedious and error-prone by hand — which is why tools like SDF exist.
 
+The benefits are well-proven at scale. Major engineering organizations have adopted stacked diffs as a core workflow and built dedicated tooling around it — Meta open-sourced [Sapling](https://sapling-scm.com), a full source control system with native stacking support, and Google's internal code review system has long been built around small, dependent changes. The pattern works; the challenge has been making it accessible outside these environments.
+
 ## What SDF does
 
 SDF is a CLI tool that manages the full lifecycle of stacked PRs on GitHub:
@@ -120,7 +122,7 @@ SDF is a good fit when:
 - You prefer **branch-centric** workflows (one branch per PR)
 - You want a tool that works **alongside** your existing workflow, not a platform that replaces it
 - You value **local-first** tooling — no accounts, no servers, no vendor dependencies
-- You want **AI-assisted conflict resolution** to reduce the pain of cascade rebases
+- You already use **AI tools** in your development workflow and want that to extend to branch management, conflict resolution, and PR authoring
 
 ## When NOT to use SDF
 
