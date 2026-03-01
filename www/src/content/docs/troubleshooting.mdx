@@ -1,0 +1,261 @@
+---
+title: Troubleshooting
+description: Common errors, recovery procedures, and how to get unstuck.
+order: 12
+---
+
+# Troubleshooting
+
+This page covers common error states and how to recover from them. Headers match the error messages you'll see in your terminal so you can search for them directly.
+
+---
+
+## "working tree is not clean"
+
+**When it happens:** Running `sdf sync`, `sdf move`, or `sdf split` with uncommitted changes.
+
+**Fix:** Commit or stash your changes before running the command:
+
+```bash
+git stash
+sdf sync
+git stash pop
+```
+
+---
+
+## "a rebase is in progress from a previous sync pause"
+
+**When it happens:** Running `sdf sync` when a previous sync was paused for manual conflict resolution and the rebase was never completed or aborted.
+
+**Fix — if you want to continue resolving:**
+
+```bash
+# Resolve the remaining conflicts in your editor
+git add <resolved-files>
+sdf sync --continue
+```
+
+**Fix — if you want to start over:**
+
+```bash
+git rebase --abort
+sdf sync
+```
+
+---
+
+## "no paused sync to continue"
+
+**When it happens:** Running `sdf sync --continue` when there is no paused sync to resume.
+
+**Fix:** Run `sdf sync` without `--continue` to start a fresh sync.
+
+---
+
+## "rebase --continue failed"
+
+**When it happens:** Running `sdf sync --continue` when not all conflicts have been resolved, or resolved files haven't been staged.
+
+**Fix:**
+
+```bash
+# Check which files still have conflicts
+git diff --name-only --diff-filter=U
+
+# Resolve them, then stage
+git add <resolved-files>
+
+# Resume
+sdf sync --continue
+```
+
+---
+
+## Claude failed to resolve a conflict
+
+**When it happens:** During `sdf sync`, Claude attempts to resolve a rebase conflict but produces output that can't be applied. The interactive menu reappears with the same four options.
+
+**What to do:**
+
+1. **Try manual resolution.** Choose "Resolve manually" from the menu. SDF pauses the sync and saves progress. Resolve the conflicts in your editor, stage the files, and run `sdf sync --continue`.
+
+2. **Skip the branch.** If you don't need this branch right now, choose "Skip branch." The branch stays unrebased and SDF continues with the rest of the stack. You can retry later with `sdf sync`.
+
+3. **Abort.** Choose "Abort" to stop the sync entirely. No branches are left in a partial state.
+
+---
+
+## I merged multiple PRs on GitHub without running sync between each
+
+**What happens:** When several PRs are squash-merged at once, downstream branches were written on top of incremental commit history that no longer exists in the squashed main branch. The rebase may produce many conflicts because git can't match context lines across multiple squash boundaries.
+
+**How to recover:**
+
+1. Run `sdf sync`. It will attempt to rebase the remaining branches.
+2. If Claude can resolve the conflicts, the sync completes normally.
+3. If conflicts are too large, resolve them manually or abort and consider the `sdf merge` workflow going forward.
+
+**How to prevent this:** Use `sdf merge` to merge one PR at a time. It merges the head PR, runs sync automatically, and keeps conflicts small and manageable.
+
+```bash
+sdf merge              # merges the first open PR, then syncs
+# wait for CI, then:
+sdf merge              # merges the next one
+```
+
+---
+
+## I merged PRs out of order on GitHub
+
+**What happens:** If PR #2 in a stack is merged before PR #1, `sdf sync` detects the merge via GitHub and attempts to rebase. The result depends on how much the out-of-order merge overlaps with other branches.
+
+**How to recover:**
+
+1. Run `sdf sync`. It will reconcile the PR states from GitHub and attempt the cascade rebase.
+2. Expect conflicts if the merged PR's changes overlap with branches that assumed a different order.
+3. Resolve conflicts manually or with Claude's assistance.
+
+**How to prevent this:** Merge from the bottom of the stack upward, one at a time.
+
+---
+
+## My local stack state is out of sync with GitHub
+
+**What happens:** The local `.sdf/stacks/<name>.json` shows different PR numbers, statuses, or branch order than what exists on GitHub. This can happen if someone else modified PRs, or if you made changes on a different machine.
+
+**How to recover:**
+
+Run `sdf sync`. The first thing sync does is query GitHub for PR states and reconcile:
+
+- **Routine changes** (status updates, PR number fills) are applied automatically.
+- **Notable changes** (base mismatches, reorders, missing PRs) are displayed as warnings.
+
+If the drift is severe, use `sdf fetch` to re-discover the stack from the GitHub PR graph:
+
+```bash
+sdf fetch
+```
+
+This scans all open PRs for branch chains and lets you re-register the stack.
+
+---
+
+## I deleted .sdf/ accidentally
+
+**How to recover:** Use `sdf fetch` to rebuild the stack from GitHub's PR graph:
+
+```bash
+sdf fetch
+```
+
+SDF scans open PRs, discovers branch chains (sequences of 2+ PRs where each PR's base is the previous PR's head), and creates the local stack metadata. Your PRs and branches on GitHub are not affected — only local metadata was lost.
+
+---
+
+## `sdf fetch` doesn't find my PRs
+
+**Possible causes:**
+
+1. **PRs are not chained.** `sdf fetch` looks for chains of 2 or more PRs where each PR's base branch is the head branch of the previous PR. A single PR targeting `main` is not a stack.
+
+2. **PRs are closed or merged.** `sdf fetch` only scans open PRs. Merged PRs won't appear in the discovery.
+
+3. **`gh` is not authenticated.** Run `gh auth status` to verify your GitHub authentication.
+
+4. **Base branch detection.** If your stack is based on a branch other than the default (e.g., `develop` instead of `main`), try specifying it:
+
+```bash
+sdf fetch --base develop
+```
+
+---
+
+## "conflict in &lt;branch&gt; — cannot resolve in --json mode"
+
+**When it happens:** Running `sdf sync --json` when a rebase conflict occurs. JSON mode cannot display the interactive conflict resolution menu.
+
+**Fix:** Run `sdf sync` without `--json` to get the interactive conflict resolution options, or use `sdf sync --json --yes` and handle conflicts after the sync reports them.
+
+---
+
+## Branch is not in any stack
+
+**When it happens:** Running a stack command while on a branch that isn't registered in any stack.
+
+**Fix:** Switch to a branch that is part of a stack, or specify the stack explicitly:
+
+```bash
+sdf status --stack my-feature
+sdf sync --stack my-feature
+```
+
+If the branch should be part of a stack but isn't, add it:
+
+```bash
+sdf switch <existing-stack-branch>
+sdf branch <new-branch-name>
+```
+
+---
+
+## Push failed after rebase
+
+**When it happens:** During `sdf sync`, the force-push (`git push --force-with-lease`) fails for a branch. This usually means someone else pushed to the branch since the last fetch.
+
+**How to recover:**
+
+1. SDF reports the push failure as a warning and continues syncing other branches.
+2. After sync completes, fetch and try pushing manually:
+
+```bash
+git fetch origin
+git push --force-with-lease origin <branch-name>
+```
+
+---
+
+## sdf doctor reports missing dependencies
+
+Run `sdf doctor` to check which dependencies are available:
+
+```bash
+sdf doctor
+```
+
+| Dependency | Required? | What it's needed for |
+|---|---|---|
+| `git` | Yes | All operations |
+| `gh` | No (but recommended) | PR creation, base updates, status checks |
+| `claude` | No | AI conflict resolution, `sdf split`, PR content generation |
+
+**Install missing dependencies:**
+
+```bash
+# git (usually pre-installed)
+# macOS: xcode-select --install
+# Linux: sudo apt install git
+
+# GitHub CLI
+brew install gh
+gh auth login
+
+# Claude CLI (optional)
+# See https://claude.ai/code for installation instructions
+```
+
+---
+
+## General recovery: starting fresh
+
+If your local state is thoroughly broken and you want to start over without affecting anything on GitHub:
+
+```bash
+# Remove local SDF metadata
+rm -rf .sdf/
+
+# Re-discover stacks from GitHub
+sdf fetch
+```
+
+Your branches, PRs, and code on GitHub are not affected. Only the local `.sdf/` directory is rebuilt.

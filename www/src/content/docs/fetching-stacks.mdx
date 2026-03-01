@@ -1,0 +1,116 @@
+---
+title: Fetching & Reconciliation
+description: How to import existing PR stacks from GitHub and keep local state in sync.
+order: 10
+---
+
+# Fetching & Reconciliation
+
+`sdf fetch` discovers PR stacks on GitHub and imports them into your local SDF metadata. This is essential for two scenarios: onboarding a second developer onto an existing stack, and rebuilding local state after it's lost (e.g., cloning a repo where stacks were already created).
+
+---
+
+## Discovering stacks
+
+When you run `sdf fetch`, SDF:
+
+1. Lists all your open PRs via `gh`
+2. Builds a dependency graph from the PR base/head relationships
+3. Finds chains of 2 or more PRs where each PR's base is the previous PR's head
+4. Presents the discovered stacks for you to select
+
+```bash
+$ sdf fetch
+
+Scanning your open PRs (base: main)...
+
+Found 1 potential stack(s):
+
+  [1] base: main
+      ├─ #142  users-feature/db-schema
+      ├─ #143  users-feature/repository
+      └─ #144  users-feature/controller
+
+? Fetch this stack? (Y/n)
+```
+
+A single PR targeting `main` is not a stack — discovery requires at least 2 chained PRs.
+
+---
+
+## First-time registration
+
+If the discovered stack doesn't match any existing local stack, SDF registers it as a new stack:
+
+1. Creates `.sdf/stacks/<name>.json` with nodes from the PR chain
+2. Infers the stack name from branch prefixes (e.g., branches starting with `users-feature/` become stack `users-feature`)
+3. Detects branch prefix configuration (separator style, scope) and creates `.sdf/config.json` if needed
+4. Fetches all branches from origin so they exist locally
+
+After registration, you can use `sdf sync`, `sdf status`, `sdf branch`, and all other commands normally.
+
+---
+
+## Reconciliation
+
+If the discovered stack matches an existing local stack (by branch overlap), SDF reconciles the differences instead of creating a duplicate.
+
+Reconciliation compares local state against what GitHub reports and classifies each difference:
+
+### Routine changes (applied automatically)
+
+- **Status updates** — a PR moved from `open` to `merged` or `closed`
+- **PR number fills** — a branch that had no PR number locally now has one on GitHub
+
+These are applied silently and save you from having to manually update the stack JSON.
+
+### Notable changes (displayed as warnings)
+
+- **Base branch changed** — the stack's base branch differs between local and GitHub
+- **Branch reordered** — a branch moved to a different position in the chain
+- **Branch removed** — a branch in the local stack is no longer in the PR chain on GitHub
+- **Branch inserted** — a new branch appeared mid-stack that wasn't there locally
+- **Base mismatch** — a PR's base on GitHub doesn't match the expected parent in the local stack
+- **PR missing** — a PR number is recorded locally but the PR no longer exists on GitHub
+
+Notable changes are surfaced as warnings during `sdf sync` and `sdf status`. They are not applied automatically because they may indicate unexpected drift that requires human judgment.
+
+---
+
+## Using fetch in a team
+
+When multiple developers work with SDF on the same repository, each maintains their own local `.sdf/` directory. The workflow for a second developer joining an existing stack:
+
+```bash
+# Clone the repo
+git clone https://github.com/org/repo.git
+cd repo
+
+# Install sdf
+brew install pavelpascari/tap/sdf
+
+# Discover and import existing stacks
+sdf fetch
+
+# Now work with the stack normally
+sdf status
+sdf sync
+```
+
+Since `.sdf/` is local-only (gitignored), there is no coordination needed between developers' SDF installations. Each developer independently discovers the stack from the PR graph.
+
+---
+
+## Flags
+
+| Flag | Effect |
+|---|---|
+| `--stack <name>` | Name the stack explicitly (default: auto-inferred from branch prefixes) |
+| `--base <branch>` | Specify the base branch for discovery (default: auto-detected from `origin/HEAD`) |
+| `--json` | Output structured JSON result |
+
+---
+
+## When fetch doesn't find your PRs
+
+See the [troubleshooting guide](/docs/troubleshooting#sdf-fetch-doesnt-find-my-prs) for common causes and fixes.

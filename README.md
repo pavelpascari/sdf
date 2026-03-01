@@ -8,7 +8,7 @@ Large features rarely fit in a single PR. Splitting work into a chain of depende
 
 ## What it does
 
-- **Stack topology** — tracks branch ordering and PR metadata in `.sdf/stacks/<name>.json`, committed alongside code
+- **Stack topology** — tracks branch ordering and PR metadata in `.sdf/stacks/<name>.json`, stored locally on your machine
 - **Multiple stacks** — a single repo can have several independent stacks, each with its own base branch
 - **Cascade rebase** — when a head PR merges or an earlier branch is amended, `sdf sync` rebases every downstream branch, force-pushes, and updates PR bases in GitHub
 - **AI conflict resolution** — when rebase conflicts occur, Claude receives the PR description and upstream diff summary plus the conflicted files and resolves them in-place
@@ -201,7 +201,7 @@ sdf new my-feature --json
 `sdf` uses a two-tier configuration system:
 
 - **Global**: `~/.config/sdf/config.json` — user-level defaults that apply to all repos
-- **Repo**: `.sdf/config.json` — per-repo overrides, committed alongside code
+- **Repo**: `.sdf/config.json` — per-repo overrides, stored locally per machine
 
 Repo-level values override global values on a field-by-field basis. Missing files are fine — `sdf` works without any config file using sensible defaults.
 
@@ -245,14 +245,14 @@ Use `sdf config show` to see the effective (merged) configuration and the file p
 
 ```
 .sdf/
-  config.json               # repo-level configuration (committed)
+  config.json               # repo-level configuration
   stacks/
     users-feature.json      # stack topology, PR numbers, sync state
     auth-feature.json       # a second independent stack
-  local.json                # ephemeral state (gitignored)
+  local.json                # ephemeral state
 ```
 
-Stack files are committed alongside code. This means stack topology is available on any clone and in CI.
+The entire `.sdf/` directory is **local-only** — it is listed in `.gitignore` and is never pushed to the remote. Each developer's machine maintains its own copy of the stack metadata. PR descriptions on GitHub serve as the shared source of truth for stack structure, and `sdf fetch` can reconstruct local state from the PR graph at any time.
 
 ## License
 

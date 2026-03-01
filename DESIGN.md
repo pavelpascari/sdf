@@ -184,14 +184,14 @@ All three dependencies (`git`, `gh`, `claude`) are version-checked at startup.
 
 ```
 .sdf/
-  config.json             # repo-level configuration (committed)
+  config.json             # repo-level configuration
   stacks/
     auth-overhaul.json    # stack topology, PR numbers, sync state
     billing.json          # multiple stacks can coexist
   local.json              # ephemeral state (gitignored)
 ```
 
-Stack files are committed alongside code, so stack topology is available on any clone and in CI.
+The `.sdf/` directory is local-only (gitignored). Each developer maintains their own copy of the stack metadata. PR descriptions on GitHub serve as the shared source of truth, and `sdf fetch` can reconstruct local state from the PR graph.
 
 The only exception is ephemeral state (active Claude session IDs, in-progress sync state), which lives in `.sdf/local.json` and is gitignored.
 
