@@ -34,7 +34,7 @@ Found 1 potential stack(s):
 ? Fetch this stack? (Y/n)
 ```
 
-A single PR targeting `main` is not a stack — discovery requires at least 2 chained PRs.
+A single PR targeting `main` is not a stack -- discovery requires at least 2 chained PRs.
 
 ---
 
@@ -59,19 +59,19 @@ Reconciliation compares local state against what GitHub reports and classifies e
 
 ### Routine changes (applied automatically)
 
-- **Status updates** — a PR moved from `open` to `merged` or `closed`
-- **PR number fills** — a branch that had no PR number locally now has one on GitHub
+- **Status updates** -- a PR moved from `open` to `merged` or `closed`
+- **PR number fills** -- a branch that had no PR number locally now has one on GitHub
 
 These are applied silently and save you from having to manually update the stack JSON.
 
 ### Notable changes (displayed as warnings)
 
-- **Base branch changed** — the stack's base branch differs between local and GitHub
-- **Branch reordered** — a branch moved to a different position in the chain
-- **Branch removed** — a branch in the local stack is no longer in the PR chain on GitHub
-- **Branch inserted** — a new branch appeared mid-stack that wasn't there locally
-- **Base mismatch** — a PR's base on GitHub doesn't match the expected parent in the local stack
-- **PR missing** — a PR number is recorded locally but the PR no longer exists on GitHub
+- **Base branch changed** -- the stack's base branch differs between local and GitHub
+- **Branch reordered** -- a branch moved to a different position in the chain
+- **Branch removed** -- a branch in the local stack is no longer in the PR chain on GitHub
+- **Branch inserted** -- a new branch appeared mid-stack that wasn't there locally
+- **Base mismatch** -- a PR's base on GitHub doesn't match the expected parent in the local stack
+- **PR missing** -- a PR number is recorded locally but the PR no longer exists on GitHub
 
 Notable changes are surfaced as warnings during `sdf sync` and `sdf status`. They are not applied automatically because they may indicate unexpected drift that requires human judgment.
 

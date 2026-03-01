@@ -55,16 +55,16 @@ Each stack has its own JSON file in `.sdf/stacks/`:
 
 When you run a command like `sdf sync`, `sdf status`, or `sdf branch`, SDF needs to know which stack you mean. It resolves the stack using this logic:
 
-1. **Explicit flag** — if you pass `--stack <name>`, that stack is used
-2. **Positional argument** — for commands that accept it (e.g., `sdf sync auth-feature`)
-3. **Current branch** — if your current branch belongs to a stack, that stack is used
-4. **Single stack** — if there's only one stack in the repo, it's used automatically
+1. **Explicit flag** -- if you pass `--stack <name>`, that stack is used
+2. **Positional argument** -- for commands that accept it (e.g., `sdf sync auth-feature`)
+3. **Current branch** -- if your current branch belongs to a stack, that stack is used
+4. **Single stack** -- if there's only one stack in the repo, it's used automatically
 
 If none of these apply (e.g., you're on `main` with multiple stacks), SDF asks you to specify:
 
 ```
 $ sdf status
-Error: multiple stacks found — specify one with --stack <name> or switch to a stack branch
+Error: multiple stacks found -- specify one with --stack <name> or switch to a stack branch
 
 Available stacks:
   auth-feature  (3 branches)
@@ -84,7 +84,7 @@ $ sdf switch
 # Switch to a specific branch
 $ sdf switch auth-feature/login-page
 
-# Shorthand — omit "switch" when the argument contains a "/"
+# Shorthand -- omit "switch" when the argument contains a "/"
 $ sdf auth-feature/login-page
 ```
 

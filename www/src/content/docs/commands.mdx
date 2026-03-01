@@ -48,7 +48,7 @@ After choosing "I'll fix it myself", resolve the conflicts manually, stage the f
 
 <CommandRef command={cmd('merge')} />
 
-Merges the first open PR in the stack (the "head"), then runs `sdf sync` on the remaining branches. The safe pattern for draining a stack is to run `sdf merge` repeatedly — this keeps conflicts small by only crossing one squash boundary at a time. See the [Sync Deep Dive](/docs/sync-deep-dive#sdf-merge-vs-sdf-sync) for details.
+Merges the first open PR in the stack (the "head"), then runs `sdf sync` on the remaining branches. The safe pattern for draining a stack is to run `sdf merge` repeatedly -- this keeps conflicts small by only crossing one squash boundary at a time. See the [Sync Deep Dive](/docs/sync-deep-dive#sdf-merge-vs-sdf-sync) for details.
 
 <CommandRef command={cmd('status')} />
 
@@ -64,12 +64,12 @@ Uses Claude to analyze the source branch's full diff, identify semantic themes, 
 
 **Pipeline:**
 
-1. **Analysis** — Claude groups changed files into layers by semantic theme. If a file spans multiple layers, a follow-up phase assigns individual hunks
-2. **Plan** — SDF displays the split plan showing layers, files, and estimated diffs
-3. **Review** — Interactive prompt to accept, refine (via Claude session), or abort
-4. **Execute** — Creates branches by extracting per-layer diffs and applying them as patches. Shared files are split at the hunk level
-5. **Validate** — Verifies `git diff original-branch stack/last-branch` is empty (lossless split)
-6. **Ship** — Pushes branches, creates PRs with stack navigation links
+1. **Analysis** -- Claude groups changed files into layers by semantic theme. If a file spans multiple layers, a follow-up phase assigns individual hunks
+2. **Plan** -- SDF displays the split plan showing layers, files, and estimated diffs
+3. **Review** -- Interactive prompt to accept, refine (via Claude session), or abort
+4. **Execute** -- Creates branches by extracting per-layer diffs and applying them as patches. Shared files are split at the hunk level
+5. **Validate** -- Verifies `git diff original-branch stack/last-branch` is empty (lossless split)
+6. **Ship** -- Pushes branches, creates PRs with stack navigation links
 
 **Plan refinement:** Choosing "Refine plan" opens a Claude session where you can give natural language instructions to adjust the split (move files between layers, merge layers, rename layers). SDF re-extracts the updated plan automatically.
 

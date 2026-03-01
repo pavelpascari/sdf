@@ -10,9 +10,9 @@ SDF turns the painful work of managing stacked pull requests into a single comma
 
 ## Prerequisites
 
-- **git** — any recent version
-- **gh** (GitHub CLI) — authenticated with `gh auth login`
-- **sdf** — see [Installation](/docs/installation)
+- **git** -- any recent version
+- **gh** (GitHub CLI) -- authenticated with `gh auth login`
+- **sdf** -- see [Installation](/docs/installation)
 
 Run the health check first:
 
@@ -23,7 +23,7 @@ sdf doctor
 All green? Set up your environment:
 
 ```bash
-# Shell completions — tab-complete commands, flags, branches, and stacks
+# Shell completions -- tab-complete commands, flags, branches, and stacks
 sdf completion install
 
 # Teach Claude Code how to use SDF (optional, requires Claude CLI)
@@ -130,10 +130,10 @@ SDF will:
 
 If conflicts occur, SDF presents an interactive menu:
 
-- **Ask Claude to resolve** (if Claude CLI is installed) — Claude reads the upstream changes and the PR description to attempt automatic resolution
-- **Fix it yourself** — pauses the sync so you can resolve manually, then resume with `sdf sync --continue`
-- **Skip this branch** — aborts the rebase for that branch and continues with the rest
-- **Abort sync** — stops everything
+- **Ask Claude to resolve** (if Claude CLI is installed) -- Claude reads the upstream changes and the PR description to attempt automatic resolution
+- **Fix it yourself** -- pauses the sync so you can resolve manually, then resume with `sdf sync --continue`
+- **Skip this branch** -- aborts the rebase for that branch and continues with the rest
+- **Abort sync** -- stops everything
 
 Merged nodes stay in the stack as completed entries rather than being removed, so you can see the full history with `sdf status`.
 
@@ -155,6 +155,6 @@ See [AI Features](/docs/ai-features) for details on how the analysis works, and 
 
 ## What's next
 
-- [Core Concepts](/docs/core-concepts) — understand stacks, nodes, and how branches are organized
-- [Commands](/docs/commands) — full command reference
-- [AI Features](/docs/ai-features) — how Claude integrates for branch splitting, conflict resolution, and PR content
+- [Core Concepts](/docs/core-concepts) -- understand stacks, nodes, and how branches are organized
+- [Commands](/docs/commands) -- full command reference
+- [AI Features](/docs/ai-features) -- how Claude integrates for branch splitting, conflict resolution, and PR content

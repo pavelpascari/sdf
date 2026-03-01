@@ -1,19 +1,19 @@
 ---
 title: "Testing CLI Tools That Shell Out: From 'Works on My Machine' to Provable Correctness"
-description: "How we built a testing strategy for a CLI tool that delegates everything to git and gh — fake binaries, spy recording, cross-validation, and build tags."
+description: "How we built a testing strategy for a CLI tool that delegates everything to git and gh -- fake binaries, spy recording, cross-validation, and build tags."
 datePublished: 2026-02-22
 tags: [show-and-tell]
 author: "Pavel Pascari"
 published: true
 ---
 
-Your CLI tool doesn't do anything on its own. It orchestrates other tools — `git`, `gh`, `curl`, `docker`, whatever your domain demands. The real logic lives in the sequencing: call A, parse the output, decide what to call next, handle failures gracefully.
+Your CLI tool doesn't do anything on its own. It orchestrates other tools -- `git`, `gh`, `curl`, `docker`, whatever your domain demands. The real logic lives in the sequencing: call A, parse the output, decide what to call next, handle failures gracefully.
 
 This is the reality of building developer tools. And it creates a testing problem that most guides skip over: **how do you test code whose primary job is to shell out to external binaries?**
 
-This post walks through the testing strategy we built for [SDF](https://github.com/pavelpascari/sdf), a CLI tool that manages stacked pull requests on GitHub. SDF delegates everything to `git` and `gh` (the GitHub CLI) — it doesn't implement its own Git client or GitHub API client. That design keeps the tool simple and trustworthy, but it means every interesting code path involves spawning a subprocess.
+This post walks through the testing strategy we built for [SDF](https://github.com/pavelpascari/sdf), a CLI tool that manages stacked pull requests on GitHub. SDF delegates everything to `git` and `gh` (the GitHub CLI) -- it doesn't implement its own Git client or GitHub API client. That design keeps the tool simple and trustworthy, but it means every interesting code path involves spawning a subprocess.
 
-We went from "run it manually and see if it works" to a system where our fakes are provably honest — where we can demonstrate, in CI, that our test doubles produce structurally compatible output to the real tools. Here's how we got there, and what we learned along the way.
+We went from "run it manually and see if it works" to a system where our fakes are provably honest -- where we can demonstrate, in CI, that our test doubles produce structurally compatible output to the real tools. Here's how we got there, and what we learned along the way.
 
 ```mermaid
 graph BT
@@ -47,11 +47,11 @@ Every line that starts with `git` or `gh` spawns a real process. The function's 
 3. Handling errors (authentication failures, merge conflicts, network issues)
 4. Sequencing operations correctly (don't push before rebase finishes)
 
-You can't unit test this by calling the function in a test — it would rebase your actual branches and edit your actual PRs. You need to intercept the subprocess calls. But how?
+You can't unit test this by calling the function in a test -- it would rebase your actual branches and edit your actual PRs. You need to intercept the subprocess calls. But how?
 
 ## Layer 1: Fake binaries
 
-The most direct approach: create actual executables that pretend to be `git` or `gh`. Not mocks in the Go sense — real shell scripts on disk that your code can `exec.Command()` against.
+The most direct approach: create actual executables that pretend to be `git` or `gh`. Not mocks in the Go sense -- real shell scripts on disk that your code can `exec.Command()` against.
 
 Here's the idea. You write a shell script that:
 - Logs every invocation to a file (so you can assert what was called)
@@ -88,7 +88,7 @@ exit 0
 }
 ```
 
-The response map is keyed by argument prefix. When the fake `gh` receives `pr list --state all --json ...`, it pattern-matches against `"pr list"` and returns the canned JSON. When it receives something unexpected, it succeeds silently — just like a well-behaved Unix tool.
+The response map is keyed by argument prefix. When the fake `gh` receives `pr list --state all --json ...`, it pattern-matches against `"pr list"` and returns the canned JSON. When it receives something unexpected, it succeeds silently -- just like a well-behaved Unix tool.
 
 For error paths, there's a companion:
 
@@ -98,7 +98,7 @@ func FakeBinFail(t *testing.T, dir, name, stderr string) string {
 }
 ```
 
-Why shell scripts instead of Go mocks? Because your production code uses `exec.Command()`. It doesn't call a Go interface — it spawns a process. The fake needs to *be* a process. Shell scripts are the simplest thing that satisfies this constraint.
+Why shell scripts instead of Go mocks? Because your production code uses `exec.Command()`. It doesn't call a Go interface -- it spawns a process. The fake needs to *be* a process. Shell scripts are the simplest thing that satisfies this constraint.
 
 Here's the flow at test time:
 
@@ -147,7 +147,7 @@ func SetBinary(t *testing.T, target *string, fakePath string) {
 }
 ```
 
-The `t.Cleanup` is critical — it restores the original value after the test, even if the test panics. Without it, one test's fake would leak into the next.
+The `t.Cleanup` is critical -- it restores the original value after the test, even if the test panics. Without it, one test's fake would leak into the next.
 
 **In production**, `Binary` resolves to the real tool via `PATH`:
 
@@ -166,7 +166,7 @@ graph TD
 graph TD
     S["SetBinary(t, &Binary, fakePath)"]
     E["exec.Command(Binary, args...)"]
-    F["fake gh — shell script"]
+    F["fake gh -- shell script"]
     C["Canned JSON + log file"]
     R["t.Cleanup restores Binary"]
     S --> E --> F --> C -.-> R
@@ -220,7 +220,7 @@ You can also test the case where a tool is completely unavailable:
 testutil.SetBinary(t, &ghpkg.Binary, "/nonexistent/gh")
 ```
 
-This simulates a user who doesn't have `gh` installed. The `exec.LookPath` check fails, and your code should degrade gracefully — no PR operations, but git operations still work.
+This simulates a user who doesn't have `gh` installed. The `exec.LookPath` check fails, and your code should degrade gracefully -- no PR operations, but git operations still work.
 
 ## What these two layers buy you
 
@@ -237,7 +237,7 @@ But there's a problem hiding under the surface.
 
 ## The honest-fakes problem
 
-Fake binaries have a flaw: **they rot**. Over time, the real tool's output format changes — a field is renamed, a new field appears, the JSON structure shifts from an object to an array — and your fakes keep returning the old format. Your tests pass. Your code breaks in production.
+Fake binaries have a flaw: **they rot**. Over time, the real tool's output format changes -- a field is renamed, a new field appears, the JSON structure shifts from an object to an array -- and your fakes keep returning the old format. Your tests pass. Your code breaks in production.
 
 This is the fundamental tension: fakes are useful *because* they're simple and controlled, but they're dangerous *because* they're simple and controlled. They don't evolve with the real tool.
 
@@ -245,7 +245,7 @@ You could periodically update your fakes by hand, but that's error-prone and doe
 
 ## Layer 3: Spy recording
 
-The first step toward honest fakes is capturing what the real tools actually return. We built a spy recorder — a simple JSONL logger that records every invocation of an external binary.
+The first step toward honest fakes is capturing what the real tools actually return. We built a spy recorder -- a simple JSONL logger that records every invocation of an external binary.
 
 ```go
 type Invocation struct {
@@ -290,8 +290,8 @@ func run(args ...string) (string, error) {
 
 The recording infrastructure distinguishes between two actors:
 
-- **`"sdf"`** — the tool's own internal calls (when sdf calls `git rebase` or `gh pr list`)
-- **`"testing"`** — the test harness's calls (when a test helper runs `git commit` to set up a fixture)
+- **`"sdf"`** -- the tool's own internal calls (when sdf calls `git rebase` or `gh pr list`)
+- **`"testing"`** -- the test harness's calls (when a test helper runs `git commit` to set up a fixture)
 
 This distinction matters because a single E2E test run interleaves both: the test sets up a git repo (testing actor), then runs `sdf sync` (sdf actor), then verifies the result (testing actor again). The combined `full.jsonl` log preserves the complete interleaved sequence, while per-tool logs (`git_sdf.jsonl`, `gh_testing.jsonl`) let you focus on one perspective.
 
@@ -430,14 +430,14 @@ func JSONShape(s string) string {
 
 When this test fails, it means one of two things:
 
-1. **GitHub changed their API** — your fakes need updating, and you know exactly which field changed
-2. **Your fakes were always wrong** — they had the wrong structure from the start, and your unit tests were testing against fiction
+1. **GitHub changed their API** -- your fakes need updating, and you know exactly which field changed
+2. **Your fakes were always wrong** -- they had the wrong structure from the start, and your unit tests were testing against fiction
 
 Either way, the failure is the system working correctly. It caught a drift that would otherwise have been invisible.
 
 ## Layer 5: Build tags
 
-There's one more problem. The spy recording infrastructure — the `Recorder`, the JSONL writing, the `init()` function that checks the `SDF_SPY_DIR` environment variable — all of that was living in the production code. Every wrapper package imported the spy package. Every command execution checked if a recorder was configured.
+There's one more problem. The spy recording infrastructure -- the `Recorder`, the JSONL writing, the `init()` function that checks the `SDF_SPY_DIR` environment variable -- all of that was living in the production code. Every wrapper package imported the spy package. Every command execution checked if a recorder was configured.
 
 This is harmless at runtime (nil checks are cheap), but it's conceptually wrong. Production users never record invocations. The spy infrastructure is test scaffolding that leaked into the shipped binary.
 
@@ -481,7 +481,7 @@ func recordRun(args []string, output string, exitCode int) {
 }
 ```
 
-The production `run()` function calls `recordRun()` unconditionally. In a normal build, the compiler sees an empty function body and optimizes it away completely — zero runtime cost. When built with `-tags spyrecord`, the real recording kicks in.
+The production `run()` function calls `recordRun()` unconditionally. In a normal build, the compiler sees an empty function body and optimizes it away completely -- zero runtime cost. When built with `-tags spyrecord`, the real recording kicks in.
 
 ```
   Source Files                       Compiled Binary
@@ -509,10 +509,10 @@ The production `run()` function calls `recordRun()` unconditionally. In a normal
 ```
 
 ```makefile
-# Production build — no spy code compiled
+# Production build -- no spy code compiled
 make build
 
-# E2E test build — spy recording enabled
+# E2E test build -- spy recording enabled
 make build-spy    # go build -tags spyrecord ...
 ```
 
@@ -526,23 +526,23 @@ Each layer addresses a different failure mode:
 |-------|----------------|------|
 | **Fake binaries** | Wrong argument construction, broken JSON parsing, missing error handling | A shell script per tool |
 | **Binary injection** | Tests that accidentally use real tools, cleanup failures between tests | One `var Binary` per package |
-| **Spy recording** | "What does the real API actually return?" — captures ground truth | A JSONL recorder |
-| **Cross-validation** | Fake drift — when your test doubles stop matching reality | A shape comparator |
+| **Spy recording** | "What does the real API actually return?" -- captures ground truth | A JSONL recorder |
+| **Cross-validation** | Fake drift -- when your test doubles stop matching reality | A shape comparator |
 | **Build tags** | Test infrastructure leaking into production | Two files per package |
 
 The layers are also independent. You can use fake binaries without spy recording. You can use spy recording without cross-validation. Each layer is useful on its own, and they compose naturally when you need more confidence.
 
 ## What we learned
 
-**Fake binaries are underrated.** Most discussions about testing CLI tools jump straight to Go interfaces and mock libraries. But when your code calls `exec.Command()`, the simplest and most honest test double is another executable. Shell scripts are fast to create, easy to debug (they're just text files), and they test the actual `exec.Command` path — including argument escaping, environment variables, and exit codes.
+**Fake binaries are underrated.** Most discussions about testing CLI tools jump straight to Go interfaces and mock libraries. But when your code calls `exec.Command()`, the simplest and most honest test double is another executable. Shell scripts are fast to create, easy to debug (they're just text files), and they test the actual `exec.Command` path -- including argument escaping, environment variables, and exit codes.
 
 **Invocation logs are better than mock assertions.** Instead of asserting "this mock was called with these arguments," we write calls to a log file and read it back. This is simpler, more debuggable (you can `cat` the log), and works across process boundaries. When sdf spawns a subprocess that spawns another subprocess, the invocation log captures the full chain.
 
 **Structural comparison is the right granularity.** Comparing JSON values makes tests brittle (PR numbers change, timestamps change, URLs change). Comparing JSON shapes catches the errors that actually matter: a field was renamed, an array became an object, a required key disappeared. It's the sweet spot between "no comparison" and "exact match."
 
-**Build tags for test infrastructure.** If your test scaffolding imports packages that production code doesn't need, build tags are cleaner than runtime checks. The compiler eliminates dead code completely — not "probably optimized away" but "literally not in the binary." This matters for tools that ship as standalone executables.
+**Build tags for test infrastructure.** If your test scaffolding imports packages that production code doesn't need, build tags are cleaner than runtime checks. The compiler eliminates dead code completely -- not "probably optimized away" but "literally not in the binary." This matters for tools that ship as standalone executables.
 
-**Record real interactions, then build fakes from them.** The `RecordingsToFakeResponses` function embodies this principle. Don't guess what the API returns — record it, then use the recording as the source of truth for your fakes. When the API changes, your recordings change, your fakes update, and your unit tests stay honest.
+**Record real interactions, then build fakes from them.** The `RecordingsToFakeResponses` function embodies this principle. Don't guess what the API returns -- record it, then use the recording as the source of truth for your fakes. When the API changes, your recordings change, your fakes update, and your unit tests stay honest.
 
 ## The trust gradient
 

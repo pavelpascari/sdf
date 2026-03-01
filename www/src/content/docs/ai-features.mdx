@@ -8,19 +8,19 @@ order: 6
 
 SDF integrates with the [Claude CLI](https://claude.ai/code) to provide three AI-powered capabilities: **branch splitting** via `sdf split`, **semantic conflict resolution** during sync and move operations, and **PR title and description generation**.
 
-Conflict resolution and PR content generation are optional — without the Claude CLI installed, SDF falls back to manual conflict resolution and local title generation from branch names and commit subjects. Branch splitting requires the Claude CLI.
+Conflict resolution and PR content generation are optional -- without the Claude CLI installed, SDF falls back to manual conflict resolution and local title generation from branch names and commit subjects. Branch splitting requires the Claude CLI.
 
 ---
 
 ## Branch splitting
 
-`sdf split` uses Claude as its analysis engine to decompose a large branch into a stack of focused PRs. This is the most AI-intensive feature in SDF — Claude is involved in every phase of the pipeline.
+`sdf split` uses Claude as its analysis engine to decompose a large branch into a stack of focused PRs. This is the most AI-intensive feature in SDF -- Claude is involved in every phase of the pipeline.
 
 ### File-level grouping
 
-Claude receives the full diff and list of changed files between the base and source branches. It groups files into coherent layers — each representing a candidate PR — based on semantic themes: schema changes, API endpoints, business logic, UI components, etc.
+Claude receives the full diff and list of changed files between the base and source branches. It groups files into coherent layers -- each representing a candidate PR -- based on semantic themes: schema changes, API endpoints, business logic, UI components, etc.
 
-A file typically appears in exactly one layer. When a file's changes clearly serve multiple concerns, it may appear in multiple layers — SDF handles this with hunk-level splitting in a follow-up phase.
+A file typically appears in exactly one layer. When a file's changes clearly serve multiple concerns, it may appear in multiple layers -- SDF handles this with hunk-level splitting in a follow-up phase.
 
 ### Dependency ordering
 
@@ -45,15 +45,15 @@ Split analysis uses a persistent Claude session named `split-analysis`. This ses
 When `sdf sync` triggers a cascade rebase and encounters a conflict, SDF presents an interactive menu:
 
 1. **Ask Claude to resolve** (only shown if the Claude CLI is installed)
-2. **I'll fix it myself (pauses sync)** — leaves the rebase in progress so you can resolve manually, then run `sdf sync --continue`
-3. **Skip this branch** — aborts the rebase for this branch and continues with the rest of the stack
-4. **Abort sync** — aborts the entire sync operation
+2. **I'll fix it myself (pauses sync)** -- leaves the rebase in progress so you can resolve manually, then run `sdf sync --continue`
+3. **Skip this branch** -- aborts the rebase for this branch and continues with the rest of the stack
+4. **Abort sync** -- aborts the entire sync operation
 
 If you choose Claude, SDF invokes it with:
 
-1. **An upstream change diff summary** — a summary of what changed in the parent branch since the current branch was last rebased
-2. **The current branch's PR description** — fetched from GitHub, used as context for what this branch is trying to do
-3. **The conflicted file contents** — the full files with standard conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+1. **An upstream change diff summary** -- a summary of what changed in the parent branch since the current branch was last rebased
+2. **The current branch's PR description** -- fetched from GitHub, used as context for what this branch is trying to do
+3. **The conflicted file contents** -- the full files with standard conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
 
 Claude resolves each conflict file and writes the resolution back to disk. SDF then stages the files and runs `git rebase --continue`.
 
@@ -61,7 +61,7 @@ Claude resolves each conflict file and writes the resolution back to disk. SDF t
 
 If Claude's resolution fails (output cannot be parsed, or the rebase still fails after applying the resolution), SDF presents a second menu:
 
-1. **I'll fix the rest myself (pauses sync)** — same as the manual resolution flow
+1. **I'll fix the rest myself (pauses sync)** -- same as the manual resolution flow
 2. **Skip this branch, continue with the rest**
 3. **Abort sync entirely**
 
@@ -125,7 +125,7 @@ The `sdf ai intro` command spawns a Claude session that teaches Claude about SDF
 sdf ai intro
 ```
 
-This is useful when you want Claude to assist with SDF-managed repositories — after running `ai intro`, Claude understands stack topology, branch naming conventions, and how to use SDF commands correctly.
+This is useful when you want Claude to assist with SDF-managed repositories -- after running `ai intro`, Claude understands stack topology, branch naming conventions, and how to use SDF commands correctly.
 
 ---
 

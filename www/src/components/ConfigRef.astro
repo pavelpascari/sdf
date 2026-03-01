@@ -25,7 +25,7 @@ const { keys } = Astro.props;
       <tr>
         <td><code>{k.key}</code></td>
         <td><code>{k.type}</code></td>
-        <td>{k.default === '' ? '—' : <code>{k.default}</code>}</td>
+        <td>{k.default === '' ? '--' : <code>{k.default}</code>}</td>
         <td>{k.description}</td>
       </tr>
     ))}

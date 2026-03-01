@@ -29,7 +29,7 @@ const first = sorted[0];
             {sorted.map((doc) => (
               <li>
                 <a href={`/docs/${doc.slug}`}>{doc.data.title}</a>
-                {doc.data.description && <span> — {doc.data.description}</span>}
+                {doc.data.description && <span> -- {doc.data.description}</span>}
               </li>
             ))}
           </ul>
