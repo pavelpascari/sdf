@@ -47,7 +47,7 @@ if [[ -z "$RELEASE_POST" ]]; then
   echo "  ---"
   echo "  title: \"SDF v${VERSION}\""
   echo "  description: \"...\""
-  echo "  date: $(date +%Y-%m-%d)"
+  echo "  datePublished: $(date +%Y-%m-%d)"
   echo "  tags: [release]"
   echo "  version: \"${VERSION}\""
   echo "  ---"
@@ -56,7 +56,7 @@ fi
 
 # ── Validate the post has the required fields ───────────────────────
 MISSING=""
-for field in title description date; do
+for field in title description datePublished; do
   if ! grep -q "^${field}:" "$RELEASE_POST" 2>/dev/null; then
     MISSING="${MISSING} ${field}"
   fi
