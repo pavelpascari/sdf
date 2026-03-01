@@ -306,7 +306,6 @@ Creates a new `.sdf/stacks/<name>.json` with the split stack topology. This mean
 - `sdf status` shows the new stack
 - `sdf sync` cascade-rebases if any PR is amended
 - `sdf merge` merges the head PR and shifts the stack
-- Context docs can be added to each branch
 
 -----
 
@@ -473,7 +472,6 @@ The split creates a standard sdf stack. After splitting:
 | `sdf sync` | Cascade-rebases if any PR in the split is amended |
 | `sdf merge` | Merges the head PR and shifts the stack forward |
 | `sdf pr` | Works on new branches added to the split stack |
-| `sdf context` | Context docs can be created for each split branch |
 | `sdf switch` | Navigate between split branches |
 
 The original branch remains as a reference. The user can delete it when satisfied with the split, or keep it indefinitely.
@@ -583,4 +581,4 @@ Following existing patterns:
 
 4. **Relationship to original branch** — After a successful split, should the tool suggest deleting the original branch? Or keep it as a permanent reference? Current design: keep it, let the user decide.
 
-5. **Config options** — What should be configurable? Candidates: minimum PR size threshold, default validation mode (ship vs local), branch naming pattern, whether to auto-create context docs for split branches.
+5. **Config options** — What should be configurable? Candidates: minimum PR size threshold, default validation mode (ship vs local), branch naming pattern.
