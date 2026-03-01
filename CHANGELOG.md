@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.4](https://github.com/pavelpascari/sdf/compare/v0.3.3...v0.3.4) (2026-03-01)
+
+
+### Documentation
+
+* add comprehensive documentation for evaluators and users ([#148](https://github.com/pavelpascari/sdf/issues/148)) ([b22cb7b](https://github.com/pavelpascari/sdf/commit/b22cb7bcba034f93c5f485c6922107d4ed48c98d))
+
+
+### Miscellaneous
+
+* remove remaining sdf context command references from design docs ([#146](https://github.com/pavelpascari/sdf/issues/146)) ([a01828b](https://github.com/pavelpascari/sdf/commit/a01828b1f244725bf849d3383238e6ddf2fc562c))
+
 ## [0.3.3](https://github.com/pavelpascari/sdf/compare/v0.3.2...v0.3.3) (2026-03-01)
 
 
