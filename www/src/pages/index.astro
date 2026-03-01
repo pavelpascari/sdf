@@ -1,5 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import GitPullRequest from '../components/icons/GitPullRequest.astro';
+import GitMerge from '../components/icons/GitMerge.astro';
 
 const siteUrl = Astro.site?.href ?? 'https://sdf-tool.com';
 
@@ -42,13 +44,10 @@ const jsonLd = [
 
       <!-- Badge -->
       <a
-        href="https://github.com/pavelpascari/sdf/releases"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-rim-bright bg-panel text-xs text-fg-muted hover:text-fg hover:border-brand/50 transition-colors mb-8"
+        href="/blog/v0-3-0-machine-friendly"
+        class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-brand/30 bg-brand/10 text-xs text-brand-light hover:text-fg hover:border-brand/50 transition-colors mb-8"
       >
-        <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
-        Open source &middot; MIT License &middot; Written in Go
+        v0.3.0 &mdash; JSON output, shell completions, AI features &rarr;
       </a>
 
       <!-- Headline -->
@@ -426,9 +425,130 @@ const jsonLd = [
     </div>
   </section>
 
+  <!-- ── PR Experience ──────────────────────────────────── -->
+  <section class="py-24 border-t border-rim bg-surface/50">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+      <div class="text-center mb-16">
+        <h2
+          class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
+          style="font-family: var(--font-display); font-weight: 700;"
+        >
+          PRs that document themselves
+        </h2>
+        <p class="text-fg-muted max-w-xl mx-auto">
+          Stack navigation links are injected into every PR description automatically.
+          Add <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">--with-content</code> and Claude
+          generates titles and descriptions from your diffs.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-12">
+
+        <!-- Stack navigation -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              Stack navigation in every PR
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf pr</code> and
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf sync</code> inject
+              a navigation section into every PR description. Reviewers see the full stack at a glance
+              and can jump between related PRs. Links update automatically as PRs merge.
+            </p>
+          </div>
+          <!-- GitHub PR description mockup -->
+          <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <GitPullRequest class="text-success shrink-0" />
+              <span class="text-fg text-xs font-semibold">PR description</span>
+              <span class="text-fg-subtle text-xs ml-auto font-mono">#143</span>
+            </div>
+            <div class="p-5 text-sm leading-relaxed">
+              <p class="text-fg-muted mb-4">Add the UserRepository with CRUD operations and pgx integration.</p>
+              <hr class="border-rim mb-4" />
+              <p class="text-fg-subtle text-xs mb-2">Stack: <code class="text-accent bg-panel px-1 py-0.5 rounded border border-rim text-xs">users-feature</code></p>
+              <ol class="list-decimal list-inside space-y-1.5 text-sm">
+                <li class="text-fg-muted">
+                  <span class="inline-flex items-center gap-1.5">
+                    <GitMerge class="text-purple-400 shrink-0" />
+                    <span>add users table migration</span>
+                    <span class="text-fg-subtle">#142</span>
+                  </span>
+                </li>
+                <li class="text-fg">
+                  <span class="inline-flex items-center gap-1.5">
+                    <GitPullRequest class="text-success shrink-0" />
+                    <span class="font-medium">add user repository</span>
+                    <span class="text-fg-subtle">#143</span>
+                    <span class="text-accent text-xs">&nbsp;&#9664; this PR</span>
+                  </span>
+                </li>
+                <li class="text-fg-muted">
+                  <span class="inline-flex items-center gap-1.5">
+                    <GitPullRequest class="text-success shrink-0" />
+                    <span>add user controller endpoints</span>
+                    <span class="text-fg-subtle">#144</span>
+                  </span>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI-generated PR content -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div class="lg:order-2">
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              AI-generated titles and descriptions
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf sync --with-content</code> uses Claude
+              to generate PR titles and descriptions from your diffs. Titles are kept concise, descriptions explain the what and why.
+              Only PRs with meaningful changes get updated &mdash; unchanged content is left alone.
+            </p>
+          </div>
+          <div class="lg:order-1 rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf sync --with-content</span>
+<span class="text-fg-muted">Syncing stack </span><span class="text-fg font-bold">users-feature</span><span class="text-fg-muted">...</span>
+<span class="text-fg-muted">  ...</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted"> title updated</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#143</span><span class="text-fg-muted"> description updated</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted"> title unchanged</span>
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">PR </span><span class="text-brand-light">#144</span><span class="text-fg-muted"> description unchanged</span>
+
+<span class="text-fg-muted">Updated 1 PR(s).</span></code></pre>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="text-center mt-12">
+        <a href="/docs/getting-started" class="text-accent hover:text-brand-light text-sm font-medium">
+          Get started with sdf &rarr;
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- ── Install ────────────────────────────────────────── -->
   <section class="py-24 border-t border-rim bg-surface/50">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
 
       <h2
         class="font-display text-3xl sm:text-4xl font-bold text-fg tracking-tight mb-4"
@@ -465,6 +585,85 @@ const jsonLd = [
             <code class="font-mono text-xs text-accent break-all">{code}</code>
           </div>
         ))}
+      </div>
+
+      <!-- Post-install setup -->
+      <div class="text-center mb-8 mt-16 pt-12 border-t border-rim">
+        <p class="text-xs font-semibold uppercase tracking-widest text-fg-subtle mb-3">
+          After installing
+        </p>
+        <h3
+          class="font-display text-2xl sm:text-3xl font-bold text-fg tracking-tight mb-3"
+          style="font-family: var(--font-display); font-weight: 700;"
+        >
+          Set up your environment
+        </h3>
+      </div>
+
+      <div class="flex flex-col gap-12 text-left mb-12">
+
+        <!-- Shell completions -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div>
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              Shell completions
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              Tab-complete commands, flags, branch names, and stack names.
+              <code class="text-accent text-xs bg-panel px-1.5 py-0.5 rounded border border-rim">sdf completion install</code>
+              auto-detects your shell and writes the completion script to the right location.
+            </p>
+          </div>
+          <div class="rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf completion install</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">Zsh completions installed to ~/.zsh/completions/_sdf</span>
+<span class="text-success">&#10003;</span> <span class="text-fg-muted">Updated ~/.zshrc with fpath entry</span>
+<span class="text-fg-muted">  Restart your shell to activate.</span></code></pre>
+          </div>
+        </div>
+
+        <!-- Claude Code integration -->
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+          <div class="lg:order-2">
+            <h3
+              class="font-display font-semibold text-lg text-fg mb-2"
+              style="font-family: var(--font-display); font-weight: 600;"
+            >
+              Claude Code integration
+            </h3>
+            <p class="text-fg-muted leading-relaxed text-sm">
+              One command teaches Claude how to use SDF &mdash; it creates a
+              <a href="https://docs.anthropic.com/en/docs/claude-code/skills" target="_blank" rel="noopener noreferrer" class="text-brand hover:text-brand-dim transition-colors">skill file</a>
+              so Claude remembers commands, workflows, and conventions across sessions.
+            </p>
+          </div>
+          <div class="lg:order-1 rounded-xl border border-rim bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-rim bg-surface">
+              <div class="flex gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-fg-subtle/30"></span>
+              </div>
+              <span class="text-fg-subtle text-xs font-mono ml-2">terminal</span>
+            </div>
+            <pre class="p-5 text-sm font-mono leading-relaxed overflow-x-auto"><code><span class="text-fg-subtle">$ </span><span class="text-fg">sdf ai intro</span>
+<span class="text-accent">&#8594;</span> <span class="text-fg-muted">Setting up SDF skill for Claude Code...</span>
+
+  <span class="text-success">&#10003;</span> <span class="text-fg-muted">Skill created. Claude Code will load SDF knowledge in future sessions.</span></code></pre>
+          </div>
+        </div>
+
       </div>
 
       <a
@@ -522,11 +721,17 @@ const jsonLd = [
 <script>
   const btn = document.getElementById('copy-brew');
   if (btn) {
+    const copyIcon = btn.innerHTML;
+    const checkIcon = `<svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M3.5 7.5L6.5 10.5L11.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     btn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText('brew install pavelpascari/tap/sdf');
-        btn.setAttribute('aria-label', 'Copied!');
-        setTimeout(() => btn.setAttribute('aria-label', 'Copy install command'), 2000);
+        btn.innerHTML = checkIcon;
+        btn.classList.add('text-success');
+        setTimeout(() => {
+          btn.innerHTML = copyIcon;
+          btn.classList.remove('text-success');
+        }, 2000);
       } catch {}
     });
   }
