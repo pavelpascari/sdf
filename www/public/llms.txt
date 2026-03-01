@@ -1,4 +1,4 @@
-# SDF — Stacked Diffs Flow
+# SDF -- Stacked Diffs Flow
 
 > A CLI tool for managing stacked pull requests on GitHub.
 > SDF automates cascade rebasing, keeps PR bases in sync, and provides
@@ -6,40 +6,40 @@
 
 ## What SDF does
 
-SDF manages "stacked diffs" — chains of dependent pull requests where each
+SDF manages "stacked diffs" -- chains of dependent pull requests where each
 PR builds on the previous one. When an upstream PR merges, SDF rebases every
 downstream branch, updates GitHub PR bases, and optionally uses Claude to
 resolve conflicts and generate PR content.
 
 ## Key commands
 
-- `sdf new` — Create a new stack and its first branch
-- `sdf branch` — Add a branch to the current stack
-- `sdf pr` — Open a GitHub PR with stack navigation links
-- `sdf sync` — Cascade-rebase after upstream merges, update PR bases
-- `sdf merge` — Squash-merge the head PR and rebase the rest
-- `sdf split` — Decompose a large branch into a stack of focused PRs using AI
-- `sdf status` — View stack topology and sync state
-- `sdf fetch` — Import existing PR stacks from GitHub
-- `sdf move` — Relocate commits between branches in a stack
-- `sdf ai intro` — Set up Claude Code integration for SDF
+- `sdf new` -- Create a new stack and its first branch
+- `sdf branch` -- Add a branch to the current stack
+- `sdf pr` -- Open a GitHub PR with stack navigation links
+- `sdf sync` -- Cascade-rebase after upstream merges, update PR bases
+- `sdf merge` -- Squash-merge the head PR and rebase the rest
+- `sdf split` -- Decompose a large branch into a stack of focused PRs using AI
+- `sdf status` -- View stack topology and sync state
+- `sdf fetch` -- Import existing PR stacks from GitHub
+- `sdf move` -- Relocate commits between branches in a stack
+- `sdf ai intro` -- Set up Claude Code integration for SDF
 
 ## Documentation
 
-- /docs/why-sdf — Why stacked diffs, and how SDF compares to alternatives
-- /docs/getting-started — Build your first stack in under five minutes
-- /docs/installation — Install on macOS, Linux, or Windows
-- /docs/core-concepts — Stacks, nodes, and how SDF models PR chains
-- /docs/commands — Full reference for every sdf command
-- /docs/configuration — Repo-level and user-level config
-- /docs/ai-features — AI conflict resolution, branch splitting, PR content
-- /docs/sync-deep-dive — How sdf sync works under the hood
-- /docs/splitting-branches — Decompose a large branch into a stack
-- /docs/multiple-stacks — Managing several stacks per repo
-- /docs/fetching-stacks — Import and reconcile stacks from GitHub
-- /docs/json-output — JSON output for scripting and CI integration
-- /docs/troubleshooting — Common errors and recovery procedures
-- /docs/moving-commits — Relocate commits between stack branches
+- /docs/why-sdf -- Why stacked diffs, and how SDF compares to alternatives
+- /docs/getting-started -- Build your first stack in under five minutes
+- /docs/installation -- Install on macOS, Linux, or Windows
+- /docs/core-concepts -- Stacks, nodes, and how SDF models PR chains
+- /docs/commands -- Full reference for every sdf command
+- /docs/configuration -- Repo-level and user-level config
+- /docs/ai-features -- AI conflict resolution, branch splitting, PR content
+- /docs/sync-deep-dive -- How sdf sync works under the hood
+- /docs/splitting-branches -- Decompose a large branch into a stack
+- /docs/multiple-stacks -- Managing several stacks per repo
+- /docs/fetching-stacks -- Import and reconcile stacks from GitHub
+- /docs/json-output -- JSON output for scripting and CI integration
+- /docs/troubleshooting -- Common errors and recovery procedures
+- /docs/moving-commits -- Relocate commits between stack branches
 
 ## Source repository
 
