@@ -56,7 +56,7 @@ SDF is a CLI tool that manages the full lifecycle of stacked PRs on GitHub:
 
 **Where ghstack shines:** ghstack's commit-centric model is elegant for its use case: you work on a single branch, each commit becomes a separate PR, and `ghstack push` syncs everything. There's no branch management overhead — your working tree stays simple. The mental model is straightforward once internalized, and it has a strong track record in large-scale open source projects.
 
-**Where SDF differs:** SDF is branch-centric — each PR lives on its own branch. This means you can work on any layer independently (add commits, run tests, iterate on review feedback) without affecting other PRs in the stack. SDF PRs are standard GitHub PRs that anyone can review and merge through the normal GitHub UI; ghstack PRs require `ghstack land` or a custom GitHub Action to merge. SDF also provides AI conflict resolution, PR content generation, and `sdf split` for decomposing branches — features ghstack doesn't offer.
+**Where SDF differs:** SDF is branch-centric — each PR lives on its own branch. This means you can work on any layer independently (add commits, run tests, iterate on review feedback) without affecting other PRs in the stack. SDF doesn't constrain how you merge: click "Squash and merge" in the GitHub UI, use `gh pr merge` from the terminal, or run `sdf merge` — it all works. The next `sdf sync` detects what happened on GitHub and reconciles automatically. ghstack PRs require `ghstack land` or a custom GitHub Action to merge, which means reviewers and CI bots need to know about the tool. SDF also provides AI conflict resolution, PR content generation, and `sdf split` for decomposing branches — features ghstack doesn't offer.
 
 ### vs. git town
 
