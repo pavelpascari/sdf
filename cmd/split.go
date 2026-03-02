@@ -95,6 +95,14 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot split the base branch %q", base)
 	}
 
+	nearestAncestor, err := nearestAncestorBranch(fromBranch)
+	if err != nil {
+		return err
+	}
+	if nearestAncestor != "" && nearestAncestor != base {
+		return fmt.Errorf("branch %q is based on %q, not %q\nsdf split only works on branches based directly off the main branch", fromBranch, nearestAncestor, base)
+	}
+
 	root, err := gitpkg.RepoRoot()
 	if err != nil {
 		return fmt.Errorf("not inside a git repository: %w", err)
@@ -489,4 +497,41 @@ func printStackChain(s *stack.Stack) {
 		parts = append(parts, label)
 	}
 	fmt.Printf("\n  %s\n", strings.Join(parts, " ← "))
+}
+
+// nearestAncestorBranch returns the closest local ancestor branch of target,
+// preferring the one with the fewest commits between ancestor and target.
+func nearestAncestorBranch(target string) (string, error) {
+	branches, err := gitpkg.LocalBranches()
+	if err != nil {
+		return "", fmt.Errorf("cannot inspect local branches: %w", err)
+	}
+
+	best := ""
+	bestDistance := int(^uint(0) >> 1) // max int
+	for _, b := range branches {
+		if b == target {
+			continue
+		}
+		if !gitpkg.IsAncestor(b, target) {
+			continue
+		}
+
+		countStr, err := gitpkg.CommitCount(b, target)
+		if err != nil {
+			continue
+		}
+		var distance int
+		if _, err := fmt.Sscanf(countStr, "%d", &distance); err != nil {
+			continue
+		}
+		if distance <= 0 {
+			continue
+		}
+		if distance < bestDistance {
+			bestDistance = distance
+			best = b
+		}
+	}
+	return best, nil
 }

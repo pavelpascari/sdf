@@ -144,6 +144,41 @@ func TestSplitStackExists(t *testing.T) {
 	}
 }
 
+func TestSplitRejectsNestedBranch(t *testing.T) {
+	resetSplitFlags()
+	dir := splitTestRepo(t)
+
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+	}
+
+	git("checkout", "-b", "feat/db-schema", "main")
+	os.WriteFile(filepath.Join(dir, "db.sql"), []byte("create table t();\n"), 0644)
+	git("add", "db.sql")
+	git("commit", "-m", "db schema")
+
+	git("checkout", "-b", "feat/api")
+	os.WriteFile(filepath.Join(dir, "api.go"), []byte("package main\n"), 0644)
+	git("add", "api.go")
+	git("commit", "-m", "api layer")
+
+	testutil.SetBinary(t, &claudepkg.Binary, "true")
+
+	err := RunSplit([]string{"--from", "feat/api", "--stack", "test", "--base", "main"})
+	if err == nil {
+		t.Fatal("expected nested-branch error")
+	}
+	if !strings.Contains(err.Error(), "based on \"feat/db-schema\"") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestBuildSplitPRBody(t *testing.T) {
 	s := &stack.Stack{
 		StackID: "my-feature",
