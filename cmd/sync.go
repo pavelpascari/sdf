@@ -746,18 +746,31 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncRe
 			ID:   fmt.Sprintf("pr-%d-title", j.node.PR),
 			Name: fmt.Sprintf("PR %s title", ui.PR(j.node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
+				currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
+				prefix := j.prefix
+				if p, _, ok := splitConventionalTitle(currentTitle); ok {
+					prefix = p
+				}
+
 				proposedTitle := j.localTitle
+				if prefix != "" {
+					proposedTitle = prefix + stripConventionalPrefix(proposedTitle)
+				}
+
 				if hasClaude && j.titlePrompt != "" {
 					r.Log("generating with Claude...")
 					aiTitle, err := claudepkg.RunPrompt(j.titleSession, j.titlePrompt)
 					if err == nil {
 						aiTitle = strings.Split(aiTitle, "\n")[0]
 						aiTitle = strings.Trim(aiTitle, "\"' ")
-						proposedTitle = j.prefix + aiTitle
+						if prefix != "" {
+							proposedTitle = prefix + stripConventionalPrefix(aiTitle)
+						} else {
+							proposedTitle = aiTitle
+						}
 					}
 				}
 
-				currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
 				if !similar(currentTitle, proposedTitle, 0.8) {
 					if err := ghpkg.PREditTitle(j.node.PR, proposedTitle); err == nil {
 						updated.Add(1)
@@ -824,6 +837,36 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncRe
 	} else {
 		bus.Print("\nAll PR content is up to date.")
 	}
+}
+
+func splitConventionalTitle(title string) (prefix, body string, ok bool) {
+	parts := strings.SplitN(title, ": ", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	head := parts[0]
+	if head == "" {
+		return "", "", false
+	}
+	// Match "type" or "type(scope)" in ASCII lowercase.
+	for i, r := range head {
+		if i == 0 && (r < 'a' || r > 'z') {
+			return "", "", false
+		}
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '(' || r == ')' || r == '-' || r == '_' {
+			continue
+		}
+		return "", "", false
+	}
+	return head + ": ", parts[1], true
+}
+
+func stripConventionalPrefix(title string) string {
+	_, body, ok := splitConventionalTitle(title)
+	if ok {
+		return strings.TrimSpace(body)
+	}
+	return strings.TrimSpace(title)
 }
 
 // titlePrefix returns the conventional commit prefix for a PR title

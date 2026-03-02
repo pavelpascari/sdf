@@ -872,3 +872,33 @@ func TestSyncResultJSON_WithError(t *testing.T) {
 		t.Errorf("action: got %q, want %q", roundtrip.Branches[0].Action, "failed")
 	}
 }
+
+func TestSplitConventionalTitle(t *testing.T) {
+	prefix, body, ok := splitConventionalTitle("fix(sync): preserve title prefix")
+	if !ok {
+		t.Fatal("expected conventional title to parse")
+	}
+	if prefix != "fix(sync): " {
+		t.Fatalf("prefix = %q", prefix)
+	}
+	if body != "preserve title prefix" {
+		t.Fatalf("body = %q", body)
+	}
+
+	_, _, ok = splitConventionalTitle("plain title")
+	if ok {
+		t.Fatal("plain title should not parse as conventional")
+	}
+}
+
+func TestStripConventionalPrefix(t *testing.T) {
+	got := stripConventionalPrefix("feat(auth): add login endpoint")
+	if got != "add login endpoint" {
+		t.Fatalf("unexpected stripped title: %q", got)
+	}
+
+	got = stripConventionalPrefix("add login endpoint")
+	if got != "add login endpoint" {
+		t.Fatalf("unexpected plain title result: %q", got)
+	}
+}
