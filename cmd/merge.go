@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -33,6 +34,7 @@ var mergeCmd = &cobra.Command{
 then triggers a sync to cascade-rebase remaining branches.`,
 	Example: `  sdf merge                          # merge with squash (default)
   sdf merge -y                       # skip confirmation
+  sdf merge --auto                   # enable GitHub auto-merge
   sdf merge --method merge           # use regular merge
   sdf merge --stack my-feature       # target a specific stack`,
 	Annotations: map[string]string{"category": "stack"},
@@ -44,6 +46,7 @@ func init() {
 	mergeCmd.Flags().String("stack", "", "stack to merge (default: auto-detect)")
 	mergeCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
 	mergeCmd.Flags().String("method", "squash", "merge method: squash, merge, or rebase")
+	mergeCmd.Flags().Bool("auto", false, "enable GitHub auto-merge if merge requirements are not yet met")
 	mergeCmd.Flags().Bool("json", false, "output result as JSON")
 	_ = mergeCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 	_ = mergeCmd.RegisterFlagCompletionFunc("method", completeMergeMethods)
@@ -53,13 +56,14 @@ func runMergeCmd(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	yes, _ := cmd.Flags().GetBool("yes")
 	method, _ := cmd.Flags().GetString("method")
+	autoMerge, _ := cmd.Flags().GetBool("auto")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	if jsonFlag && !yes {
 		return fmt.Errorf("--json requires --yes (-y) to skip confirmation")
 	}
 
-	return runMergeLogic(stackFlag, yes, method, jsonFlag)
+	return runMergeLogic(stackFlag, yes, method, autoMerge, jsonFlag)
 }
 
 // RunMerge is a compatibility wrapper for callers that use the old interface.
@@ -68,7 +72,7 @@ func RunMerge(args []string) error {
 	return rootCmd.Execute()
 }
 
-func runMergeLogic(stackFlag string, yes bool, method string, jsonMode bool) error {
+func runMergeLogic(stackFlag string, yes bool, method string, autoMerge bool, jsonMode bool) error {
 	switch method {
 	case "squash", "merge", "rebase":
 	default:
@@ -170,17 +174,27 @@ func runMergeLogic(stackFlag string, yes bool, method string, jsonMode bool) err
 		}
 	}
 
+	originalBase := node.Branch
+	newBase := parent
+
 	// Merge
 	mergeBus.Printf("  Merging PR %s...", ui.PR(node.PR))
-	if err := ghpkg.PRMerge(node.PR, method); err != nil {
+	if err := ghpkg.PRMergeWithOptions(node.PR, method, autoMerge); err != nil {
+		if result.Retargeted > 0 {
+			mergeBus.Warnf("  %s merge failed — rolling back PR %s base to %s", ui.SymWarn, ui.PR(result.Retargeted), ui.Branch(originalBase))
+			if rbErr := ghpkg.PREditBase(result.Retargeted, originalBase); rbErr != nil {
+				mergeBus.Warnf("  %s rollback failed for PR %s: %v", ui.SymWarn, ui.PR(result.Retargeted), rbErr)
+			}
+		}
+		friendly := formatMergeError(err, autoMerge, newBase)
 		if jsonMode {
-			result.Error = fmt.Sprintf("merge failed: %v", err)
+			result.Error = friendly
 			_ = mergeBus.Finish()
 			data, _ := json.MarshalIndent(result, "", "  ")
 			fmt.Println(string(data))
 			return nil
 		}
-		return fmt.Errorf("merge failed: %w", err)
+		return fmt.Errorf("%s", friendly)
 	}
 
 	// gh pr merge --delete-branch can leave staged changes in the index
@@ -229,6 +243,26 @@ func runMergeLogic(stackFlag string, yes bool, method string, jsonMode bool) err
 	}
 
 	return nil
+}
+
+func formatMergeError(err error, autoMerge bool, _ string) string {
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+
+	if strings.Contains(lower, "base branch policy prohibits the merge") ||
+		strings.Contains(lower, "is not mergeable") {
+		if autoMerge {
+			return fmt.Sprintf("merge blocked by branch protection: %v", err)
+		}
+		return fmt.Sprintf("merge blocked by branch protection (required checks/reviews not satisfied). Try `sdf merge --auto` to enable GitHub auto-merge, or merge after requirements pass.\n\noriginal error: %v", err)
+	}
+	if strings.Contains(lower, "authentication") || strings.Contains(lower, "not logged in") {
+		return fmt.Sprintf("merge failed: GitHub authentication issue. Re-authenticate with `gh auth login`.\n\noriginal error: %v", err)
+	}
+	if strings.Contains(lower, "network") || strings.Contains(lower, "timeout") || strings.Contains(lower, "connection") {
+		return fmt.Sprintf("merge failed: network error while talking to GitHub.\n\noriginal error: %v", err)
+	}
+	return fmt.Sprintf("merge failed: %v", err)
 }
 
 // findHeadPR returns the first open node with a PR in the stack.

@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -26,6 +28,22 @@ func TestFindHeadPR_FirstOpen(t *testing.T) {
 	}
 	if node.PR != 10 {
 		t.Errorf("expected PR 10, got %d", node.PR)
+	}
+}
+
+func TestFormatMergeError_BranchProtectionSuggestsAuto(t *testing.T) {
+	err := errors.New("Pull request #91 is not mergeable: the base branch policy prohibits the merge")
+	msg := formatMergeError(err, false, "main")
+	if !strings.Contains(msg, "sdf merge --auto") {
+		t.Fatalf("expected auto-merge guidance, got: %s", msg)
+	}
+}
+
+func TestFormatMergeError_AuthHint(t *testing.T) {
+	err := errors.New("authentication required")
+	msg := formatMergeError(err, false, "main")
+	if !strings.Contains(msg, "gh auth login") {
+		t.Fatalf("expected auth guidance, got: %s", msg)
 	}
 }
 

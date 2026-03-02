@@ -147,8 +147,14 @@
       "use": "merge",
       "short": "Merge head PR and sync remaining branches",
       "long": "Merges the first open PR in the stack, retargets the next PR's base,\nthen triggers a sync to cascade-rebase remaining branches.",
-      "example": "  sdf merge                          # merge with squash (default)\n  sdf merge -y                       # skip confirmation\n  sdf merge --method merge           # use regular merge\n  sdf merge --stack my-feature       # target a specific stack",
+      "example": "  sdf merge                          # merge with squash (default)\n  sdf merge -y                       # skip confirmation\n  sdf merge --auto                   # enable GitHub auto-merge\n  sdf merge --method merge           # use regular merge\n  sdf merge --stack my-feature       # target a specific stack",
       "flags": [
+        {
+          "name": "auto",
+          "type": "bool",
+          "default": "false",
+          "description": "enable GitHub auto-merge if merge requirements are not yet met"
+        },
         {
           "name": "json",
           "type": "bool",
@@ -428,5 +434,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "f29817712355631a2fa277f87e65ea109bfa3b89f489b3e24d088d2c5a935d71"
+  "hash": "8824fd4c7644386e798c8f55a253723f011ba087038c630b33a0eb2abc1fac7f"
 }
