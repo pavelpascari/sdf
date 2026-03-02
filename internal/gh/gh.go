@@ -234,9 +234,17 @@ func PREditTitle(prNumber int, title string) error {
 // PRMerge merges a PR using the specified method ("squash", "merge", or "rebase").
 // Also deletes the remote branch after merging.
 func PRMerge(prNumber int, method string) error {
-	_, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
+	out, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
 		"--"+method, "--delete-branch")
+	if err != nil && isRemoteBranchAlreadyDeleted(out) {
+		return nil
+	}
 	return err
+}
+
+func isRemoteBranchAlreadyDeleted(output string) bool {
+	return strings.Contains(output, "failed to delete remote branch") &&
+		(strings.Contains(output, "HTTP 404") || strings.Contains(output, "Reference does not exist"))
 }
 
 // ReleaseInfo holds the tag name and URL of a GitHub release.
