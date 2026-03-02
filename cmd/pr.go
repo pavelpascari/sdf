@@ -59,6 +59,9 @@ func runPR(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Determine base branch
+	base := s.ParentBranch(branch)
+
 	node := s.FindNode(branch)
 	if node == nil {
 		return fmt.Errorf("branch %q is not in stack %q — run `sdf branch` to add it", branch, s.StackID)
@@ -66,6 +69,14 @@ func runPR(cmd *cobra.Command, args []string) error {
 
 	if node.PR > 0 {
 		return fmt.Errorf("branch %q already has PR #%d", branch, node.PR)
+	}
+
+	commitCount, err := gitpkg.CommitCount(base, branch)
+	if err != nil {
+		return fmt.Errorf("cannot determine commits ahead of %s: %w", base, err)
+	}
+	if commitCount == "0" {
+		return fmt.Errorf("%s has no commits ahead of %s — nothing to open a PR for", branch, base)
 	}
 
 	if !ghpkg.Available() {
@@ -77,9 +88,6 @@ func runPR(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		cfg = cfgpkg.Defaults()
 	}
-
-	// Determine base branch
-	base := s.ParentBranch(branch)
 
 	// Build default PR body
 	body := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
