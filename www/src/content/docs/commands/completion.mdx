@@ -1,0 +1,13 @@
+---
+title: "`sdf completion`"
+description: "Reference page for sdf completion."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf completion`
+
+<CommandRef command={cmd('completion')} />

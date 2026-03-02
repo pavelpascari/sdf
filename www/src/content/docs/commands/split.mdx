@@ -1,0 +1,13 @@
+---
+title: "`sdf split`"
+description: "Reference page for sdf split."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf split`
+
+<CommandRef command={cmd('split')} />

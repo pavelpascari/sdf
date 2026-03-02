@@ -1,0 +1,13 @@
+---
+title: "`sdf merge`"
+description: "Reference page for sdf merge."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf merge`
+
+<CommandRef command={cmd('merge')} />

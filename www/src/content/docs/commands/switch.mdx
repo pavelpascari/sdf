@@ -1,0 +1,13 @@
+---
+title: "`sdf switch`"
+description: "Reference page for sdf switch."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf switch`
+
+<CommandRef command={cmd('switch')} />

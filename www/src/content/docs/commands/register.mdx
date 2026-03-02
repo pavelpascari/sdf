@@ -1,0 +1,13 @@
+---
+title: "`sdf register`"
+description: "Reference page for sdf register."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf register`
+
+<CommandRef command={cmd('register')} />

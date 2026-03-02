@@ -1,0 +1,13 @@
+---
+title: "`sdf move`"
+description: "Reference page for sdf move."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf move`
+
+<CommandRef command={cmd('move')} />

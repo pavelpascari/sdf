@@ -1,0 +1,13 @@
+---
+title: "`sdf status`"
+description: "Reference page for sdf status."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf status`
+
+<CommandRef command={cmd('status')} />

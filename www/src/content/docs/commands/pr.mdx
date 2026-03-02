@@ -1,0 +1,13 @@
+---
+title: "`sdf pr`"
+description: "Reference page for sdf pr."
+---
+
+import CommandRef from '../../../components/CommandRef.astro';
+import cliRef from '../../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# `sdf pr`
+
+<CommandRef command={cmd('pr')} />
