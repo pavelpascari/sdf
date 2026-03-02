@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-28T21:01:09Z",
+  "generated": "2026-03-02T16:56:33Z",
   "commands": [
     {
       "name": "ai",
@@ -342,14 +342,20 @@
       "category": "stack",
       "use": "sync [stack-name]",
       "short": "Detect merged PRs and cascade-rebase downstream branches",
-      "long": "Fetches from origin, queries GitHub for PR status, reconciles PR states,\ncascade-rebases downstream branches, pushes, and updates PR navigation links.\n\nWhen a rebase conflict occurs, an interactive menu offers Claude resolution,\nmanual resolution (pausing sync), skip, or abort.",
-      "example": "  sdf sync                          # sync the stack of the current branch\n  sdf sync my-feature               # sync a specific stack by name\n  sdf sync -y                       # skip confirmation prompt\n  sdf sync --continue               # resume after manual conflict resolution\n  sdf sync --with-content           # also update PR titles and descriptions",
+      "long": "Fetches from origin, queries GitHub for PR status, reconciles PR states,\ncascade-rebases downstream branches, pushes, and updates PR navigation links.\n\nBy default, sync only rebases branches within the stack (e.g. after a PR is\nmerged or a parent branch is amended). To also rebase onto the latest base\nbranch tip (e.g. main), use --from-head.\n\nWhen a rebase conflict occurs, an interactive menu offers Claude resolution,\nmanual resolution (pausing sync), skip, or abort.",
+      "example": "  sdf sync                          # sync within the stack only\n  sdf sync --from-head              # also rebase onto latest base branch\n  sdf sync my-feature               # sync a specific stack by name\n  sdf sync -y                       # skip confirmation prompt\n  sdf sync --continue               # resume after manual conflict resolution\n  sdf sync --with-content           # also update PR titles and descriptions",
       "flags": [
         {
           "name": "continue",
           "type": "bool",
           "default": "false",
           "description": "resume after manual conflict resolution"
+        },
+        {
+          "name": "from-head",
+          "type": "bool",
+          "default": "false",
+          "description": "also rebase onto the latest base branch"
         },
         {
           "name": "json",
