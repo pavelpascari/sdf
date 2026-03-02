@@ -2,7 +2,10 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
-import { blogDateMap } from './src/utils/content-dates';
+import { blogDateMap, docsDateMap } from './src/utils/content-dates';
+
+const blogDates = blogDateMap();
+const docsDates = docsDateMap();
 
 export default defineConfig({
   site: 'https://stacked-diffs-flow.com',
@@ -11,8 +14,8 @@ export default defineConfig({
     sitemap({
       serialize(item) {
         const path = new URL(item.url).pathname;
-        const date = blogDateMap().get(path);
-        if (date) item.lastmod = date;
+        const date = blogDates.get(path) ?? docsDates.get(path);
+        item.lastmod = date ?? item.lastmod ?? new Date();
         return item;
       },
     }),
