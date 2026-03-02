@@ -23,11 +23,10 @@ import (
 
 // syncOptions holds optional behavior flags for a sync run.
 type syncOptions struct {
-	withContent  bool
-	jsonMode     bool
-	cfg          cfgpkg.Config
-	fromHead     bool   // rebase onto the latest base branch tip
-	preFFBaseTip string // base branch SHA before fast-forward
+	withContent bool
+	jsonMode    bool
+	cfg         cfgpkg.Config
+	fromHead    bool // rebase onto the latest base branch tip
 }
 
 // SyncResult is the structured output of sdf sync when --json is used.
@@ -293,10 +292,6 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 		bus.Warnf("warning: fetch failed: %v", err)
 	}
 
-	// Capture the base tip before fast-forwarding so we can distinguish
-	// "main advanced from unrelated work" from "stack node merged into main".
-	preFFBaseTip, _ := gitpkg.RevParse(s.Base)
-
 	// Fast-forward the base branch so RevParse returns the latest tip
 	if err := gitpkg.FastForward(s.Base); err != nil {
 		bus.Warnf("warning: could not fast-forward %s: %v", s.Base, err)
@@ -314,11 +309,10 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 	}
 
 	opts := syncOptions{
-		withContent:  cfg.WithContentEnabled() || flagWithContent,
-		jsonMode:     jsonMode,
-		cfg:          cfg,
-		fromHead:     fromHead,
-		preFFBaseTip: preFFBaseTip,
+		withContent: cfg.WithContentEnabled() || flagWithContent,
+		jsonMode:    jsonMode,
+		cfg:         cfg,
+		fromHead:    fromHead,
 	}
 
 	// Compute and show the sync plan
@@ -380,13 +374,16 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	for i := 0; i < len(s.Nodes); i++ {
 		if s.Nodes[i].Status != "merged" {
 			parent := s.ParentBranch(s.Nodes[i].Branch)
-			tip, err := gitpkg.RevParse(parent)
-			if err == nil && s.Nodes[i].BaseTip != "" {
-				compareTip := tip
-				if opts != nil && !opts.fromHead && parent == s.Base && opts.preFFBaseTip != "" {
-					compareTip = opts.preFFBaseTip
-				}
-				if compareTip != s.Nodes[i].BaseTip {
+			directParent := s.Base
+			if i > 0 {
+				directParent = s.Nodes[i-1].Branch
+			}
+			reparented := parent != directParent
+			skipBaseCheck := opts != nil && !opts.fromHead && parent == s.Base && !reparented
+
+			if !skipBaseCheck {
+				tip, err := gitpkg.RevParse(parent)
+				if err == nil && s.Nodes[i].BaseTip != "" && tip != s.Nodes[i].BaseTip {
 					hasRealWork = true
 					break
 				}
@@ -436,12 +433,14 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			continue
 		}
 
-		compareTip := currentParentTip
-		if opts != nil && !opts.fromHead && parent == s.Base && opts.preFFBaseTip != "" {
-			compareTip = opts.preFFBaseTip
+		directParent := s.Base
+		if i > 0 {
+			directParent = s.Nodes[i-1].Branch
 		}
+		reparented := parent != directParent
+		skipBaseCheck := opts != nil && !opts.fromHead && parent == s.Base && !reparented
 
-		if node.BaseTip != "" && compareTip != node.BaseTip {
+		if !skipBaseCheck && node.BaseTip != "" && currentParentTip != node.BaseTip {
 			bus.Printf("  rebasing %s onto %s...", ui.Branch(node.Branch), ui.Branch(parent))
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
@@ -1005,13 +1004,19 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 
 		needsRebase := rebased[parent]
 		if !needsRebase {
-			currentParentTip, err := gitpkg.RevParse(parent)
-			if err == nil && node.BaseTip != "" {
-				compareTip := currentParentTip
-				if opts != nil && !opts.fromHead && parent == s.Base && opts.preFFBaseTip != "" {
-					compareTip = opts.preFFBaseTip
-				}
-				if compareTip != node.BaseTip {
+			// When fromHead is false, skip the base-branch staleness check
+			// for nodes that were NOT reparented. A node is reparented when
+			// its predecessor was merged and ParentBranch() skipped over it.
+			directParent := s.Base
+			if i > 0 {
+				directParent = nodes[i-1].Branch
+			}
+			reparented := parent != directParent
+			skipBaseCheck := opts != nil && !opts.fromHead && parent == s.Base && !reparented
+
+			if !skipBaseCheck {
+				currentParentTip, err := gitpkg.RevParse(parent)
+				if err == nil && node.BaseTip != "" && currentParentTip != node.BaseTip {
 					needsRebase = true
 				}
 			}

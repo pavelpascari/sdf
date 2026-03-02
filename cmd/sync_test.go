@@ -591,9 +591,6 @@ func TestComputeSyncPlan_StackScopedDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Record the current main tip (this is what nodes[0].BaseTip points to)
-	preFFBaseTip := git("rev-parse", "main")
-
 	// Advance main with an unrelated commit (simulating fast-forward)
 	git("checkout", "main")
 	os.WriteFile(filepath.Join(dir, "unrelated.txt"), []byte("unrelated\n"), 0644)
@@ -601,11 +598,10 @@ func TestComputeSyncPlan_StackScopedDefault(t *testing.T) {
 	git("commit", "-m", "unrelated work on main")
 	git("checkout", "branchC")
 
-	// With fromHead=false and preFFBaseTip matching the old main tip,
-	// no rebase should be triggered (main advanced from unrelated work).
+	// With fromHead=false, no rebase should be triggered even though main
+	// advanced -- node[0] was not reparented, so the base check is skipped.
 	opts := &syncOptions{
-		fromHead:     false,
-		preFFBaseTip: preFFBaseTip,
+		fromHead: false,
 	}
 
 	plan := computeSyncPlan(s, opts)
@@ -683,9 +679,6 @@ func TestComputeSyncPlan_StackScopedWithMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Record pre-FF base tip
-	preFFBaseTip := git("rev-parse", "main")
-
 	// Advance main (simulating branchA merged + other work)
 	git("checkout", "main")
 	os.WriteFile(filepath.Join(dir, "merged.txt"), []byte("merged\n"), 0644)
@@ -696,12 +689,11 @@ func TestComputeSyncPlan_StackScopedWithMerge(t *testing.T) {
 	// Mark branchA as merged
 	s.Nodes[0].Status = "merged"
 
-	// Even with fromHead=false, branchB should rebase because its parent
-	// changed (from branchA to main) and its BaseTip (branchA's old SHA)
-	// doesn't match preFFBaseTip (old main SHA).
+	// Even with fromHead=false, branchB should rebase because it was
+	// reparented: its direct parent (branchA) was merged, so ParentBranch
+	// returns main instead.
 	opts := &syncOptions{
-		fromHead:     false,
-		preFFBaseTip: preFFBaseTip,
+		fromHead: false,
 	}
 
 	plan := computeSyncPlan(s, opts)
