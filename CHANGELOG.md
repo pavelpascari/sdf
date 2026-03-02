@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/pavelpascari/sdf/compare/v0.3.5...v0.3.6) (2026-03-02)
+
+
+### Features
+
+* Scope sdf sync to current stack, add --from-head flag ([#160](https://github.com/pavelpascari/sdf/issues/160)) ([1acc304](https://github.com/pavelpascari/sdf/commit/1acc30454625efb58954a151c12ee3aeb1b060a0)), closes [#159](https://github.com/pavelpascari/sdf/issues/159)
+
 ## [0.3.5](https://github.com/pavelpascari/sdf/compare/v0.3.4...v0.3.5) (2026-03-02)
 
 
