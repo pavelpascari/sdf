@@ -32,6 +32,8 @@ const absoluteOgImage = new URL(ogImage, siteURL).href;
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta name="robots" content="index, follow" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" />
+    <link rel="alternate" type="text/markdown" href="/llms-full.txt" />
 
     <!-- Open Graph -->
     <meta property="og:type" content={ogType} />
