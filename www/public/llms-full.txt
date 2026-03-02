@@ -1,0 +1,2433 @@
+# SDF Documentation (Full)
+
+> Consolidated documentation context for AI agents and search systems.
+> Source: https://stacked-diffs-flow.com/docs/
+
+This file is generated from all `/src/content/docs/*` pages in order.
+
+## Why SDF
+
+Source: https://stacked-diffs-flow.com/docs/why-sdf/
+
+What stacked diffs solve, how SDF compares to alternatives, and whether it's the right fit for your team.
+
+# Why SDF
+
+## The problem: large PRs
+
+Most teams develop features that span multiple files, layers, or concerns. The natural instinct is to work on a single branch and open one pull request when the feature is ready. But large PRs create problems:
+
+- **Reviews take longer and are less thorough.** A 2,000-line PR overwhelms reviewers. They skim instead of reading carefully, and bugs slip through.
+- **Feedback arrives late.** If a reviewer questions a design decision made in the first 200 lines, the remaining 1,800 lines may need to be reworked.
+- **CI takes longer.** Large diffs increase test flakiness and make failures harder to diagnose.
+- **Merging is risky.** The bigger the diff, the higher the chance of a conflict with other work happening in parallel.
+
+The solution is to break work into a chain of small, dependent PRs &mdash; each one building on the last, each one reviewable on its own. This is the stacked diffs workflow.
+
+## What stacked diffs give you
+
+A stack is a linear chain of branches where each branch is based on the one before it:
+
+```
+main ← db-schema ← repository ← controller
+         PR #1        PR #2        PR #3
+```
+
+Each PR shows only its own diff &mdash; not the accumulated diff of every layer below it. Reviewers see focused changes. Authors get feedback early on foundational decisions. PRs can be approved and merged independently, from the bottom up.
+
+The catch is that stacking requires rebasing. When the bottom PR is updated or merged, every branch above it must be rebased and force-pushed. The PR bases on GitHub must be updated. This is tedious and error-prone by hand &mdash; which is why tools like SDF exist.
+
+The benefits are well-proven at scale. Major engineering organizations have adopted stacked diffs as a core workflow and built dedicated tooling around it &mdash; Meta open-sourced [Sapling](https://sapling-scm.com), a full source control system with native stacking support, and Google's internal code review system has long been built around small, dependent changes. The pattern works; the challenge has been making it accessible outside these environments.
+
+## What SDF does
+
+SDF is a CLI tool that manages the full lifecycle of stacked PRs on GitHub:
+
+- **Creates stacks** with `sdf new` and adds branches with `sdf branch`
+- **Creates PRs** with `sdf pr`, automatically setting the correct base branch and adding stack navigation links to each PR description
+- **Syncs after merges** with `sdf sync` &mdash; detects merged PRs, cascade-rebases all downstream branches, force-pushes, and updates PR bases on GitHub
+- **Resolves conflicts with AI** &mdash; when a rebase conflict occurs during sync, Claude receives the full context (upstream changes, PR description, conflicted files) and resolves the conflict in place
+- **Splits large branches** with `sdf split` &mdash; Claude analyzes a branch and decomposes it into a stack of focused PRs
+
+## How SDF compares to alternatives
+
+### vs. Graphite
+
+[Graphite](https://graphite.dev) is a commercial SaaS platform with a CLI, a VS Code extension, a web-based PR inbox, a merge queue, AI code review, and engineering metrics. It is the most fully-featured option in this space.
+
+**Where Graphite shines:** Graphite is a platform, not just a CLI. Its web UI provides a purpose-built PR inbox, merge queue, CI skip for intermediate PRs, and engineering analytics. If your team wants an integrated experience that replaces parts of the GitHub UI, Graphite delivers that. The CLI is polished with excellent tab completion and a well-documented command set.
+
+**Where SDF differs:** SDF stores state locally &mdash; no cloud dependency, no account, no vendor approval. An individual engineer can `brew install` it and start stacking today without a team-wide mandate. SDF's AI-powered conflict resolution during rebases is unique &mdash; when a cascade rebase hits a conflict, Claude resolves it in-place using the PR description and upstream diff as context. SDF also provides `sdf split` for AI-powered decomposition of large branches into stacks. Graphite requires the team to operate within its ecosystem; SDF works alongside your existing GitHub workflow without replacing any part of it.
+
+### vs. ghstack
+
+[ghstack](https://github.com/ezyang/ghstack) is an open-source Python CLI widely used in the PyTorch/Meta ecosystem. It treats each commit as a PR &mdash; one commit, one PR, no separate branches in your working tree.
+
+**Where ghstack shines:** ghstack's commit-centric model is elegant for its use case: you work on a single branch, each commit becomes a separate PR, and `ghstack push` syncs everything. There's no branch management overhead &mdash; your working tree stays simple. The mental model is straightforward once internalized, and it has a strong track record in large-scale open source projects.
+
+**Where SDF differs:** SDF is branch-centric &mdash; each PR lives on its own branch. This means you can work on any layer independently (add commits, run tests, iterate on review feedback) without affecting other PRs in the stack. SDF doesn't constrain how you merge: click "Squash and merge" in the GitHub UI, use `gh pr merge` from the terminal, or run `sdf merge` &mdash; it all works. The next `sdf sync` detects what happened on GitHub and reconciles automatically. ghstack PRs require `ghstack land` or a custom GitHub Action to merge, which means reviewers and CI bots need to know about the tool. SDF also provides AI conflict resolution, PR content generation, and `sdf split` for decomposing branches &mdash; features ghstack doesn't offer.
+
+### vs. git town
+
+[git town](https://git-town.com) is a mature open-source Go CLI that provides high-level Git workflow commands. It supports stacking as one of many workflow modes and works with GitHub, GitLab, Bitbucket, and Gitea.
+
+**Where git town shines:** git town supports multiple Git hosting platforms (GitHub, GitLab, Bitbucket, Gitea) and is a general-purpose workflow tool, not just a stacking tool. It has a large community, extensive documentation, and covers a wide range of Git workflows beyond stacking (feature branches, contribution, ship/sync patterns). If your team uses something other than GitHub or wants one tool for multiple workflow styles, git town is the more versatile choice.
+
+**Where SDF differs:** SDF is stacking-first &mdash; every feature is designed specifically for the stacked PRs workflow. It provides PR creation with automatic base targeting and stack navigation links, AI-assisted conflict resolution during cascade rebases, and AI-powered branch splitting. These are purpose-built for stacking and not available in git town.
+
+### vs. spr
+
+[spr](https://github.com/ejoffe/spr) is an open-source Go CLI with a similar philosophy to ghstack &mdash; each commit is an atomic PR. Run `git spr update` and it syncs your commit stack to GitHub as individual PRs.
+
+**Where spr shines:** spr has the simplest interface of any stacking tool: one command (`git spr update`) syncs your entire stack. Like ghstack, the commit-centric model keeps your working tree clean &mdash; one branch, one stack. It integrates as a git subcommand, which feels native. The tool is lightweight and focused.
+
+**Where SDF differs:** SDF's branch-centric model provides more flexibility &mdash; you can work on branches independently, add multiple commits per PR, and switch between layers freely. SDF handles the full PR lifecycle (creation, base updates, navigation links, content generation) rather than just syncing state. The AI features (conflict resolution, branch splitting, PR descriptions) address the pain points that make stacking hard at scale.
+
+### vs. Sapling
+
+[Sapling](https://sapling-scm.com) is a full source control system from Meta with native stacking support. It can interact with Git repositories and GitHub but is fundamentally a different SCM.
+
+**Where Sapling shines:** Sapling has first-class stacking built into the SCM itself &mdash; not bolted on as a separate tool. Its `sl` commands, smartlog visualization, and commit-centric model are refined by years of use at Meta scale. If you're willing to adopt a new SCM, it offers the deepest stacking integration of any tool in this list. It also supports non-linear stack topologies that SDF doesn't.
+
+**Where SDF differs:** SDF works with the Git and GitHub workflow your team already uses &mdash; no new SCM to learn, no migration, no tooling changes for CI or code review. The adoption cost is minimal: install a single binary and keep using `git`, `gh`, and GitHub as before. SDF also provides AI features (conflict resolution, branch splitting) that Sapling doesn't have.
+
+### vs. manual `git rebase --update-refs`
+
+Git 2.38 added `--update-refs` to `git rebase`, which automatically updates stacked branch refs during a rebase.
+
+**Where `--update-refs` shines:** It's built into Git &mdash; zero dependencies, zero installation. For engineers who are comfortable with rebase mechanics and only need occasional stacking, it eliminates the most tedious part (updating sibling branch pointers) without adding any tooling.
+
+**Where SDF differs:** `--update-refs` handles local branch ref updates but leaves everything else manual. Here's what a typical sync looks like with `--update-refs` vs. SDF after the bottom PR in a 3-branch stack merges:
+
+With `--update-refs`:
+
+```bash
+git fetch origin
+git checkout main && git pull
+git rebase --update-refs main branch-3
+# resolve any conflicts manually...
+git push --force-with-lease origin branch-2
+git push --force-with-lease origin branch-3
+gh pr edit 201 --base main           # fix PR base (otherwise diff shows all of main)
+gh pr edit 202 --base branch-2       # fix next PR base too
+# manually update PR descriptions if you maintain stack navigation links
+```
+
+With SDF:
+
+```bash
+sdf sync
+```
+
+That single command detects the merge, cascade-rebases both branches, force-pushes them, updates PR bases on GitHub, and refreshes the stack navigation links in every PR description. If a conflict occurs, Claude resolves it using the PR description and upstream diff as context. The manual workflow works, but it scales linearly with the number of branches &mdash; and forgetting the `gh pr edit --base` step leaves GitHub showing broken diffs until you notice.
+
+## When to use SDF
+
+SDF is a good fit when:
+
+- You develop on **GitHub** and want to use stacked PRs
+- You prefer **branch-centric** workflows (one branch per PR)
+- You want a tool that works **alongside** your existing workflow, not a platform that replaces it
+- You value **local-first** tooling &mdash; no accounts, no servers, no vendor dependencies
+- You already use **AI tools** in your development workflow and want that to extend to branch management, conflict resolution, and PR authoring
+
+## When NOT to use SDF
+
+SDF is not the right choice when:
+
+- You use **GitLab, Bitbucket, or another non-GitHub host** &mdash; SDF is GitHub-only
+- You prefer **commit-centric** stacking (one commit = one PR) &mdash; use ghstack or spr instead
+- You need a **platform** with merge queues, analytics, and a web inbox &mdash; use Graphite
+- You need **non-linear** dependency graphs &mdash; SDF supports only linear stacks
+
+## Maturity and status
+
+SDF is in active development (v0.3.x). The command surface is stable and the tool is used in production by its author and early adopters. It is MIT-licensed, open-source, and has no server-side component.
+
+The Claude CLI dependency is **optional**. Without it, SDF falls back to manual conflict resolution and generates PR titles from branch names and commit subjects. Branch splitting (`sdf split`) requires the Claude CLI.
+
+**Install:** `brew install pavelpascari/tap/sdf`
+**Repository:** [github.com/pavelpascari/sdf](https://github.com/pavelpascari/sdf)
+**License:** MIT
+
+---
+
+## Getting Started
+
+Source: https://stacked-diffs-flow.com/docs/getting-started/
+
+Build and sync your first stacked PR chain in under five minutes.
+
+# Getting Started
+
+SDF turns the painful work of managing stacked pull requests into a single command. This guide walks you through creating your first stack, adding layers, and syncing after a PR merges.
+
+## Prerequisites
+
+- **git** &mdash; any recent version
+- **gh** (GitHub CLI) &mdash; authenticated with `gh auth login`
+- **sdf** &mdash; see [Installation](/docs/installation)
+
+Run the health check first:
+
+```bash
+sdf doctor
+```
+
+All green? Set up your environment:
+
+```bash
+# Shell completions -- tab-complete commands, flags, branches, and stacks
+sdf completion install
+
+# Teach Claude Code how to use SDF (optional, requires Claude CLI)
+sdf ai intro
+```
+
+`sdf completion install` auto-detects your shell and writes the completion script to the right location. `sdf ai intro` creates a [skill file](https://docs.anthropic.com/en/docs/claude-code/skills) so Claude remembers SDF commands and workflows across sessions.
+
+---
+
+## 1. Create a stack
+
+A *stack* is a named chain of branches. Each branch becomes a PR that depends on the one above it.
+
+```bash
+# Creates the stack and checks out the first branch in one step
+sdf new --branch db-schema users-feature
+```
+
+This creates:
+
+- A stack named `users-feature` with `main` as the base
+- A branch `users-feature/db-schema` checked out and ready (prefixed with the stack name by default)
+- `.sdf/stacks/users-feature.json` to track topology
+
+Output:
+
+```
+Initialized stack "users-feature" (base: main)
+Created branch "users-feature/db-schema" (based on main)
+
+Next steps:
+  sdf pr               Create a pull request
+  sdf branch <name>    Add another branch to the stack
+  sdf status           View stack topology
+```
+
+## 2. Write code and create the PR
+
+Do your work on the branch, commit as usual, then create a pull request:
+
+```bash
+# ... implement schema migration ...
+git add -A && git commit -m "add users table migration"
+
+sdf pr
+```
+
+This pushes the branch and runs `gh pr create` with a body that identifies the stack:
+
+```
+Part of stack: **users-feature**
+
+Base: `main`
+```
+
+SDF also updates all PR descriptions in the stack with navigation links so reviewers can jump between related PRs.
+
+## 3. Add more layers
+
+```bash
+sdf branch repository
+# ... implement UserRepository ...
+sdf pr
+
+sdf branch controller
+# ... implement endpoints ...
+sdf pr
+```
+
+Each `sdf branch` creates a new branch prefixed with the stack name (e.g. `users-feature/repository`, `users-feature/controller`) and positions it after your current branch in the stack.
+
+Check the stack at any time:
+
+```bash
+sdf status
+```
+
+```
+  users-feature  (base: main)
+
+ → ● users-feature/db-schema      PR #142  open      in sync
+   ● users-feature/repository     PR #143  open      in sync
+   ● users-feature/controller     PR #144  open      in sync
+```
+
+The `→` marker shows which branch you currently have checked out. Each line shows the branch name, PR number, status, and sync state.
+
+## 4. Sync after a merge
+
+When PR #142 (db-schema) is approved and merged:
+
+```bash
+sdf sync
+```
+
+SDF will:
+
+1. Fetch from origin and fast-forward the base branch
+2. Query GitHub for merged PRs and update their status in the stack
+3. Rebase each downstream branch onto its new parent (skipping merged nodes)
+4. Push updated branches with `git push --force-with-lease`
+5. Update PR base branches on GitHub so diffs render correctly
+
+If conflicts occur, SDF presents an interactive menu:
+
+- **Ask Claude to resolve** (if Claude CLI is installed) &mdash; Claude reads the upstream changes and the PR description to attempt automatic resolution
+- **Fix it yourself** &mdash; pauses the sync so you can resolve manually, then resume with `sdf sync --continue`
+- **Skip this branch** &mdash; aborts the rebase for that branch and continues with the rest
+- **Abort sync** &mdash; stops everything
+
+Merged nodes stay in the stack as completed entries rather than being removed, so you can see the full history with `sdf status`.
+
+---
+
+## Alternative: split an existing branch
+
+Already have a large branch you want to break into reviewable pieces? `sdf split` uses Claude to decompose it into a stack automatically:
+
+```bash
+sdf split --from feature/big-change --stack my-feature
+```
+
+Claude analyzes the diff, identifies semantic themes, and proposes a split plan. After your review, SDF creates the branches, validates the split is lossless, pushes, and creates PRs. The original branch is never modified.
+
+See [AI Features](/docs/ai-features) for details on how the analysis works, and the [Commands reference](/docs/commands) for all `sdf split` flags.
+
+---
+
+## What's next
+
+- [Core Concepts](/docs/core-concepts) &mdash; understand stacks, nodes, and how branches are organized
+- [Commands](/docs/commands) &mdash; full command reference
+- [AI Features](/docs/ai-features) &mdash; how Claude integrates for branch splitting, conflict resolution, and PR content
+
+---
+
+## What Are Stacked Diffs?
+
+Source: https://stacked-diffs-flow.com/docs/what-are-stacked-diffs/
+
+A practical explanation of stacked pull requests, why teams use them, and how SDF automates the maintenance work.
+
+# What Are Stacked Diffs?
+
+Stacked diffs (also called stacked pull requests) are a way to split one large feature into a sequence of smaller PRs that depend on each other.
+
+Instead of opening one 2,000-line PR, you open a stack like this:
+
+```text
+main <- db-schema <- repository <- controller
+         PR #1        PR #2         PR #3
+```
+
+Each PR stays focused on one concern. Reviewers can approve bottom-up, and feedback arrives earlier.
+
+## Why engineers use stacked pull requests
+
+- **Smaller reviews**: focused PRs are easier to read and discuss.
+- **Faster iteration**: design feedback lands before the entire feature is complete.
+- **Lower merge risk**: smaller diffs reduce surprise conflicts.
+- **Parallel progress**: you can keep working on upper layers while lower PRs are under review.
+
+## Why stacked diffs are hard without tooling
+
+When PR #1 changes or merges, every downstream branch must be rebased and force-pushed. Then PR base branches on GitHub often need retargeting.
+
+Manual workflow usually means:
+
+1. Rebase branch 2 onto updated `main`
+2. Rebase branch 3 onto updated branch 2
+3. Push both with `--force-with-lease`
+4. Update PR base targets and navigation links
+
+That maintenance work grows linearly with stack size.
+
+## How SDF helps
+
+SDF automates the painful parts:
+
+- `sdf new` and `sdf branch` create and extend stacks
+- `sdf pr` opens PRs with correct base targets
+- `sdf sync` detects merges, cascade-rebases downstream branches, and updates PR bases
+- `sdf split` decomposes a large branch into a reviewable stack
+
+If you want the full conceptual model, continue with [Core Concepts](/docs/core-concepts). If you want to start right away, use [Getting Started](/docs/getting-started).
+
+---
+
+## Installation
+
+Source: https://stacked-diffs-flow.com/docs/installation/
+
+Install SDF on macOS, Linux, or Windows.
+
+# Installation
+
+SDF ships as a single static binary. Pick the method that fits your workflow.
+
+---
+
+## Homebrew (macOS and Linux)
+
+```bash
+brew install pavelpascari/tap/sdf
+```
+
+Updates are handled by `brew upgrade`.
+
+---
+
+## Go install
+
+If you have Go 1.24 or later:
+
+```bash
+go install github.com/pavelpascari/sdf@latest
+```
+
+The binary is placed in `$GOPATH/bin` (ensure this is on your `$PATH`).
+
+---
+
+## Binary download
+
+Pre-built binaries are available for every platform on the [Releases page](https://github.com/pavelpascari/sdf/releases).
+
+| Platform | Architecture | File |
+|---|---|---|
+| Linux | x86_64 | `sdf-linux-amd64.tar.gz` |
+| Linux | ARM64 | `sdf-linux-arm64.tar.gz` |
+| macOS | Intel | `sdf-darwin-amd64.tar.gz` |
+| macOS | Apple Silicon | `sdf-darwin-arm64.tar.gz` |
+| Windows | x86_64 | `sdf-windows-amd64.zip` |
+| Windows | ARM64 | `sdf-windows-arm64.zip` |
+
+GoReleaser produces a single `checksums.txt` file covering all archives. Verify before running:
+
+```bash
+# Download and verify (Linux x86_64 example)
+curl -LO https://github.com/pavelpascari/sdf/releases/latest/download/sdf-linux-amd64.tar.gz
+curl -LO https://github.com/pavelpascari/sdf/releases/latest/download/checksums.txt
+sha256sum -c --ignore-missing checksums.txt
+tar xzf sdf-linux-amd64.tar.gz
+mv sdf /usr/local/bin/
+```
+
+---
+
+## Build from source
+
+```bash
+git clone https://github.com/pavelpascari/sdf.git
+cd sdf
+make build      # → bin/sdf
+make install    # → $GOPATH/bin/sdf
+```
+
+Requires Go 1.24+.
+
+---
+
+## Runtime dependencies
+
+SDF shells out to other CLIs rather than reimplementing their logic:
+
+| Dependency | Required for | Install |
+|---|---|---|
+| `git` | All operations | Comes with your OS |
+| `gh` | PR operations (`sdf pr`, `sdf sync`) | [cli.github.com](https://cli.github.com) |
+| `claude` | AI features | [claude.ai/code](https://claude.ai/code) |
+
+The Claude CLI is optional. Without it, `sdf sync` will open `$EDITOR` on conflicts instead of resolving them automatically.
+
+Verify everything is in place:
+
+```bash
+sdf doctor
+```
+
+---
+
+## Uninstall
+
+Remove the binary from wherever you placed it. SDF writes no data outside the repositories you use it in (plus `~/.config/sdf/config.json` for global config).
+
+```bash
+# If installed via Homebrew
+brew uninstall sdf
+
+# If installed manually
+rm $(which sdf)
+rm -rf ~/.config/sdf
+```
+
+---
+
+## Core Concepts
+
+Source: https://stacked-diffs-flow.com/docs/core-concepts/
+
+Stacks, nodes, and how SDF models your PR chains.
+
+# Core Concepts
+
+## Design principles
+
+SDF is built around three principles:
+
+**Shell out, don't reimplement.** SDF delegates to `git`, `gh`, and `claude` CLIs. It is pure orchestration &mdash; no custom git library, no custom GitHub API client. This means you get the behavior of the tools you already know and trust.
+
+**PR descriptions are the source of truth.** Since `.sdf/` is local-only, the authoritative record of stack structure and intent lives in the PR descriptions on GitHub. SDF can reconstruct stack topology from the PR graph via `sdf fetch`, making the workflow resilient to lost local state.
+
+**Fail loudly, recover clearly.** When something goes wrong, SDF leaves the repository in a known state and tells you exactly what to run to recover. It never silently swallows errors.
+
+---
+
+Understanding SDF's model makes every command feel obvious. There are two things to know: **stacks** and **nodes**.
+
+---
+
+## Stacks
+
+A *stack* is a named, linear chain of branches that all descend from a common base (usually `main`). Each branch in the chain becomes a pull request that depends on the PR above it.
+
+```
+main
+ └─ users-feature/db-schema      ← PR #142
+     └─ users-feature/repository  ← PR #143
+         └─ users-feature/controller ← PR #144
+```
+
+A repository can have **multiple independent stacks** &mdash; one for each feature being developed in parallel. Each stack has its own JSON file in `.sdf/stacks/<name>.json`, stored locally on your machine.
+
+### Stack JSON
+
+```json
+{
+  "stack_id": "users-feature",
+  "base": "main",
+  "nodes": [
+    { "branch": "users-feature/db-schema",   "pr": 142, "status": "open",   "base_tip": "abc123", "nav_hash": "e3b0c4..." },
+    { "branch": "users-feature/repository",  "pr": 143, "status": "open",   "base_tip": "def456" },
+    { "branch": "users-feature/controller",  "pr": 144, "status": "draft",  "base_tip": "ghi789" }
+  ]
+}
+```
+
+The `base_tip` records the commit hash at the tip of the parent branch at the time of the last sync. This allows SDF to detect when a parent has moved and a rebase is needed.
+
+The optional `nav_hash` is a SHA-256 hash of the PR stack navigation section. SDF uses it to avoid redundant API calls when updating PR descriptions &mdash; if the hash hasn't changed, the description update is skipped.
+
+---
+
+## Nodes
+
+A *node* is one branch (and its corresponding PR) within a stack. Nodes are ordered &mdash; the first node's parent is the stack base, and each subsequent node's parent is the node above it.
+
+### Node status
+
+Each node tracks its PR status. The possible values are:
+
+| Status | Meaning |
+|---|---|
+| `open` | The PR is open and under review. |
+| `draft` | The PR is a draft, not yet ready for review. |
+| `merged` | The PR has been merged into its base. |
+| `closed` | The PR was closed without merging. |
+
+### Merged nodes stay in the stack
+
+When a node's PR merges, `sdf sync` does **not** remove it from the stack. Instead, the node remains in the stack JSON with status `"merged"`. The `ParentBranch()` function skips over merged nodes when computing the effective parent for downstream branches &mdash; so downstream nodes rebase onto the stack base (or the nearest non-merged ancestor) automatically.
+
+This means merged PRs are shown as completed in the stack topology rather than silently disappearing.
+
+---
+
+## Configuration
+
+SDF uses a two-tier configuration system:
+
+- **Global config** &mdash; `~/.config/sdf/config.json`, user-specific defaults
+- **Repo config** &mdash; `.sdf/config.json`, per-repo overrides
+
+Repo config takes precedence over global config on a field-by-field basis. Run `sdf config show` to see the effective merged config.
+
+```json
+{
+  "branch_prefix": {
+    "enabled": true,
+    "scope": "users-feature",
+    "separator": "/"
+  },
+  "pr_title": {
+    "conventional_commits": true,
+    "ticket_pattern": ""
+  },
+  "sync": {
+    "with_content": false
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `branch_prefix.enabled` | bool | Whether new branches are auto-prefixed with the stack ID (default `true`). |
+| `branch_prefix.scope` | string | Scope used as branch prefix and conventional commit scope. If empty, falls back to the stack ID. |
+| `branch_prefix.separator` | string | Character between prefix and branch name (default `"/"`). |
+| `pr_title.conventional_commits` | bool | Generate PR titles with conventional commit format using scope (default `true`). |
+| `pr_title.ticket_pattern` | string | Regex to extract a ticket ID from the branch name for PR titles. |
+| `sync.with_content` | bool | Whether `sdf sync` updates PR titles and descriptions (default `false`). |
+
+---
+
+## Repository layout
+
+```
+.sdf/                                       ← local-only (gitignored)
+  config.json                               ← repo config
+  stacks/
+    users-feature.json                      ← stack topology
+    auth-feature.json                       ← another stack
+  local.json                                ← ephemeral state (sync progress, etc.)
+```
+
+The entire `.sdf/` directory is **local-only** &mdash; it is listed in `.gitignore` and is never pushed to the remote. Each developer's machine maintains its own copy of the stack metadata. PR descriptions on GitHub serve as the shared source of truth for stack structure and context.
+
+---
+
+## Stack resolution
+
+When you run a command that operates on a stack (`sdf sync`, `sdf status`, `sdf branch`, etc.), SDF determines which stack to use with this logic:
+
+1. **Explicit `--stack` flag** &mdash; always takes priority
+2. **Positional argument** &mdash; e.g. `sdf sync my-feature`
+3. **Current branch** &mdash; if your checked-out branch belongs to a stack, that stack is used
+4. **Single stack** &mdash; if there's only one stack in the repo, it's used automatically
+
+If none of these resolve to a stack (e.g. you're on `main` with multiple stacks and didn't specify one), SDF reports an error listing the available stacks. With [shell completions](/docs/getting-started#prerequisites) installed, you can tab-complete stack names directly &mdash; useful when working with multiple stacks.
+
+---
+
+## Local state
+
+The file `.sdf/local.json` stores ephemeral state that should not be shared between developers:
+
+- **Sync progress** &mdash; when a sync is paused for manual conflict resolution, the paused branch, resume index, and original branch are saved here. `sdf sync --continue` reads this to resume.
+- **Split sessions** &mdash; maps stack names to Claude session IDs so split refinement can resume across invocations.
+
+This file is automatically created when needed and can be safely deleted &mdash; SDF recreates it as necessary.
+
+---
+
+## Commands
+
+Source: https://stacked-diffs-flow.com/docs/commands/
+
+Full reference for every sdf command.
+
+import CommandRef from '../../components/CommandRef.astro';
+import cliRef from '../../data/cli-reference.json';
+
+export const cmd = (name) => cliRef.commands.find(c => c.name === name);
+
+# Commands
+
+All commands are run from within a git repository. Most require the repository to have at least one stack registered (via `sdf new` or `sdf fetch`).
+
+---
+
+## Stack management
+
+<CommandRef command={cmd('new')} />
+
+<CommandRef command={cmd('fetch')} />
+
+<CommandRef command={cmd('branch')} />
+
+<CommandRef command={cmd('sync')} />
+
+Steps performed:
+
+1. Fetch from origin and fast-forward the base branch
+2. Query GitHub for the status of each PR in the stack
+3. Reconcile PR states (mark merged nodes, fill in PR numbers)
+4. For each downstream node that needs rebasing: rebase onto new parent, push
+5. Update PR base branches on GitHub when a merged node is skipped
+6. Optionally update PR titles and descriptions (with `--with-content` or if configured)
+7. Update stack navigation links in all PR descriptions
+
+Merged nodes remain in the stack JSON and are displayed as completed. They are not removed. The `ParentBranch()` function skips merged nodes to find the effective parent for rebasing.
+
+**Conflict resolution:** When a rebase conflict occurs, an interactive menu is presented with these options:
+
+- **Ask Claude to resolve** (if `claude` CLI is available)
+- **I'll fix it myself** &mdash; pauses sync; resume later with `sdf sync --continue`
+- **Skip this branch** &mdash; aborts the rebase for this branch, continues with the rest
+- **Abort sync** &mdash; stops the entire sync
+
+After choosing "I'll fix it myself", resolve the conflicts manually, stage the files with `git add`, then run `sdf sync --continue`.
+
+<CommandRef command={cmd('merge')} />
+
+Merges the first open PR in the stack (the "head"), then runs `sdf sync` on the remaining branches. The safe pattern for draining a stack is to run `sdf merge` repeatedly &mdash; this keeps conflicts small by only crossing one squash boundary at a time. See the [Sync Deep Dive](/docs/sync-deep-dive#sdf-merge-vs-sdf-sync) for details.
+
+<CommandRef command={cmd('status')} />
+
+Fetches from origin and fast-forwards the base branch to ensure sync state is accurate. Shows each branch with its PR number, status (open/merged/closed), and whether it needs syncing. Also performs lightweight reconciliation against GitHub PR states and warns about structural drift.
+
+<CommandRef command={cmd('pr')} />
+
+<CommandRef command={cmd('move')} />
+
+<CommandRef command={cmd('split')} />
+
+Uses Claude to analyze the source branch's full diff, identify semantic themes, and propose a split plan. The plan groups changed files into layers ordered by dependency (types/schema first, then APIs, then business logic, then UI). Each layer becomes a branch in the new stack.
+
+**Pipeline:**
+
+1. **Analysis** &mdash; Claude groups changed files into layers by semantic theme. If a file spans multiple layers, a follow-up phase assigns individual hunks
+2. **Plan** &mdash; SDF displays the split plan showing layers, files, and estimated diffs
+3. **Review** &mdash; Interactive prompt to accept, refine (via Claude session), or abort
+4. **Execute** &mdash; Creates branches by extracting per-layer diffs and applying them as patches. Shared files are split at the hunk level
+5. **Validate** &mdash; Verifies `git diff original-branch stack/last-branch` is empty (lossless split)
+6. **Ship** &mdash; Pushes branches, creates PRs with stack navigation links
+
+**Plan refinement:** Choosing "Refine plan" opens a Claude session where you can give natural language instructions to adjust the split (move files between layers, merge layers, rename layers). SDF re-extracts the updated plan automatically.
+
+**Safety:** The original branch is never modified. If validation fails, the split is rolled back. Use `--dry-run` to preview the plan without executing.
+
+---
+
+## Navigation
+
+<CommandRef command={cmd('switch')} />
+
+Short alias: `sdf <branch>` (if no subcommand matches the name).
+
+---
+
+## Configuration
+
+<CommandRef command={cmd('config')} />
+
+---
+
+## Deprecated commands
+
+<CommandRef command={cmd('register')} />
+
+---
+
+## Utilities
+
+<CommandRef command={cmd('doctor')} />
+
+<CommandRef command={cmd('version')} />
+
+<CommandRef command={cmd('completion')} />
+
+Install shell completions for tab-completion of commands, stack names, branch names, and config keys:
+
+```bash
+sdf completion install          # auto-detects your shell
+sdf completion bash > ~/.local/share/bash-completion/completions/sdf
+sdf completion zsh > ~/.zsh/completions/_sdf
+sdf completion fish > ~/.config/fish/completions/sdf.fish
+```
+
+### `sdf ai intro`
+
+Teaches Claude about SDF by spawning a Claude session that introduces the tool's commands, workflows, and conventions. Claude creates a skill file for future sessions so it remembers SDF context.
+
+```bash
+sdf ai intro
+```
+
+Requires the Claude CLI.
+
+### `sdf help`
+
+Show usage information and list all available commands.
+
+```bash
+sdf help
+```
+
+---
+
+## Configuration
+
+Source: https://stacked-diffs-flow.com/docs/configuration/
+
+Two-tier configuration for repos and individual users.
+
+import ConfigRef from '../../components/ConfigRef.astro';
+import cliRef from '../../data/cli-reference.json';
+
+# Configuration
+
+SDF uses a two-tier configuration system that separates team-wide settings from personal preferences.
+
+---
+
+## Config files
+
+| File | Scope | Location |
+|---|---|---|
+| `.sdf/config.json` | Repository | Local-only (inside gitignored `.sdf/` directory) |
+| `~/.config/sdf/config.json` | User (global) | Per-machine |
+
+When both files exist, repository config takes precedence on a field-by-field basis. Missing files are not errors &mdash; SDF works without any config file, using built-in defaults.
+
+Run `sdf config show` to see the effective merged result.
+
+---
+
+## Available settings
+
+### `branch_prefix`
+
+Controls automatic branch name prefixing when creating branches with `sdf branch`. This is a nested object with three sub-fields.
+
+#### `branch_prefix.enabled`
+
+Whether branch prefix enforcement is active.
+
+- Type: `boolean`
+- Default: `true`
+
+#### `branch_prefix.scope`
+
+The scope used as both the branch prefix and the conventional commit scope. When empty, falls back to the stack ID.
+
+- Type: `string`
+- Default: `""` (uses stack ID)
+
+#### `branch_prefix.separator`
+
+The character placed between the prefix and the branch name.
+
+- Type: `string`
+- Default: `"/"`
+
+```json
+{
+  "branch_prefix": {
+    "enabled": true,
+    "scope": "team-name",
+    "separator": "/"
+  }
+}
+```
+
+With this config, `sdf branch add-logging` creates `team-name/add-logging` instead of `add-logging`.
+
+---
+
+### `pr_title`
+
+Controls how PR titles are generated. This is a nested object with two sub-fields.
+
+#### `pr_title.conventional_commits`
+
+PR titles follow the [Conventional Commits](https://www.conventionalcommits.org/) style, using the scope as the conventional commit scope (e.g., `feat(auth): add logging`).
+
+- Type: `boolean`
+- Default: `true`
+
+#### `pr_title.ticket_pattern`
+
+A regex pattern used to extract a ticket ID from the branch name and include it in the PR title.
+
+- Type: `string`
+- Default: `""` (disabled)
+
+```json
+{
+  "pr_title": {
+    "conventional_commits": true,
+    "ticket_pattern": "[A-Z]+-[0-9]+"
+  }
+}
+```
+
+---
+
+### `sync`
+
+Controls behavior during `sdf sync`. This is a nested object.
+
+#### `sync.with_content`
+
+When enabled, `sdf sync` also updates PR titles and descriptions using Claude CLI.
+
+- Type: `boolean`
+- Default: `false`
+
+```json
+{
+  "sync": {
+    "with_content": true
+  }
+}
+```
+
+---
+
+## Setting values
+
+Use `sdf config set` to update individual keys. Valid keys are dot-separated paths into the config structure.
+
+```bash
+# Set in repo config (.sdf/config.json)
+sdf config set branch_prefix.enabled true
+sdf config set branch_prefix.scope team-name
+sdf config set branch_prefix.separator /
+sdf config set pr_title.conventional_commits false
+sdf config set pr_title.ticket_pattern "[A-Z]+-[0-9]+"
+sdf config set sync.with_content true
+
+# Set in global config (~/.config/sdf/config.json)
+sdf config set --global branch_prefix.scope my-username
+```
+
+Or edit the JSON files directly &mdash; they are plain JSON with no schema enforcement beyond what SDF reads.
+
+### Valid keys
+
+<ConfigRef keys={cliRef.config_keys} />
+
+---
+
+## Example repo config
+
+```json
+{
+  "branch_prefix": {
+    "enabled": true,
+    "scope": "team-name",
+    "separator": "/"
+  },
+  "pr_title": {
+    "conventional_commits": true
+  }
+}
+```
+
+Save this as `.sdf/config.json` in any repo to use these settings. Since `.sdf/` is local-only, each developer creates this file on their own machine (or it is created automatically by `sdf new` and `sdf fetch`).
+
+---
+
+## Example global config
+
+```json
+{
+  "branch_prefix": {
+    "scope": "my-username"
+  },
+  "sync": {
+    "with_content": true
+  }
+}
+```
+
+This lives in `~/.config/sdf/config.json` and applies to all repositories on your machine. Repo-level values override these on a field-by-field basis.
+
+---
+
+## AI Features
+
+Source: https://stacked-diffs-flow.com/docs/ai-features/
+
+How SDF uses Claude for branch splitting, conflict resolution, and PR content generation.
+
+# AI Features
+
+SDF integrates with the [Claude CLI](https://claude.ai/code) to provide three AI-powered capabilities: **branch splitting** via `sdf split`, **semantic conflict resolution** during sync and move operations, and **PR title and description generation**.
+
+Conflict resolution and PR content generation are optional &mdash; without the Claude CLI installed, SDF falls back to manual conflict resolution and local title generation from branch names and commit subjects. Branch splitting requires the Claude CLI.
+
+---
+
+## Branch splitting
+
+`sdf split` uses Claude as its analysis engine to decompose a large branch into a stack of focused PRs. This is the most AI-intensive feature in SDF &mdash; Claude is involved in every phase of the pipeline.
+
+### File-level grouping
+
+Claude receives the full diff and list of changed files between the base and source branches. It groups files into coherent layers &mdash; each representing a candidate PR &mdash; based on semantic themes: schema changes, API endpoints, business logic, UI components, etc.
+
+A file typically appears in exactly one layer. When a file's changes clearly serve multiple concerns, it may appear in multiple layers &mdash; SDF handles this with hunk-level splitting in a follow-up phase.
+
+### Dependency ordering
+
+Claude determines the natural dependency order between layers: types and schemas before interfaces, APIs before business logic, business logic before UI. Tests travel with the code they test.
+
+### Hunk-level splitting
+
+When the same file contains changes from multiple themes, Claude assigns individual hunks to the appropriate layer. SDF validates these assignments against the actual diff to ensure every hunk is accounted for and no hunk appears in multiple layers.
+
+### Plan refinement
+
+After the initial plan is generated, you can open an interactive Claude session to refine it with natural language instructions. SDF re-extracts the updated plan and handles any shared file reassignment automatically.
+
+### Session management
+
+Split analysis uses a persistent Claude session named `split-analysis`. This session is reused during plan refinement, allowing Claude to maintain context across the full split workflow. The session ID is saved in `.sdf/local.json` so you can resume it later with `claude --resume <id>`.
+
+---
+
+## Semantic conflict resolution
+
+When `sdf sync` triggers a cascade rebase and encounters a conflict, SDF presents an interactive menu:
+
+1. **Ask Claude to resolve** (only shown if the Claude CLI is installed)
+2. **I'll fix it myself (pauses sync)** &mdash; leaves the rebase in progress so you can resolve manually, then run `sdf sync --continue`
+3. **Skip this branch** &mdash; aborts the rebase for this branch and continues with the rest of the stack
+4. **Abort sync** &mdash; aborts the entire sync operation
+
+If you choose Claude, SDF invokes it with:
+
+1. **An upstream change diff summary** &mdash; a summary of what changed in the parent branch since the current branch was last rebased
+2. **The current branch's PR description** &mdash; fetched from GitHub, used as context for what this branch is trying to do
+3. **The conflicted file contents** &mdash; the full files with standard conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+
+Claude resolves each conflict file and writes the resolution back to disk. SDF then stages the files and runs `git rebase --continue`.
+
+### Fallback behavior
+
+If Claude's resolution fails (output cannot be parsed, or the rebase still fails after applying the resolution), SDF presents a second menu:
+
+1. **I'll fix the rest myself (pauses sync)** &mdash; same as the manual resolution flow
+2. **Skip this branch, continue with the rest**
+3. **Abort sync entirely**
+
+If the Claude CLI is not installed, the "Ask Claude to resolve" option is simply not shown in the menu.
+
+### Conflict resolution during move
+
+The `sdf move` command also uses Claude for conflict resolution. When cherry-picking or rebasing during a commit move encounters conflicts, SDF automatically invokes Claude (if available) with the same prompt structure: upstream diff summary, PR description, and conflicted file contents. If Claude fails, the rebase is aborted and you are asked to resolve manually.
+
+---
+
+## PR title and description generation
+
+The `sdf sync --with-content` flag (or the `sync.with_content` config option) uses Claude to generate PR titles and descriptions for all open PRs in the stack.
+
+```bash
+# One-time flag
+sdf sync --with-content
+
+# Or set permanently in config
+sdf config set sync.with_content true
+```
+
+When enabled, after the rebase phase completes, SDF processes each open PR in parallel:
+
+### Title generation
+
+Claude receives the branch name, commit subjects, and the full diff against the parent branch. It generates a short, descriptive title (under 60 characters, lowercase, no conventional commit prefix). SDF prepends the conventional commit prefix (e.g., `feat: `) if configured.
+
+If the current title is already accurate, Claude is instructed to keep it unchanged. SDF also compares the proposed title against the existing one using word-level similarity and skips the update if they are close enough.
+
+### Description generation
+
+Claude receives the same inputs (branch, commits, diff) plus any existing description. It generates 2-5 sentences explaining what the change does and why. Descriptions are placed between `<!-- sdf:description -->` markers in the PR body, preserving any other content (like stack navigation links).
+
+### Without Claude
+
+If the Claude CLI is not installed, `--with-content` still updates PR titles using a local algorithm based on branch names and commit subjects. Description generation requires Claude and is skipped without it.
+
+---
+
+## Claude CLI sessions
+
+SDF creates session names for Claude invocations using a dash-separated format:
+
+```
+conflict-feature-branch-name
+pr-title-feature-branch-name
+pr-desc-feature-branch-name
+```
+
+The prefix (`conflict`, `pr-title`, `pr-desc`) is determined by the call site. Branch names have slashes and spaces replaced with dashes. The session name is passed to `claude -p` for call-site clarity but is not currently used by the CLI for resumability.
+
+---
+
+## Teaching Claude about SDF
+
+The `sdf ai intro` command spawns a Claude session that teaches Claude about SDF's commands, workflows, and conventions. Claude then creates a skill file so it remembers SDF context in future sessions:
+
+```bash
+sdf ai intro
+```
+
+This is useful when you want Claude to assist with SDF-managed repositories &mdash; after running `ai intro`, Claude understands stack topology, branch naming conventions, and how to use SDF commands correctly.
+
+---
+
+## AI and JSON mode
+
+When `sdf sync --json` encounters a conflict, it cannot display the interactive resolution menu. Instead, the conflict is reported in the JSON output and the sync aborts. To use AI conflict resolution with automation, run `sdf sync` interactively first to resolve any conflicts, then use `--json` for subsequent scripted syncs.
+
+---
+
+## Installing the Claude CLI
+
+```bash
+# macOS
+brew install claude
+
+# Or download from
+# https://claude.ai/code
+```
+
+Verify it's available:
+
+```bash
+sdf doctor
+```
+
+---
+
+## Privacy and data
+
+When SDF invokes Claude, it sends:
+
+- **For branch splitting:** the full diff between base and source branch, and the list of changed files. For shared files (Phase 2), individual file diffs with numbered hunks
+- **For conflict resolution:** upstream diff summaries, PR descriptions from GitHub, and file contents with conflict markers
+- **For PR content generation:** branch diffs, commit subjects, and existing PR titles/descriptions
+
+SDF does not send credentials, tokens, or any data outside your repository. The Claude CLI uses your existing Claude account and applies your account's data handling settings.
+
+---
+
+## Tips for better AI results
+
+**Write good PR descriptions.** During conflict resolution, Claude receives the PR description as its primary context for understanding what your branch is trying to do. A description like "Adds users table" is less useful than "Adds the `users` table with columns `id`, `email`, `created_at`; uses `pgx/v5` driver; AppError pattern for DB errors."
+
+**Document constraints in PR descriptions.** If a downstream branch depends on a specific function signature or interface from upstream, mention it in the PR description. Claude will use this to preserve it during conflict resolution.
+
+**Review resolved files.** Claude's resolutions are good but not infallible. After a sync with AI-resolved conflicts, review the diff of each rebased branch before pushing.
+
+**Review generated PR content.** Claude-generated titles and descriptions are a starting point. Review and edit them to ensure they accurately represent your changes.
+
+---
+
+## Sync Deep Dive
+
+Source: https://stacked-diffs-flow.com/docs/sync-deep-dive/
+
+How sdf sync works -- cascade rebase, reconciliation, conflict resolution, and PR updates.
+
+# Sync Deep Dive
+
+`sdf sync` is the core command in SDF. It detects what has changed on GitHub, rebases branches that need updating, pushes them, and updates PR metadata. This page explains every step in detail.
+
+---
+
+## The sync loop
+
+When you run `sdf sync`, SDF executes this sequence:
+
+1. **Fetch from origin** and fast-forward the base branch (e.g. `main`)
+2. **Query GitHub** for the status of each PR in the stack
+3. **Reconcile** PR states &mdash; mark merged nodes, fill in PR numbers, warn on drift
+4. **Compute a sync plan** &mdash; determine which branches need rebasing
+5. **Show the plan** and ask for confirmation (unless `-y`)
+6. **Cascade rebase** each branch that needs updating, push, and update PR bases
+7. **Offer to create PRs** for branches that don't have one
+8. **Update PR content** &mdash; titles and descriptions (if `--with-content`)
+9. **Update stack navigation** &mdash; the linked list of PRs in each PR description
+
+---
+
+## Step by step
+
+### 1. Fetch and fast-forward
+
+SDF runs `git fetch` to get the latest remote state, then fast-forwards the base branch (e.g. `origin/main → main`) so that local branch refs are current. If the fast-forward fails (e.g. local commits on main), SDF warns but continues.
+
+### 2. Query GitHub for PR states
+
+SDF calls `gh` to fetch the current state of every PR in the stack &mdash; open, merged, closed, plus the base branch and CI/review status. This is the data that drives reconciliation.
+
+### 3. Reconcile
+
+Reconciliation compares the local stack state (in `.sdf/stacks/<name>.json`) against what GitHub reports. Changes fall into two categories:
+
+**Routine changes** are applied automatically and silently:
+- A PR's status changed (e.g. `open → merged`) &mdash; the node is updated
+- A PR number was discovered for a branch that had none &mdash; the number is filled in
+
+**Notable changes** are displayed as warnings and require attention:
+- A PR's base branch on GitHub doesn't match the expected parent in the stack
+- A branch that was in the local stack is no longer in the PR chain on GitHub
+- Branches have been reordered relative to the local stack
+
+Notable changes are not applied automatically. If the drift is significant, use `sdf fetch` to re-discover the stack from GitHub's PR graph. Note that `sdf fetch` creates a **new local stack** to track the discovered PR chain &mdash; it does not modify the existing stack in place. You may need to remove the stale stack manually after verifying the fetched one is correct.
+
+### 4. Compute the sync plan
+
+SDF walks the stack from bottom to top. For each non-merged node, it compares the node's `base_tip` (the commit hash of the parent branch at the time of the last sync) against the current tip of the parent branch. If they differ, the branch needs rebasing.
+
+The plan is a list of actions:
+- **skip-merged** &mdash; acknowledge that a node's PR was merged (no rebase needed)
+- **rebase** &mdash; the parent branch has moved; this branch needs `git rebase --onto`
+- **update-pr-base** &mdash; the PR's base branch on GitHub needs changing (because a merged node was skipped)
+
+### 5. Cascade rebase
+
+This is the core operation. For each branch that needs rebasing, SDF runs:
+
+```
+git rebase --onto <new-parent-tip> <old-base-tip> <branch>
+```
+
+The `--onto` form is critical. It tells git: "take the commits unique to `<branch>` (those after `<old-base-tip>`) and replay them on top of `<new-parent-tip>`." This cleanly handles the case where the parent branch has been rebased or squash-merged.
+
+After a successful rebase, SDF:
+- Updates the node's `base_tip` to the new parent tip
+- Force-pushes the branch with `--force-with-lease`
+- Updates the PR's base branch on GitHub if the parent branch name changed (e.g. when a merged node is skipped, downstream PRs need their base changed from the merged branch to the next open branch or to `main`)
+
+#### How `base_tip` works
+
+Every node in the stack stores a `base_tip` &mdash; the commit SHA at the tip of its parent branch at the time of the last sync. This is how SDF knows whether a branch is "in sync" or "needs sync":
+
+```
+Before sync:
+  main (tip: abc123)
+    └─ auth (base_tip: abc123, in sync)
+        └─ api (base_tip: def456, in sync)
+
+After a commit is pushed to auth:
+  main (tip: abc123)
+    └─ auth (tip: ghi789)  ← new commits
+        └─ api (base_tip: def456)  ← stale! parent moved
+```
+
+When SDF syncs, it rebases `api` onto the new tip of `auth`, then updates `api`'s `base_tip` to `ghi789`.
+
+#### What happens when a PR merges
+
+When the bottom PR in a stack merges (e.g. `auth` merges into `main`), the stack topology changes:
+
+```
+Before:
+  main ← auth (merged) ← api ← ui
+
+After sync:
+  main ← api ← ui
+```
+
+SDF detects the merge during reconciliation, marks the node as `merged`, then rebases `api` onto `main` (skipping the merged `auth` node). It also runs `gh pr edit <api-PR> --base main` to update the PR's base on GitHub &mdash; without this step, GitHub would show every commit from `main` in the PR diff.
+
+The `ParentBranch()` function handles this transparently: it walks backward through the node list, skipping merged nodes, until it finds an open node or reaches the base branch.
+
+### 6. Conflict resolution
+
+When a rebase produces conflicts, SDF presents an interactive menu with four options:
+
+**Claude resolution** &mdash; SDF builds a prompt containing the upstream change summary, the PR description from GitHub, and the full content of every conflicted file (with conflict markers). Claude resolves the conflicts in place, SDF stages the resolved files, and the rebase continues. If Claude fails to produce valid resolutions, SDF falls back to the other options.
+
+**Manual resolution (pause)** &mdash; SDF saves the sync progress to `.sdf/local.json` and exits. You resolve the conflicts in your editor, stage the files, and run `sdf sync --continue` to resume. The saved state includes which branch was paused, which node index to resume from, and which branch you were on before the sync started.
+
+**Skip branch** &mdash; SDF aborts the rebase for this branch and continues with the rest of the stack. Branches that depend on the skipped branch are also skipped (blocked). Run `sdf sync` again later to retry.
+
+**Abort** &mdash; SDF aborts the rebase and stops the sync entirely. No branches are left in a partial state.
+
+### 7. Offer to create missing PRs
+
+After the rebase phase, SDF checks for open branches that don't have a PR yet. For each one, it prompts you to create a PR. If you accept, SDF pushes the branch and runs `gh pr create` with an auto-generated title.
+
+### 8. Update PR content
+
+If `--with-content` is passed (or `sync.with_content` is set to `true` in config), SDF updates the title and description of every open PR in the stack:
+
+- **Titles** are generated from conventional commit subjects (if enabled) or branch names. If Claude is available, it generates titles from the diff. SDF uses a similarity threshold (Jaccard similarity of 0.8) to avoid noisy updates when the title hasn't meaningfully changed.
+- **Descriptions** are generated by Claude from the branch diff and commit messages. A higher similarity threshold (0.85) prevents unnecessary updates.
+
+Title and description updates run in parallel across all PRs for speed.
+
+### 9. Update stack navigation
+
+SDF maintains a navigation section in each PR description that shows the full stack with links to every PR. After sync, it updates these navigation links in all PRs. A content hash prevents unnecessary GitHub API calls when nothing has changed.
+
+---
+
+## `sdf sync --continue`
+
+When a sync was paused for manual conflict resolution, `--continue` resumes it. SDF checks three conditions:
+
+1. **Rebase still in progress** &mdash; runs `git rebase --continue` (you must have staged all resolved files first)
+2. **Rebase completed externally** &mdash; if the parent tip is an ancestor of the paused branch, the rebase was completed outside SDF (e.g. you ran `git rebase --continue` manually). SDF acknowledges this and continues.
+3. **Rebase was aborted** &mdash; if the parent tip is NOT an ancestor, the rebase was aborted. SDF clears the saved progress and starts a fresh sync.
+
+After handling the paused branch, SDF resumes the sync loop from the next node.
+
+---
+
+## `sdf merge` vs. `sdf sync`
+
+`sdf merge` combines merging and syncing into a single safe operation:
+
+1. Finds the first open PR in the stack (the "head")
+2. Retargets the next PR's base to the stack base (prevents GitHub from auto-closing it when the head branch is deleted)
+3. Merges the head PR via `gh pr merge` (default: squash)
+4. Marks the node as merged
+5. Runs a full `sdf sync` on the remaining branches
+
+The key insight from the [squash-merge conflict cascade](/docs/case-studies/squash-merge-conflict-cascade) case study: merging one PR at a time and syncing after each merge keeps conflicts small. Batch-merging multiple PRs creates a cascade of conflicts because downstream branches were written on top of incremental history that no longer exists after squashing.
+
+**Best practice:** Use `sdf merge` repeatedly to drain a stack from the bottom up, rather than merging PRs directly on GitHub.
+
+---
+
+## Flags reference
+
+| Flag | Effect |
+|---|---|
+| `--yes`, `-y` | Skip the confirmation prompt |
+| `--continue` | Resume after manual conflict resolution |
+| `--with-content` | Update PR titles and descriptions (can also be set via config) |
+| `--stack <name>` | Specify which stack to sync (default: auto-detect from current branch) |
+| `--json` | Output structured JSON result (implies `--yes`, aborts on conflict) |
+
+---
+
+## Splitting Branches
+
+Source: https://stacked-diffs-flow.com/docs/splitting-branches/
+
+How to use sdf split to decompose a large branch into a stack of focused PRs.
+
+# Splitting Branches
+
+`sdf split` takes a large branch and decomposes it into a stack of smaller, focused PRs. Claude analyzes the diff and proposes a split plan &mdash; grouping files by theme, ordering layers by dependency, and handling shared files at the hunk level. The original branch is never modified.
+
+---
+
+## When to use split
+
+Use `sdf split` when you have an existing branch with a large diff that should have been a stack from the start. Common scenarios:
+
+- A feature branch grew to 2,000+ lines and reviewers are struggling
+- You prototyped something in a single branch and want to submit it as reviewable layers
+- You inherited a branch from someone else and need to break it down
+
+If you're starting fresh, use `sdf new` and `sdf branch` to build the stack incrementally. Split is for after-the-fact decomposition.
+
+---
+
+## Prerequisites
+
+- **Claude CLI** &mdash; required. Split uses Claude for analysis, plan generation, and hunk assignment. Install from [claude.ai/code](https://claude.ai/code).
+- **Clean working tree** &mdash; no uncommitted changes
+- **Source branch must not already be in a stack**
+- **Source branch must have 2+ changed files** relative to the base
+
+---
+
+## Basic usage
+
+```bash
+sdf split --from feature/big-change --stack my-feature
+```
+
+Required flags:
+- `--from <branch>` &mdash; the source branch to split
+- `--stack <name>` &mdash; the name for the new stack that will hold the split layers
+
+Optional flags:
+- `--base <branch>` &mdash; base branch (default: auto-detected from `origin/HEAD`)
+- `--dry-run` &mdash; show the plan without executing
+- `--yes`, `-y` &mdash; skip the confirmation prompt
+- `--no-push` &mdash; create branches locally without pushing or creating PRs
+
+---
+
+## How it works
+
+### Phase 1: Analysis
+
+Claude receives the full diff between the base branch and the source branch, including the list of changed files, commit log, and file tree. It groups the files into coherent layers &mdash; each representing a candidate PR &mdash; based on semantic themes.
+
+For example, a feature branch touching database migrations, API endpoints, business logic, and tests might be split into:
+
+```
+Layer 1: Database schema (3 files, +120 -0)
+  Migration and model definitions
+
+Layer 2: API endpoints (5 files, +340 -20)
+  HTTP handlers and route registration
+
+Layer 3: Business logic (4 files, +280 -15)
+  Service layer and validation
+
+Layer 4: Tests (6 files, +450 -0)
+  Unit and integration tests
+```
+
+Each file typically appears in exactly one layer. When a file's changes serve multiple concerns, it may appear in multiple layers &mdash; SDF handles this in the hunk assignment phase.
+
+### Phase 2: Dependency ordering
+
+Claude determines the natural dependency order between layers. Types and schemas come before interfaces, APIs before business logic, business logic before UI. Tests travel with the code they test. The ordering ensures each layer compiles and passes tests independently.
+
+### Phase 3: Display and decision
+
+After analysis, SDF displays the split plan showing each layer's name, description, file count, and line statistics. You then choose one of three actions:
+
+- **Execute** &mdash; proceed with the split as proposed
+- **Refine** &mdash; open an interactive Claude session to adjust the plan with natural language instructions (e.g., "move the validation files to layer 2" or "merge layers 3 and 4")
+- **Abort** &mdash; cancel the split
+
+### Phase 4: Hunk-level splitting (if needed)
+
+When the same file appears in multiple layers (shared files), SDF assigns individual diff hunks to the appropriate layer. Claude examines each hunk and assigns it based on its semantic content. SDF validates that every hunk is accounted for and no hunk appears in multiple layers.
+
+If hunk assignment fails (Claude can't produce valid assignments), SDF falls back to keeping each shared file in its first layer only.
+
+### Phase 5: Execution
+
+SDF creates the stack and branches:
+
+1. Initializes the stack with `sdf new`
+2. For each layer, creates a branch and applies the layer's changes
+3. Validates tree identity &mdash; confirms that the tip of the last branch is identical to the source branch (lossless split)
+4. Pushes all branches to origin
+5. Creates PRs for each branch with auto-generated titles
+
+If validation fails (the split is not lossless), SDF rolls back &mdash; deletes the created branches and stack &mdash; and reports the error.
+
+### Phase 6: Session management
+
+The Claude session ID is saved in `.sdf/local.json` so you can resume the analysis session later:
+
+```bash
+claude --resume <session-id>
+```
+
+The session ID is displayed at the end of the split output.
+
+---
+
+## Worked example
+
+```bash
+# You have a large branch with 15 changed files
+$ sdf split --from feature/user-management --stack users
+
+Analyzing feature/user-management...
+
+Split plan for users (base: main)
+──────────────────────────────────────────────────
+
+  Layer 1: Database models (3 files, +145 -0)
+    User and role table migrations, model structs
+
+  Layer 2: Repository layer (4 files, +230 -12)
+    CRUD operations for users and roles
+
+  Layer 3: API handlers (5 files, +380 -25)
+    REST endpoints for user management
+
+  Layer 4: Integration tests (3 files, +290 -0)
+    End-to-end tests for all endpoints
+
+  Total: 15 files across 4 layers
+
+? What would you like to do?
+  > Execute this split
+    Refine plan (opens Claude session)
+    Abort
+```
+
+After execution:
+
+```
+  ✓ Layer 1: users/database-models -- 3 files applied
+  ✓ Layer 2: users/repository-layer -- 4 files applied
+  ✓ Layer 3: users/api-handlers -- 5 files applied
+  ✓ Layer 4: users/integration-tests -- 3 files applied
+  ✓ Tree identity verified -- split is lossless
+
+Pushing branches to origin...
+  ✓ users/database-models
+  ✓ users/repository-layer
+  ✓ users/api-handlers
+  ✓ users/integration-tests
+
+Creating pull requests...
+  ✓ PR #201: users/database-models → main
+  ✓ PR #202: users/repository-layer → users/database-models
+  ✓ PR #203: users/api-handlers → users/repository-layer
+  ✓ PR #204: users/integration-tests → users/api-handlers
+
+✓ Split complete -- 4 branches created in stack "users"
+```
+
+---
+
+## Refining the plan
+
+If the initial plan isn't quite right, choose "Refine plan" to open an interactive Claude session. You can give natural language instructions:
+
+- "Move `internal/validation.go` from layer 3 to layer 2"
+- "Merge layers 2 and 3 into a single layer"
+- "Split the tests into their own layer"
+- "Rename layer 1 to 'Schema changes'"
+
+After you exit the Claude session (`/exit`), SDF re-extracts the updated plan and handles any shared file reassignment automatically.
+
+---
+
+## Dry run
+
+Use `--dry-run` to see the plan without executing:
+
+```bash
+sdf split --from feature/big-change --stack my-feature --dry-run
+```
+
+This runs the full analysis phase and displays the plan, but does not create any branches, push, or create PRs.
+
+---
+
+## Local-only split
+
+Use `--no-push` to create branches locally without pushing or creating PRs:
+
+```bash
+sdf split --from feature/big-change --stack my-feature --no-push
+```
+
+You can then inspect the branches locally, push them manually, and create PRs with `sdf pr` from each branch.
+
+---
+
+## What can go wrong
+
+**Analysis fails:** If Claude can't produce a valid split plan, the command fails without modifying anything.
+
+**Validation fails (not lossless):** If the final tree doesn't match the source branch exactly, SDF rolls back all created branches and the stack. This means a bug in the splitting logic &mdash; report it.
+
+**Hunk assignment fails:** If shared files can't be split at the hunk level, SDF falls back to keeping each shared file in whichever layer it first appears. The split may still be valid, but some files might not land in their ideal layer.
+
+**Push fails:** If pushing fails for some branches, SDF skips PR creation and tells you to push manually, then create PRs with `sdf pr`.
+
+---
+
+## Multiple Stacks
+
+Source: https://stacked-diffs-flow.com/docs/multiple-stacks/
+
+Managing several independent stacks in a single repository.
+
+# Multiple Stacks
+
+A single repository can have multiple independent stacks, each with its own base branch and set of branches. This is useful when you're working on several features in parallel.
+
+---
+
+## Creating multiple stacks
+
+Each `sdf new` call creates a separate stack:
+
+```bash
+# First stack: authentication feature
+sdf new auth-feature --branch login-page
+# ... work on auth ...
+sdf branch session-api
+sdf branch logout
+
+# Second stack: billing feature
+sdf new billing --branch models
+# ... work on billing ...
+sdf branch stripe-integration
+```
+
+You now have two independent stacks:
+
+```
+auth-feature (base: main)
+  └─ auth-feature/login-page
+      └─ auth-feature/session-api
+          └─ auth-feature/logout
+
+billing (base: main)
+  └─ billing/models
+      └─ billing/stripe-integration
+```
+
+Each stack has its own JSON file in `.sdf/stacks/`:
+
+```
+.sdf/
+  stacks/
+    auth-feature.json
+    billing.json
+```
+
+---
+
+## Stack resolution
+
+When you run a command like `sdf sync`, `sdf status`, or `sdf branch`, SDF needs to know which stack you mean. It resolves the stack using this logic:
+
+1. **Explicit flag** &mdash; if you pass `--stack <name>`, that stack is used
+2. **Positional argument** &mdash; for commands that accept it (e.g., `sdf sync auth-feature`)
+3. **Current branch** &mdash; if your current branch belongs to a stack, that stack is used
+4. **Single stack** &mdash; if there's only one stack in the repo, it's used automatically
+
+If none of these apply (e.g., you're on `main` with multiple stacks), SDF asks you to specify:
+
+```
+$ sdf status
+Error: multiple stacks found -- specify one with --stack <name> or switch to a stack branch
+
+Available stacks:
+  auth-feature  (3 branches)
+  billing       (2 branches)
+```
+
+---
+
+## Switching between stacks
+
+Use `sdf switch` to navigate:
+
+```bash
+# List all branches across all stacks
+$ sdf switch
+
+# Switch to a specific branch
+$ sdf switch auth-feature/login-page
+
+# Shorthand -- omit "switch" when the argument contains a "/"
+$ sdf auth-feature/login-page
+```
+
+When you run `sdf switch` without arguments, it lists every branch from every stack, grouped by stack, with the current branch marked:
+
+```
+$ sdf switch
+
+auth-feature (base: main)
+  → auth-feature/login-page     PR #12  open
+    auth-feature/session-api    PR #13  open
+    auth-feature/logout         PR #14  open
+
+billing (base: main)
+    billing/models              PR #15  open
+    billing/stripe-integration  PR #16  open
+```
+
+---
+
+## Syncing specific stacks
+
+When you're on a branch that belongs to a stack, `sdf sync` syncs that stack automatically. To sync a different stack:
+
+```bash
+# Sync by name
+sdf sync auth-feature
+
+# Or use the flag
+sdf sync --stack billing
+```
+
+---
+
+## Different base branches
+
+Stacks can have different base branches:
+
+```bash
+sdf new hotfix-stack --base release/v2.1 --branch fix-crash
+sdf new feature-stack --base main --branch new-widget
+```
+
+Each stack's sync operates independently against its own base branch.
+
+---
+
+## Branch uniqueness
+
+A branch can only belong to one stack. If you try to add a branch that already exists in another stack, SDF reports an error:
+
+```
+Error: branch "shared-utils" is already in stack "auth-feature"
+```
+
+This prevents ambiguity in stack resolution and ensures each branch has a clear home.
+
+---
+
+## Checking status across stacks
+
+To see the status of a specific stack:
+
+```bash
+sdf status auth-feature
+sdf status billing
+```
+
+Or switch to any branch in the stack and run `sdf status` without arguments.
+
+---
+
+## Fetching & Reconciliation
+
+Source: https://stacked-diffs-flow.com/docs/fetching-stacks/
+
+How to import existing PR stacks from GitHub and keep local state in sync.
+
+# Fetching & Reconciliation
+
+`sdf fetch` discovers PR stacks on GitHub and imports them into your local SDF metadata. This is essential for two scenarios: onboarding a second developer onto an existing stack, and rebuilding local state after it's lost (e.g., cloning a repo where stacks were already created).
+
+---
+
+## Discovering stacks
+
+When you run `sdf fetch`, SDF:
+
+1. Lists all your open PRs via `gh`
+2. Builds a dependency graph from the PR base/head relationships
+3. Finds chains of 2 or more PRs where each PR's base is the previous PR's head
+4. Presents the discovered stacks for you to select
+
+```bash
+$ sdf fetch
+
+Scanning your open PRs (base: main)...
+
+Found 1 potential stack(s):
+
+  [1] base: main
+      ├─ #142  users-feature/db-schema
+      ├─ #143  users-feature/repository
+      └─ #144  users-feature/controller
+
+? Fetch this stack? (Y/n)
+```
+
+A single PR targeting `main` is not a stack &mdash; discovery requires at least 2 chained PRs.
+
+---
+
+## First-time registration
+
+If the discovered stack doesn't match any existing local stack, SDF registers it as a new stack:
+
+1. Creates `.sdf/stacks/<name>.json` with nodes from the PR chain
+2. Infers the stack name from branch prefixes (e.g., branches starting with `users-feature/` become stack `users-feature`)
+3. Detects branch prefix configuration (separator style, scope) and creates `.sdf/config.json` if needed
+4. Fetches all branches from origin so they exist locally
+
+After registration, you can use `sdf sync`, `sdf status`, `sdf branch`, and all other commands normally.
+
+---
+
+## Reconciliation
+
+If the discovered stack matches an existing local stack (by branch overlap), SDF reconciles the differences instead of creating a duplicate.
+
+Reconciliation compares local state against what GitHub reports and classifies each difference:
+
+### Routine changes (applied automatically)
+
+- **Status updates** &mdash; a PR moved from `open` to `merged` or `closed`
+- **PR number fills** &mdash; a branch that had no PR number locally now has one on GitHub
+
+These are applied silently and save you from having to manually update the stack JSON.
+
+### Notable changes (displayed as warnings)
+
+- **Base branch changed** &mdash; the stack's base branch differs between local and GitHub
+- **Branch reordered** &mdash; a branch moved to a different position in the chain
+- **Branch removed** &mdash; a branch in the local stack is no longer in the PR chain on GitHub
+- **Branch inserted** &mdash; a new branch appeared mid-stack that wasn't there locally
+- **Base mismatch** &mdash; a PR's base on GitHub doesn't match the expected parent in the local stack
+- **PR missing** &mdash; a PR number is recorded locally but the PR no longer exists on GitHub
+
+Notable changes are surfaced as warnings during `sdf sync` and `sdf status`. They are not applied automatically because they may indicate unexpected drift that requires human judgment.
+
+---
+
+## Using fetch in a team
+
+When multiple developers work with SDF on the same repository, each maintains their own local `.sdf/` directory. The workflow for a second developer joining an existing stack:
+
+```bash
+# Clone the repo
+git clone https://github.com/org/repo.git
+cd repo
+
+# Install sdf
+brew install pavelpascari/tap/sdf
+
+# Discover and import existing stacks
+sdf fetch
+
+# Now work with the stack normally
+sdf status
+sdf sync
+```
+
+Since `.sdf/` is local-only (gitignored), there is no coordination needed between developers' SDF installations. Each developer independently discovers the stack from the PR graph.
+
+---
+
+## Flags
+
+| Flag | Effect |
+|---|---|
+| `--stack <name>` | Name the stack explicitly (default: auto-inferred from branch prefixes) |
+| `--base <branch>` | Specify the base branch for discovery (default: auto-detected from `origin/HEAD`) |
+| `--json` | Output structured JSON result |
+
+---
+
+## When fetch doesn't find your PRs
+
+See the [troubleshooting guide](/docs/troubleshooting#sdf-fetch-doesnt-find-my-prs) for common causes and fixes.
+
+---
+
+## JSON Output & Scripting
+
+Source: https://stacked-diffs-flow.com/docs/json-output/
+
+Using sdf's --json flag for automation, CI pipelines, and AI agent integration.
+
+# JSON Output & Scripting
+
+Every major SDF command supports a `--json` flag that outputs structured JSON instead of human-readable terminal output. This enables integration with CI pipelines, shell scripts, and AI agents.
+
+---
+
+## Commands with JSON support
+
+| Command | Flag | Notes |
+|---|---|---|
+| `sdf new` | `--json` | |
+| `sdf branch` | `--json` | |
+| `sdf status` | `--json` | |
+| `sdf sync` | `--json` | Implies `--yes`; aborts on conflict |
+| `sdf merge` | `--json` | Requires `--yes` |
+| `sdf pr` | `--json` | |
+| `sdf move` | `--json` | |
+| `sdf fetch` | `--json` | Auto-selects if one stack found |
+| `sdf switch` | `--json` | |
+| `sdf config show` | `--json` | |
+| `sdf config set` | `--json` | |
+| `sdf doctor` | `--json` | |
+
+---
+
+## Output shapes
+
+### sdf new --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "branch": "my-feature/my-feature",
+  "pushed": true
+}
+```
+
+### sdf branch --json
+
+```json
+{
+  "branch": "my-feature/api-layer",
+  "stack": "my-feature",
+  "parent": "my-feature/db-schema"
+}
+```
+
+### sdf status --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "current_branch": "my-feature/api-layer",
+  "nodes": [
+    {
+      "branch": "my-feature/db-schema",
+      "pr": 142,
+      "status": "merged",
+      "sync_state": "in_sync"
+    },
+    {
+      "branch": "my-feature/api-layer",
+      "pr": 143,
+      "status": "open",
+      "sync_state": "needs_sync",
+      "commits_ahead": 3,
+      "is_current": true,
+      "ci_status": "success",
+      "review_status": "approved",
+      "mergeable": "mergeable"
+    }
+  ],
+  "needs_sync": ["my-feature/api-layer"]
+}
+```
+
+### sdf sync --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "branches": [
+    {
+      "branch": "my-feature/db-schema",
+      "pr": 142,
+      "action": "merged"
+    },
+    {
+      "branch": "my-feature/api-layer",
+      "pr": 143,
+      "action": "rebased",
+      "pushed": true,
+      "base_updated": true
+    }
+  ],
+  "pr_updates": [
+    { "pr": 143, "field": "title", "status": "updated" }
+  ]
+}
+```
+
+Possible `action` values: `"merged"`, `"rebased"`, `"in_sync"`, `"failed"`, `"blocked"`.
+
+### sdf merge --json
+
+```json
+{
+  "stack": "my-feature",
+  "merged_pr": 142,
+  "merged_branch": "my-feature/db-schema",
+  "method": "squash",
+  "base": "main",
+  "retargeted_pr": 143,
+  "remaining": 2
+}
+```
+
+### sdf pr --json
+
+```json
+{
+  "number": 145,
+  "url": "https://github.com/org/repo/pull/145",
+  "title": "feat(my-feature): add API endpoints"
+}
+```
+
+### sdf move --json
+
+```json
+{
+  "source": "my-feature/api-layer",
+  "target": "my-feature/db-schema",
+  "commits": ["abc1234", "def5678"]
+}
+```
+
+### sdf fetch --json
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "nodes": [
+    { "branch": "my-feature/db-schema", "pr": 142 },
+    { "branch": "my-feature/api-layer", "pr": 143 }
+  ],
+  "action": "registered"
+}
+```
+
+Possible `action` values: `"registered"`, `"reconciled"`, `"up_to_date"`.
+
+### sdf switch --json
+
+```json
+{
+  "branch": "my-feature/api-layer",
+  "stack": "my-feature",
+  "layer": 2,
+  "total": 3
+}
+```
+
+### sdf doctor --json
+
+```json
+{
+  "dependencies": [
+    { "name": "git", "found": true, "version": "2.43.0", "path": "/usr/bin/git", "required": true },
+    { "name": "gh", "found": true, "version": "2.40.1", "path": "/usr/bin/gh", "required": false },
+    { "name": "claude", "found": false, "required": false }
+  ],
+  "ok": true
+}
+```
+
+---
+
+## Scripting examples
+
+### Check if sync is needed
+
+```bash
+needs_sync=$(sdf status --json | jq -r '.needs_sync | length')
+if [ "$needs_sync" -gt 0 ]; then
+  echo "Stack needs sync"
+  sdf sync -y
+fi
+```
+
+### Get the current branch's PR number
+
+```bash
+pr=$(sdf status --json | jq -r '.nodes[] | select(.is_current) | .pr')
+echo "Current PR: #$pr"
+```
+
+### Check all CI statuses
+
+```bash
+sdf status --json | jq -r '.nodes[] | select(.status == "open") | "\(.branch): CI=\(.ci_status) Review=\(.review_status)"'
+```
+
+### Merge the head PR and report
+
+```bash
+result=$(sdf merge --json --yes)
+merged=$(echo "$result" | jq -r '.merged_pr')
+remaining=$(echo "$result" | jq -r '.remaining')
+echo "Merged PR #$merged, $remaining remaining"
+```
+
+---
+
+## Gotchas
+
+**`sdf sync --json` aborts on conflict.** Since JSON mode cannot display the interactive conflict resolution menu, any rebase conflict causes an immediate abort. The error is included in the JSON output as the `error` field. Run `sdf sync` without `--json` to resolve conflicts interactively.
+
+**`sdf merge --json` requires `--yes`.** The merge command requires explicit confirmation in JSON mode since it performs a destructive operation.
+
+**`sdf fetch --json` with multiple stacks.** If `sdf fetch` discovers multiple stacks and `--json` is specified, it returns an error. Use `--base` to narrow the results to one stack.
+
+**Errors in JSON output.** When a command fails in JSON mode, the error is included in the JSON output as an `error` field rather than being printed to stderr. The command still exits with code 0 so the JSON can be parsed.
+
+---
+
+## Troubleshooting
+
+Source: https://stacked-diffs-flow.com/docs/troubleshooting/
+
+Common errors, recovery procedures, and how to get unstuck.
+
+# Troubleshooting
+
+This page covers common error states and how to recover from them. Headers match the error messages you'll see in your terminal so you can search for them directly.
+
+---
+
+## "working tree is not clean"
+
+**When it happens:** Running `sdf sync`, `sdf move`, or `sdf split` with uncommitted changes.
+
+**Fix:** Commit or stash your changes before running the command:
+
+```bash
+git stash
+sdf sync
+git stash pop
+```
+
+---
+
+## "a rebase is in progress from a previous sync pause"
+
+**When it happens:** Running `sdf sync` when a previous sync was paused for manual conflict resolution and the rebase was never completed or aborted.
+
+**Fix &mdash; if you want to continue resolving:**
+
+```bash
+# Resolve the remaining conflicts in your editor
+git add <resolved-files>
+sdf sync --continue
+```
+
+**Fix &mdash; if you want to start over:**
+
+```bash
+git rebase --abort
+sdf sync
+```
+
+---
+
+## "no paused sync to continue"
+
+**When it happens:** Running `sdf sync --continue` when there is no paused sync to resume.
+
+**Fix:** Run `sdf sync` without `--continue` to start a fresh sync.
+
+---
+
+## "rebase --continue failed"
+
+**When it happens:** Running `sdf sync --continue` when not all conflicts have been resolved, or resolved files haven't been staged.
+
+**Fix:**
+
+```bash
+# Check which files still have conflicts
+git diff --name-only --diff-filter=U
+
+# Resolve them, then stage
+git add <resolved-files>
+
+# Resume
+sdf sync --continue
+```
+
+---
+
+## Claude failed to resolve a conflict
+
+**When it happens:** During `sdf sync`, Claude attempts to resolve a rebase conflict but produces output that can't be applied. The interactive menu reappears with the same four options.
+
+**What to do:**
+
+1. **Try manual resolution.** Choose "Resolve manually" from the menu. SDF pauses the sync and saves progress. Resolve the conflicts in your editor, stage the files, and run `sdf sync --continue`.
+
+2. **Skip the branch.** If you don't need this branch right now, choose "Skip branch." The branch stays unrebased and SDF continues with the rest of the stack. You can retry later with `sdf sync`.
+
+3. **Abort.** Choose "Abort" to stop the sync entirely. No branches are left in a partial state.
+
+---
+
+## I merged multiple PRs on GitHub without running sync between each
+
+**What happens:** When several PRs are squash-merged at once, downstream branches were written on top of incremental commit history that no longer exists in the squashed main branch. The rebase may produce many conflicts because git can't match context lines across multiple squash boundaries.
+
+**How to recover:**
+
+1. Run `sdf sync`. It will attempt to rebase the remaining branches.
+2. If Claude can resolve the conflicts, the sync completes normally.
+3. If conflicts are too large, resolve them manually or abort and consider the `sdf merge` workflow going forward.
+
+**How to prevent this:** Use `sdf merge` to merge one PR at a time. It merges the head PR, runs sync automatically, and keeps conflicts small and manageable.
+
+```bash
+sdf merge              # merges the first open PR, then syncs
+# wait for CI, then:
+sdf merge              # merges the next one
+```
+
+---
+
+## I merged PRs out of order on GitHub
+
+**What happens:** If PR #2 in a stack is merged before PR #1, `sdf sync` detects the merge via GitHub and attempts to rebase. The result depends on how much the out-of-order merge overlaps with other branches.
+
+**How to recover:**
+
+1. Run `sdf sync`. It will reconcile the PR states from GitHub and attempt the cascade rebase.
+2. Expect conflicts if the merged PR's changes overlap with branches that assumed a different order.
+3. Resolve conflicts manually or with Claude's assistance.
+
+**How to prevent this:** Merge from the bottom of the stack upward, one at a time.
+
+---
+
+## My local stack state is out of sync with GitHub
+
+**What happens:** The local `.sdf/stacks/<name>.json` shows different PR numbers, statuses, or branch order than what exists on GitHub. This can happen if someone else modified PRs, or if you made changes on a different machine.
+
+**How to recover:**
+
+Run `sdf sync`. The first thing sync does is query GitHub for PR states and reconcile:
+
+- **Routine changes** (status updates, PR number fills) are applied automatically.
+- **Notable changes** (base mismatches, reorders, missing PRs) are displayed as warnings.
+
+If the drift is severe, use `sdf fetch` to re-discover the stack from the GitHub PR graph:
+
+```bash
+sdf fetch
+```
+
+This scans all open PRs for branch chains and lets you re-register the stack.
+
+---
+
+## I deleted .sdf/ accidentally
+
+**How to recover:** Use `sdf fetch` to rebuild the stack from GitHub's PR graph:
+
+```bash
+sdf fetch
+```
+
+SDF scans open PRs, discovers branch chains (sequences of 2+ PRs where each PR's base is the previous PR's head), and creates the local stack metadata. Your PRs and branches on GitHub are not affected &mdash; only local metadata was lost.
+
+---
+
+## `sdf fetch` doesn't find my PRs
+
+**Possible causes:**
+
+1. **PRs are not chained.** `sdf fetch` looks for chains of 2 or more PRs where each PR's base branch is the head branch of the previous PR. A single PR targeting `main` is not a stack.
+
+2. **PRs are closed or merged.** `sdf fetch` only scans open PRs. Merged PRs won't appear in the discovery.
+
+3. **`gh` is not authenticated.** Run `gh auth status` to verify your GitHub authentication.
+
+4. **Base branch detection.** If your stack is based on a branch other than the default (e.g., `develop` instead of `main`), try specifying it:
+
+```bash
+sdf fetch --base develop
+```
+
+---
+
+## "conflict in &lt;branch&gt; &mdash; cannot resolve in --json mode"
+
+**When it happens:** Running `sdf sync --json` when a rebase conflict occurs. JSON mode cannot display the interactive conflict resolution menu.
+
+**Fix:** Run `sdf sync` without `--json` to get the interactive conflict resolution options, or use `sdf sync --json --yes` and handle conflicts after the sync reports them.
+
+---
+
+## Branch is not in any stack
+
+**When it happens:** Running a stack command while on a branch that isn't registered in any stack.
+
+**Fix:** Switch to a branch that is part of a stack, or specify the stack explicitly:
+
+```bash
+sdf status --stack my-feature
+sdf sync --stack my-feature
+```
+
+If the branch should be part of a stack but isn't, add it:
+
+```bash
+sdf switch <existing-stack-branch>
+sdf branch <new-branch-name>
+```
+
+---
+
+## Push failed after rebase
+
+**When it happens:** During `sdf sync`, the force-push (`git push --force-with-lease`) fails for a branch. This usually means someone else pushed to the branch since the last fetch.
+
+**How to recover:**
+
+1. SDF reports the push failure as a warning and continues syncing other branches.
+2. After sync completes, fetch and try pushing manually:
+
+```bash
+git fetch origin
+git push --force-with-lease origin <branch-name>
+```
+
+---
+
+## sdf doctor reports missing dependencies
+
+Run `sdf doctor` to check which dependencies are available:
+
+```bash
+sdf doctor
+```
+
+| Dependency | Required? | What it's needed for |
+|---|---|---|
+| `git` | Yes | All operations |
+| `gh` | No (but recommended) | PR creation, base updates, status checks |
+| `claude` | No | AI conflict resolution, `sdf split`, PR content generation |
+
+**Install missing dependencies:**
+
+```bash
+# git (usually pre-installed)
+# macOS: xcode-select --install
+# Linux: sudo apt install git
+
+# GitHub CLI
+brew install gh
+gh auth login
+
+# Claude CLI (optional)
+# See https://claude.ai/code for installation instructions
+```
+
+---
+
+## General recovery: starting fresh
+
+If your local state is thoroughly broken and you want to start over without affecting anything on GitHub:
+
+```bash
+# Remove local SDF metadata
+rm -rf .sdf/
+
+# Re-discover stacks from GitHub
+sdf fetch
+```
+
+Your branches, PRs, and code on GitHub are not affected. Only the local `.sdf/` directory is rebuilt.
+
+---
+
+## Moving Commits
+
+Source: https://stacked-diffs-flow.com/docs/moving-commits/
+
+How to use sdf move to relocate commits from the current branch to its parent.
+
+# Moving Commits Between Branches
+
+`sdf move` relocates commits from the current branch to its parent in the stack. This is useful when you realize work belongs in a different PR, or when you want to split a large branch into smaller, reviewable pieces.
+
+---
+
+## Basic usage: move to parent
+
+Move commits from the current branch down to its parent:
+
+```bash
+# You're on feature/api with commits [a1, a2, a3]
+# Stack: main ← feature/auth ← feature/api
+
+sdf move a1 a2
+```
+
+This:
+1. Cherry-picks `a1` and `a2` onto `feature/auth`
+2. Rebases `feature/api` to strip the moved commits
+3. Cascade-rebases any downstream branches
+4. Updates the stack state
+
+**Constraints:**
+- Commits must be a contiguous prefix (oldest-first) of the branch
+- At least one commit must remain on the source branch
+- Working tree must be clean
+
+---
+
+## Splitting a branch into a new branch
+
+When you want to extract commits into a **new** branch (not the existing parent), combine `sdf branch` with `sdf move`:
+
+### Pattern: extract work into a new child branch
+
+```bash
+# Current stack: main ← feature/auth [a1, a2, a3, a4, a5]
+# You realize a4 and a5 are a separate concern
+
+# 1. Create a new branch (appended to stack)
+sdf branch api-layer
+
+# 2. Switch back to the source branch
+sdf switch feature/auth
+
+# 3. Move the newer commits to the new branch
+#    (move works parent→child direction, so we need a different approach)
+```
+
+This pattern doesn't work directly because `sdf move` only moves commits **down** (to the parent). To move commits **up** (to a child), use git directly:
+
+```bash
+# 1. Create the new branch at the current tip
+sdf branch api-layer
+# api-layer now has commits a1-a5 (same as feature/auth)
+
+# 2. Reset feature/auth to drop the commits you want to move
+git checkout feature/auth
+git reset --hard HEAD~2  # drops a4, a5
+
+# 3. Force-push the trimmed branch
+git push --force-with-lease
+
+# 4. Sync to update the stack state
+sdf sync
+```
+
+### Pattern: split current work into parent PR
+
+This is the primary `sdf move` use case &mdash; you've been working on a branch and realize the first few commits should be their own PR:
+
+```bash
+# Stack: main ← feature/auth [setup, schema, handlers, tests]
+# You want "setup" and "schema" to be a separate PR
+
+# Move commits to the existing parent
+sdf move setup schema
+# Moves "setup" and "schema" to main (or whatever the parent is)
+# feature/auth now only has [handlers, tests]
+```
+
+---
+
+## How it works internally
+
+```
+Before:
+  parent [p1, p2]  ←  current [c1, c2, c3]  ←  downstream [d1]
+
+sdf move c1 c2:
+
+Phase 1: Cherry-pick c1, c2 onto parent
+  parent [p1, p2, c1, c2]
+
+Phase 2: Rebase current to strip c1, c2
+  parent [p1, p2, c1, c2]  ←  current [c3]
+
+Phase 3: Cascade-rebase downstream
+  parent [p1, p2, c1, c2]  ←  current [c3]  ←  downstream [d1]
+
+Phase 4: Save stack state (updated BaseTips)
+```
+
+If conflicts occur during cherry-pick or rebase, Claude is invoked for auto-resolution. If that fails, the operation aborts cleanly and you can resolve manually.
+
+---
+
+## Tips
+
+- **Move early, move often.** It's easier to move 1-2 commits than to untangle 10.
+- **Commits must be contiguous.** If you need to move non-adjacent commits, use `git rebase -i` to reorder them first, then `sdf move`.
+- **Push after moving.** `sdf move` updates local branches but doesn't push. Run `sdf sync` afterward to push all changes and update PR bases.
+- **Check with `sdf status`** after moving to verify the stack looks correct.
+
+---

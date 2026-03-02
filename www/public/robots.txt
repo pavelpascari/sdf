@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
 
+# LLMs: https://stacked-diffs-flow.com/llms.txt
+# LLMs-Full: https://stacked-diffs-flow.com/llms-full.txt
 Sitemap: https://stacked-diffs-flow.com/sitemap-index.xml

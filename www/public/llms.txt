@@ -26,6 +26,7 @@ resolve conflicts and generate PR content.
 
 ## Documentation
 
+- /docs/what-are-stacked-diffs -- Practical explainer of stacked diffs and stacked pull requests
 - /docs/why-sdf -- Why stacked diffs, and how SDF compares to alternatives
 - /docs/getting-started -- Build your first stack in under five minutes
 - /docs/installation -- Install on macOS, Linux, or Windows
@@ -40,6 +41,10 @@ resolve conflicts and generate PR content.
 - /docs/json-output -- JSON output for scripting and CI integration
 - /docs/troubleshooting -- Common errors and recovery procedures
 - /docs/moving-commits -- Relocate commits between stack branches
+
+## Full context
+
+- /llms-full.txt -- Full combined documentation for AI ingestion
 
 ## Source repository
 

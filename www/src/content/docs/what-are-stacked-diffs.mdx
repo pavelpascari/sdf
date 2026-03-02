@@ -1,0 +1,49 @@
+---
+title: What Are Stacked Diffs?
+description: A practical explanation of stacked pull requests, why teams use them, and how SDF automates the maintenance work.
+order: 1.5
+---
+
+# What Are Stacked Diffs?
+
+Stacked diffs (also called stacked pull requests) are a way to split one large feature into a sequence of smaller PRs that depend on each other.
+
+Instead of opening one 2,000-line PR, you open a stack like this:
+
+```text
+main <- db-schema <- repository <- controller
+         PR #1        PR #2         PR #3
+```
+
+Each PR stays focused on one concern. Reviewers can approve bottom-up, and feedback arrives earlier.
+
+## Why engineers use stacked pull requests
+
+- **Smaller reviews**: focused PRs are easier to read and discuss.
+- **Faster iteration**: design feedback lands before the entire feature is complete.
+- **Lower merge risk**: smaller diffs reduce surprise conflicts.
+- **Parallel progress**: you can keep working on upper layers while lower PRs are under review.
+
+## Why stacked diffs are hard without tooling
+
+When PR #1 changes or merges, every downstream branch must be rebased and force-pushed. Then PR base branches on GitHub often need retargeting.
+
+Manual workflow usually means:
+
+1. Rebase branch 2 onto updated `main`
+2. Rebase branch 3 onto updated branch 2
+3. Push both with `--force-with-lease`
+4. Update PR base targets and navigation links
+
+That maintenance work grows linearly with stack size.
+
+## How SDF helps
+
+SDF automates the painful parts:
+
+- `sdf new` and `sdf branch` create and extend stacks
+- `sdf pr` opens PRs with correct base targets
+- `sdf sync` detects merges, cascade-rebases downstream branches, and updates PR bases
+- `sdf split` decomposes a large branch into a reviewable stack
+
+If you want the full conceptual model, continue with [Core Concepts](/docs/core-concepts). If you want to start right away, use [Getting Started](/docs/getting-started).

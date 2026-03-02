@@ -1,0 +1,46 @@
+<svg width="1200" height="675" viewBox="0 0 1200 675" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="675" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#101522" />
+      <stop offset="1" stop-color="#1A2034" />
+    </linearGradient>
+    <linearGradient id="line" x1="200" y1="0" x2="1000" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5" />
+      <stop offset="1" stop-color="#22D3EE" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="675" rx="28" fill="url(#bg)" />
+  <rect x="40" y="40" width="1120" height="595" rx="20" fill="#111827" stroke="#334155" stroke-width="2" />
+
+  <text x="90" y="120" fill="#E2E8F0" font-family="JetBrains Mono, monospace" font-size="30" font-weight="700">
+    SDF stacked PR flow
+  </text>
+  <text x="90" y="160" fill="#94A3B8" font-family="JetBrains Mono, monospace" font-size="20">
+    Merge upstream once, then sync every downstream branch automatically
+  </text>
+
+  <line x1="220" y1="355" x2="980" y2="355" stroke="url(#line)" stroke-width="8" stroke-linecap="round" />
+
+  <g>
+    <circle cx="260" cy="355" r="58" fill="#4F46E5" />
+    <text x="260" y="350" text-anchor="middle" fill="#F8FAFC" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">PR #142</text>
+    <text x="260" y="380" text-anchor="middle" fill="#DBEAFE" font-family="JetBrains Mono, monospace" font-size="17">schema</text>
+  </g>
+
+  <g>
+    <circle cx="620" cy="355" r="58" fill="#0EA5E9" />
+    <text x="620" y="350" text-anchor="middle" fill="#F8FAFC" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">PR #143</text>
+    <text x="620" y="380" text-anchor="middle" fill="#DBEAFE" font-family="JetBrains Mono, monospace" font-size="17">repository</text>
+  </g>
+
+  <g>
+    <circle cx="940" cy="355" r="58" fill="#14B8A6" />
+    <text x="940" y="350" text-anchor="middle" fill="#F8FAFC" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">PR #144</text>
+    <text x="940" y="380" text-anchor="middle" fill="#CCFBF1" font-family="JetBrains Mono, monospace" font-size="17">controller</text>
+  </g>
+
+  <text x="260" y="470" text-anchor="middle" fill="#CBD5E1" font-family="JetBrains Mono, monospace" font-size="16">merged</text>
+  <text x="620" y="470" text-anchor="middle" fill="#CBD5E1" font-family="JetBrains Mono, monospace" font-size="16">rebased</text>
+  <text x="940" y="470" text-anchor="middle" fill="#CBD5E1" font-family="JetBrains Mono, monospace" font-size="16">retargeted</text>
+</svg>

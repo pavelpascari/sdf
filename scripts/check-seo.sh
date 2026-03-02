@@ -35,6 +35,11 @@ if [ -f "$DIST/robots.txt" ]; then
   else
     fail "robots.txt exists but has no Sitemap directive"
   fi
+  if grep -q "^# LLMs:" "$DIST/robots.txt"; then
+    pass "robots.txt references llms.txt"
+  else
+    fail "robots.txt is missing LLMs hint"
+  fi
   if grep -qi "Disallow: /" "$DIST/robots.txt" && ! grep -qi "Disallow: /$" "$DIST/robots.txt"; then
     fail "robots.txt blocks indexing (broad Disallow: /)"
   fi
@@ -80,10 +85,33 @@ else
   fail "llms.txt is missing"
 fi
 
+# ── 3b. llms-full.txt ─────────────────────────────────────────────
+echo "-- llms-full.txt"
+if [ -f "$DIST/llms-full.txt" ]; then
+  LLMS_FULL_SIZE=$(wc -c < "$DIST/llms-full.txt" | tr -d ' ')
+  if [ "$LLMS_FULL_SIZE" -gt 5000 ]; then
+    pass "llms-full.txt exists (${LLMS_FULL_SIZE} bytes)"
+  else
+    fail "llms-full.txt appears too small (${LLMS_FULL_SIZE} bytes)"
+  fi
+
+  REQUIRED_SECTIONS=("What Are Stacked Diffs?" "Getting Started" "Core Concepts" "Commands")
+  for section in "${REQUIRED_SECTIONS[@]}"; do
+    if grep -q "$section" "$DIST/llms-full.txt"; then
+      pass "llms-full.txt includes section: $section"
+    else
+      fail "llms-full.txt missing expected section: $section"
+    fi
+  done
+else
+  fail "llms-full.txt is missing"
+fi
+
 # ── 4. HTML page checks ─────────────────────────────────────────
 echo "-- HTML pages"
 HTML_FILES=$(find "$DIST" -name '*.html' -type f)
 PAGE_COUNT=0
+TOTAL_IMG_COUNT=0
 
 for page in $HTML_FILES; do
   PAGE_COUNT=$((PAGE_COUNT + 1))
@@ -101,9 +129,22 @@ for page in $HTML_FILES; do
     fail "$REL_PATH: missing meta description"
   fi
 
+  # <meta name="robots"> must exist
+  if ! grep -qi 'name="robots"' "$page"; then
+    fail "$REL_PATH: missing meta robots"
+  fi
+
   # Canonical URL must exist
   if ! grep -qi 'rel="canonical"' "$page"; then
     fail "$REL_PATH: missing canonical URL"
+  fi
+
+  # LLM discovery links should be present in head
+  if ! grep -qi 'rel="alternate"[^>]*href="/llms.txt"' "$page"; then
+    fail "$REL_PATH: missing link to /llms.txt"
+  fi
+  if ! grep -qi 'rel="alternate"[^>]*href="/llms-full.txt"' "$page"; then
+    fail "$REL_PATH: missing link to /llms-full.txt"
   fi
 
   # No more than one <h1> per page
@@ -111,12 +152,28 @@ for page in $HTML_FILES; do
   if [ "$H1_COUNT" -gt 1 ]; then
     fail "$REL_PATH: multiple h1 tags ($H1_COUNT found)"
   fi
+
+  # If images exist on a page, they must include non-empty alt text
+  IMG_COUNT=$(grep -Eoc '<img[^>]*>' "$page" || true)
+  if [ "$IMG_COUNT" -gt 0 ]; then
+    TOTAL_IMG_COUNT=$((TOTAL_IMG_COUNT + IMG_COUNT))
+    IMG_WITH_ALT=$(grep -Eoc '<img[^>]*alt="[^"]+[^"]*"[^>]*>' "$page" || true)
+    if [ "$IMG_WITH_ALT" -lt "$IMG_COUNT" ]; then
+      fail "$REL_PATH: $((IMG_COUNT - IMG_WITH_ALT)) image(s) missing non-empty alt text"
+    fi
+  fi
 done
 
 if [ "$PAGE_COUNT" -eq 0 ]; then
   fail "No HTML files found in $DIST"
 else
   pass "$PAGE_COUNT HTML pages checked"
+fi
+
+if [ "$TOTAL_IMG_COUNT" -eq 0 ]; then
+  fail "No images found across site HTML"
+else
+  pass "$TOTAL_IMG_COUNT image(s) found with alt text checks"
 fi
 
 # ── 5. JSON-LD checks ───────────────────────────────────────────
@@ -164,6 +221,14 @@ for page in $HTML_FILES; do
   fi
   if ! grep -qi 'og:description' "$page"; then
     fail "$REL_PATH: missing og:description"
+  fi
+  if ! grep -qi 'property="og:image"' "$page"; then
+    fail "$REL_PATH: missing og:image"
+  elif ! grep -Eqi 'property="og:image"[^>]*content="https?://[^"]+"' "$page"; then
+    fail "$REL_PATH: og:image should use an absolute URL"
+  fi
+  if ! grep -qi 'name="twitter:image"' "$page"; then
+    fail "$REL_PATH: missing twitter:image"
   fi
 done
 pass "Open Graph tags checked"

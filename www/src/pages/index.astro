@@ -67,6 +67,9 @@ const jsonLd = [
         <code class="text-accent text-sm bg-panel px-1.5 py-0.5 rounded border border-rim font-mono">sdf sync</code> &mdash;
         with optional Claude-powered conflict resolution.
       </p>
+      <p class="text-sm text-fg-subtle max-w-2xl mx-auto mb-8">
+        New to the workflow? Read <a href="/docs/what-are-stacked-diffs" class="text-brand hover:text-brand-dim transition-colors">what stacked diffs are</a> and when to use them.
+      </p>
 
       <!-- CTAs -->
       <div class="flex flex-wrap justify-center gap-4 mb-16">
@@ -87,6 +90,21 @@ const jsonLd = [
           View on GitHub
         </a>
       </div>
+
+      <figure class="max-w-4xl mx-auto mb-14">
+        <img
+          src="/images/sdf-stack-flow.svg"
+          alt="Diagram of a three-layer stacked pull request flow where PR #142 merges first, then SDF sync rebases PR #143 and PR #144 and updates their GitHub base targets."
+          width="1200"
+          height="675"
+          loading="eager"
+          decoding="async"
+          class="w-full rounded-xl border border-rim bg-panel"
+        />
+        <figcaption class="mt-3 text-xs text-fg-subtle">
+          Example stack lifecycle: merge upstream, then run <code class="text-accent">sdf sync</code> to propagate updates.
+        </figcaption>
+      </figure>
 
       <!-- Install snippet -->
       <div
@@ -180,7 +198,7 @@ const jsonLd = [
             The original branch is never touched.
           </p>
           <a href="/blog/sdf-split-from-branch-to-stack" class="text-sm text-brand hover:text-brand-dim transition-colors">
-            Read the announcement &rarr;
+            Read the SDF split announcement &rarr;
           </a>
         </div>
       </div>
@@ -389,7 +407,7 @@ const jsonLd = [
                 verifies the split is lossless, pushes, and opens PRs.
               </p>
               <a href="/blog/sdf-split-from-branch-to-stack" class="text-sm text-brand hover:text-brand-dim transition-colors">
-                How it works &rarr;
+                See how SDF split works &rarr;
               </a>
             </div>
             <div class="rounded-xl border border-rim bg-panel overflow-hidden">
@@ -540,7 +558,7 @@ const jsonLd = [
 
       <div class="text-center mt-12">
         <a href="/docs/getting-started" class="text-accent hover:text-brand-light text-sm font-medium">
-          Get started with sdf &rarr;
+          Read the SDF getting started guide &rarr;
         </a>
       </div>
     </div>
@@ -701,7 +719,7 @@ const jsonLd = [
           class="px-6 py-3 rounded-xl font-semibold text-white bg-brand hover:bg-brand-dim transition-colors text-sm"
           style="font-weight: 600;"
         >
-          Read the docs
+          Open SDF docs
         </a>
         <a
           href="https://github.com/pavelpascari/sdf"
