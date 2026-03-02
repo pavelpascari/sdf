@@ -436,6 +436,26 @@ func TestReconcileFromPRs_Mixed(t *testing.T) {
 	assertHasChange(t, changes, "base-mismatch", "branchB", true) // retargeted
 }
 
+func TestReconcileFromPRs_DetectsNewChildPR(t *testing.T) {
+	s := &Stack{
+		StackID: "test",
+		Base:    "main",
+		Nodes: []Node{
+			{Branch: "branchA", PR: 10, Status: "open"},
+			{Branch: "branchB", PR: 11, Status: "open"},
+		},
+	}
+	prs := []PRState{
+		{Number: 10, HeadRefName: "branchA", BaseRefName: "main", State: "OPEN"},
+		{Number: 11, HeadRefName: "branchB", BaseRefName: "branchA", State: "OPEN"},
+		{Number: 12, HeadRefName: "branchC", BaseRefName: "branchB", State: "OPEN"},
+		{Number: 99, HeadRefName: "unrelated", BaseRefName: "main", State: "OPEN"},
+	}
+
+	changes := ReconcileFromPRs(s, prs)
+	assertHasChange(t, changes, "new-child-pr", "branchC", true)
+}
+
 func TestApplyRoutineChange_Status(t *testing.T) {
 	s := &Stack{
 		Nodes: []Node{{Branch: "branchA", PR: 10, Status: "open"}},

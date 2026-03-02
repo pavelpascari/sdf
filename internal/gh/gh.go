@@ -129,6 +129,42 @@ func PRList(branches []string) ([]PRInfo, error) {
 	return filtered, nil
 }
 
+// PRListByBase returns open PRs whose base branch matches one of baseBranches.
+// This is used to detect collaborator-added child branches not present in the
+// local stack topology.
+func PRListByBase(baseBranches []string) ([]PRInfo, error) {
+	if len(baseBranches) == 0 {
+		return nil, nil
+	}
+
+	searchParts := make([]string, len(baseBranches))
+	for i, b := range baseBranches {
+		searchParts[i] = "base:" + b
+	}
+	searchQuery := strings.Join(searchParts, " ")
+
+	limit := len(baseBranches) * 3
+	if limit < 10 {
+		limit = 10
+	}
+
+	out, err := run("pr", "list",
+		"--state", "open",
+		"--json", "number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft",
+		"--search", searchQuery,
+		"--limit", fmt.Sprintf("%d", limit),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var prs []PRInfo
+	if err := json.Unmarshal([]byte(out), &prs); err != nil {
+		return nil, fmt.Errorf("cannot parse gh pr list output: %w", err)
+	}
+	return prs, nil
+}
+
 // PRCreate creates a PR with the given parameters.
 func PRCreate(title, body, base, head string) (string, error) {
 	args := []string{"pr", "create",

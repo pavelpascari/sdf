@@ -116,6 +116,33 @@ func TestPRList_EmptyBranches(t *testing.T) {
 	}
 }
 
+func TestPRListByBase_Arguments(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
+		"pr list": `[
+			{"number":21,"headRefName":"feat/new","state":"OPEN","baseRefName":"feat/a","url":"https://github.com/test/repo/pull/21"}
+		]`,
+	})
+	testutil.SetBinary(t, &Binary, fake)
+
+	prs, err := PRListByBase([]string{"feat/a", "feat/b"})
+	if err != nil {
+		t.Fatalf("PRListByBase failed: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 PR, got %d", len(prs))
+	}
+
+	log := testutil.ReadLog(t, dir, "gh")
+	if len(log) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(log))
+	}
+	expected := "pr list --state open --json number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft --search base:feat/a base:feat/b --limit 10"
+	if log[0] != expected {
+		t.Errorf("unexpected arguments:\n  got:  %s\n  want: %s", log[0], expected)
+	}
+}
+
 func TestPRCreate_Arguments(t *testing.T) {
 	dir := t.TempDir()
 	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
