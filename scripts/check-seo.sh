@@ -84,6 +84,7 @@ fi
 echo "-- HTML pages"
 HTML_FILES=$(find "$DIST" -name '*.html' -type f)
 PAGE_COUNT=0
+TOTAL_IMG_COUNT=0
 
 for page in $HTML_FILES; do
   PAGE_COUNT=$((PAGE_COUNT + 1))
@@ -101,6 +102,11 @@ for page in $HTML_FILES; do
     fail "$REL_PATH: missing meta description"
   fi
 
+  # <meta name="robots"> must exist
+  if ! grep -qi 'name="robots"' "$page"; then
+    fail "$REL_PATH: missing meta robots"
+  fi
+
   # Canonical URL must exist
   if ! grep -qi 'rel="canonical"' "$page"; then
     fail "$REL_PATH: missing canonical URL"
@@ -111,12 +117,28 @@ for page in $HTML_FILES; do
   if [ "$H1_COUNT" -gt 1 ]; then
     fail "$REL_PATH: multiple h1 tags ($H1_COUNT found)"
   fi
+
+  # If images exist on a page, they must include non-empty alt text
+  IMG_COUNT=$(grep -Eoc '<img[^>]*>' "$page" || true)
+  if [ "$IMG_COUNT" -gt 0 ]; then
+    TOTAL_IMG_COUNT=$((TOTAL_IMG_COUNT + IMG_COUNT))
+    IMG_WITH_ALT=$(grep -Eoc '<img[^>]*alt="[^"]+[^"]*"[^>]*>' "$page" || true)
+    if [ "$IMG_WITH_ALT" -lt "$IMG_COUNT" ]; then
+      fail "$REL_PATH: $((IMG_COUNT - IMG_WITH_ALT)) image(s) missing non-empty alt text"
+    fi
+  fi
 done
 
 if [ "$PAGE_COUNT" -eq 0 ]; then
   fail "No HTML files found in $DIST"
 else
   pass "$PAGE_COUNT HTML pages checked"
+fi
+
+if [ "$TOTAL_IMG_COUNT" -eq 0 ]; then
+  fail "No images found across site HTML"
+else
+  pass "$TOTAL_IMG_COUNT image(s) found with alt text checks"
 fi
 
 # ── 5. JSON-LD checks ───────────────────────────────────────────
@@ -164,6 +186,14 @@ for page in $HTML_FILES; do
   fi
   if ! grep -qi 'og:description' "$page"; then
     fail "$REL_PATH: missing og:description"
+  fi
+  if ! grep -qi 'property="og:image"' "$page"; then
+    fail "$REL_PATH: missing og:image"
+  elif ! grep -Eqi 'property="og:image"[^>]*content="https?://[^"]+"' "$page"; then
+    fail "$REL_PATH: og:image should use an absolute URL"
+  fi
+  if ! grep -qi 'name="twitter:image"' "$page"; then
+    fail "$REL_PATH: missing twitter:image"
   fi
 done
 pass "Open Graph tags checked"
