@@ -88,6 +88,21 @@ const jsonLd = [
         </a>
       </div>
 
+      <figure class="max-w-4xl mx-auto mb-14">
+        <img
+          src="/images/sdf-stack-flow.svg"
+          alt="Diagram of a three-layer stacked pull request flow where PR #142 merges first, then SDF sync rebases PR #143 and PR #144 and updates their GitHub base targets."
+          width="1200"
+          height="675"
+          loading="eager"
+          decoding="async"
+          class="w-full rounded-xl border border-rim bg-panel"
+        />
+        <figcaption class="mt-3 text-xs text-fg-subtle">
+          Example stack lifecycle: merge upstream, then run <code class="text-accent">sdf sync</code> to propagate updates.
+        </figcaption>
+      </figure>
+
       <!-- Install snippet -->
       <div
         class="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-panel border border-rim text-left"
