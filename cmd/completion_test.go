@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +11,17 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/spf13/cobra"
 )
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+	}
+	return strings.TrimSpace(string(out))
+}
 
 func TestCompleteStackNames(t *testing.T) {
 	dir := newTestRepo(t)
@@ -60,6 +72,9 @@ func TestCompleteStackBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	runGit(t, dir, "checkout", "-b", "my-feature/db-schema")
+	runGit(t, dir, "checkout", "-b", "my-feature/api")
+
 	branches, directive := completeStackBranches(nil, nil, "")
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Errorf("expected ShellCompDirectiveNoFileComp, got %d", directive)
@@ -79,6 +94,40 @@ func TestCompleteStackBranches(t *testing.T) {
 	}
 	if found["my-feature/merged-one"] {
 		t.Error("merged branches should not be suggested")
+	}
+}
+
+func TestCompleteStackBranches_SkipsDeletedBranches(t *testing.T) {
+	dir := newTestRepo(t)
+
+	s := &stack.Stack{
+		StackID: "my-feature",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "my-feature/existing", Status: "open"},
+			{Branch: "my-feature/deleted", Status: "open"},
+		},
+	}
+	if err := stack.Init(dir, "my-feature", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	runGit(t, dir, "checkout", "-b", "my-feature/existing")
+	runGit(t, dir, "checkout", "main")
+	runGit(t, dir, "checkout", "-b", "my-feature/deleted")
+	runGit(t, dir, "checkout", "main")
+	runGit(t, dir, "branch", "-D", "my-feature/deleted")
+
+	branches, directive := completeStackBranches(nil, nil, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("expected ShellCompDirectiveNoFileComp, got %d", directive)
+	}
+
+	if len(branches) != 1 || branches[0] != "my-feature/existing" {
+		t.Fatalf("expected only existing branch, got %v", branches)
 	}
 }
 

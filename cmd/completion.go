@@ -239,10 +239,20 @@ func completeStackBranches(_ *cobra.Command, args []string, _ string) ([]string,
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
+
+	localBranches, err := gitpkg.LocalBranches()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	localSet := make(map[string]bool, len(localBranches))
+	for _, b := range localBranches {
+		localSet[b] = true
+	}
+
 	var branches []string
 	for _, s := range stacks {
 		for _, n := range s.Nodes {
-			if n.Status != "merged" {
+			if n.Status != "merged" && localSet[n.Branch] {
 				branches = append(branches, n.Branch)
 			}
 		}
