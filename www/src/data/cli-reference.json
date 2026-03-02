@@ -1,5 +1,5 @@
 {
-  "generated": "2026-03-02T16:56:33Z",
+  "generated": "2026-03-02T23:12:25Z",
   "commands": [
     {
       "name": "ai",
@@ -120,13 +120,19 @@
       "use": "fetch",
       "short": "Discover and sync PR stacks from GitHub",
       "long": "Scans your open PRs, detects branch chains, and either registers\na new stack or reconciles an existing one.",
-      "example": "  sdf fetch                          # auto-detect base, scan all open PRs\n  sdf fetch --stack my-feature       # name the stack explicitly\n  sdf fetch --base develop           # specify base branch",
+      "example": "  sdf fetch                          # auto-detect base, scan all open PRs\n  sdf fetch --branch feature/ui      # discover stack that includes this branch\n  sdf fetch --stack my-feature       # name the stack explicitly\n  sdf fetch --base develop           # specify base branch",
       "flags": [
         {
           "name": "base",
           "type": "string",
           "default": "",
           "description": "base branch (default: auto-detected)"
+        },
+        {
+          "name": "branch",
+          "type": "string",
+          "default": "",
+          "description": "discover stack from a specific branch (ignores PR author)"
         },
         {
           "name": "json",

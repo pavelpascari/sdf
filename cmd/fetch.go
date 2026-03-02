@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -36,6 +37,7 @@ var fetchCmd = &cobra.Command{
 	Long: `Scans your open PRs, detects branch chains, and either registers
 a new stack or reconciles an existing one.`,
 	Example: `  sdf fetch                          # auto-detect base, scan all open PRs
+  sdf fetch --branch feature/ui      # discover stack that includes this branch
   sdf fetch --stack my-feature       # name the stack explicitly
   sdf fetch --base develop           # specify base branch`,
 	Annotations: map[string]string{"category": "stack"},
@@ -46,17 +48,20 @@ func init() {
 	rootCmd.AddCommand(fetchCmd)
 	fetchCmd.Flags().String("stack", "", "name for the stack (default: auto-generated from branches)")
 	fetchCmd.Flags().String("base", "", "base branch (default: auto-detected)")
+	fetchCmd.Flags().String("branch", "", "discover stack from a specific branch (ignores PR author)")
 	fetchCmd.Flags().Bool("json", false, "output result as JSON")
 	_ = fetchCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 	_ = fetchCmd.RegisterFlagCompletionFunc("base", completeGitBranches)
+	_ = fetchCmd.RegisterFlagCompletionFunc("branch", completeGitBranches)
 }
 
 func runFetchCmd(cmd *cobra.Command, args []string) error {
 	stackName, _ := cmd.Flags().GetString("stack")
 	base, _ := cmd.Flags().GetString("base")
+	branch, _ := cmd.Flags().GetString("branch")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 
-	return runFetchLogic(stackName, base, jsonFlag)
+	return runFetchLogic(stackName, base, branch, jsonFlag)
 }
 
 // RunFetch is a compatibility wrapper for callers that use the old interface.
@@ -65,7 +70,7 @@ func RunFetch(args []string) error {
 	return rootCmd.Execute()
 }
 
-func runFetchLogic(stackName, base string, jsonMode bool) error {
+func runFetchLogic(stackName, base, branch string, jsonMode bool) error {
 
 	if !ghpkg.Available() {
 		return fmt.Errorf("gh CLI is required for stack discovery — install it from https://cli.github.com")
@@ -97,45 +102,55 @@ func runFetchLogic(stackName, base string, jsonMode bool) error {
 		defaultBranch = detected
 	}
 
-	bus.Printf("Scanning your open PRs (base: %s)...", defaultBranch)
-
-	// Fetch all open PRs by the current user
-	prs, err := ghpkg.PRListForCurrentUser()
-	if err != nil {
-		return fmt.Errorf("cannot list PRs: %w", err)
-	}
-
-	if len(prs) == 0 {
-		bus.Print("No open PRs found for your user.")
-		bus.Print("Use `sdf new <name>` to create a new stack from scratch.")
-		return nil
-	}
-
-	// Convert to stack.PRRecord for the discovery algorithm
-	records := make([]stack.PRRecord, len(prs))
-	for i, pr := range prs {
-		records[i] = stack.PRRecord{
-			Number:      pr.Number,
-			HeadRefName: pr.HeadRefName,
-			BaseRefName: pr.BaseRefName,
-			Status:      "open", // PRListForCurrentUser returns open PRs
+	var discovered []stack.DiscoveredStack
+	if branch != "" {
+		bus.Printf("Discovering stack from branch %s...", ui.Branch(branch))
+		ds, err := discoverStackFromBranch(branch)
+		if err != nil {
+			return err
 		}
-	}
+		discovered = []stack.DiscoveredStack{ds}
+	} else {
+		bus.Printf("Scanning your open PRs (base: %s)...", defaultBranch)
 
-	// Discover stacks
-	discovered := stack.DiscoverStacks(records, defaultBranch)
-
-	if len(discovered) == 0 {
-		bus.Print("\nNo stacked PRs found (need at least 2 chained PRs).")
-		bus.Print("")
-		bus.Print("Your open PRs:")
-		for _, pr := range prs {
-			bus.Printf("  #%-4d  %s → %s", pr.Number, pr.HeadRefName, pr.BaseRefName)
+		// Fetch all open PRs by the current user
+		prs, err := ghpkg.PRListForCurrentUser()
+		if err != nil {
+			return fmt.Errorf("cannot list PRs: %w", err)
 		}
-		bus.Print("")
-		bus.Print("A stack requires PRs to chain: A → main, B → A, C → B, etc.")
-		bus.Print("Use `sdf new <name>` to create a new stack from scratch.")
-		return nil
+
+		if len(prs) == 0 {
+			bus.Print("No open PRs found for your user.")
+			bus.Print("Use `sdf new <name>` to create a new stack from scratch.")
+			return nil
+		}
+
+		// Convert to stack.PRRecord for the discovery algorithm
+		records := make([]stack.PRRecord, len(prs))
+		for i, pr := range prs {
+			records[i] = stack.PRRecord{
+				Number:      pr.Number,
+				HeadRefName: pr.HeadRefName,
+				BaseRefName: pr.BaseRefName,
+				Status:      "open", // PRListForCurrentUser returns open PRs
+			}
+		}
+
+		// Discover stacks
+		discovered = stack.DiscoverStacks(records, defaultBranch)
+
+		if len(discovered) == 0 {
+			bus.Print("\nNo stacked PRs found (need at least 2 chained PRs).")
+			bus.Print("")
+			bus.Print("Your open PRs:")
+			for _, pr := range prs {
+				bus.Printf("  #%-4d  %s → %s", pr.Number, pr.HeadRefName, pr.BaseRefName)
+			}
+			bus.Print("")
+			bus.Print("A stack requires PRs to chain: A → main, B → A, C → B, etc.")
+			bus.Print("Use `sdf new <name>` to create a new stack from scratch.")
+			return nil
+		}
 	}
 
 	// In JSON mode, auto-select if one stack, error if multiple
@@ -266,6 +281,53 @@ func runFetchLogic(stackName, base string, jsonMode bool) error {
 		fmt.Println(string(data))
 	}
 	return nil
+}
+
+// discoverStackFromBranch walks PR base pointers upward from a given branch
+// to build a stack chain independent of PR author.
+func discoverStackFromBranch(startBranch string) (stack.DiscoveredStack, error) {
+	if startBranch == "" {
+		return stack.DiscoveredStack{}, fmt.Errorf("branch cannot be empty")
+	}
+
+	current := startBranch
+	visited := make(map[string]bool)
+	var chain []stack.PRRecord
+
+	for {
+		if visited[current] {
+			return stack.DiscoveredStack{}, fmt.Errorf("detected PR base cycle at %q", current)
+		}
+		visited[current] = true
+
+		pr, err := ghpkg.PRView(current)
+		if err != nil {
+			if len(chain) == 0 {
+				return stack.DiscoveredStack{}, fmt.Errorf("cannot find PR for branch %q: %w", startBranch, err)
+			}
+			return stack.DiscoveredStack{Base: current, Chains: chain}, nil
+		}
+
+		if strings.ToUpper(pr.State) != "OPEN" {
+			if len(chain) == 0 {
+				return stack.DiscoveredStack{}, fmt.Errorf("branch %q does not have an open PR", startBranch)
+			}
+			return stack.DiscoveredStack{Base: current, Chains: chain}, nil
+		}
+
+		rec := stack.PRRecord{
+			Number:      pr.Number,
+			HeadRefName: pr.HeadRefName,
+			BaseRefName: pr.BaseRefName,
+			Status:      "open",
+		}
+		chain = append([]stack.PRRecord{rec}, chain...)
+
+		current = pr.BaseRefName
+		if current == "" {
+			return stack.DiscoveredStack{}, fmt.Errorf("PR #%d (%s) has empty base branch", pr.Number, pr.HeadRefName)
+		}
+	}
 }
 
 // matchLocalStack finds the local stack with the most branch overlap with
