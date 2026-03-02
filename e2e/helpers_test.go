@@ -190,6 +190,11 @@ func e2eRepo(t *testing.T) string {
 	if repo == "" {
 		t.Skip("SDF_E2E_REPO not set — skipping E2E test")
 	}
+	cmd := exec.Command("git", "-C", repo, "rev-parse", "--is-inside-work-tree")
+	out, err := cmd.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "true" {
+		t.Skipf("SDF_E2E_REPO is not a valid git working tree: %s", repo)
+	}
 	return repo
 }
 
