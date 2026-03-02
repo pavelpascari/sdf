@@ -14,6 +14,10 @@ Large features rarely fit in a single PR. Splitting work into a chain of depende
 - **AI conflict resolution** — when rebase conflicts occur, Claude receives the PR description and upstream diff summary plus the conflicted files and resolves them in-place
 - **PR creation** — `sdf pr` creates a GitHub PR for the current branch
 
+## Testing feature
+
+foo
+
 ## Prerequisites
 
 - [git](https://git-scm.com/)
