@@ -12,7 +12,7 @@ func TestStatusResultJSON(t *testing.T) {
 		Base:          "main",
 		CurrentBranch: "feat-a",
 		Nodes: []StatusNodeResult{
-			{Branch: "feat-a", PR: 42, Status: "open", SyncState: "in_sync", CommitsAhead: 3, IsCurrent: true, CIStatus: "pass", ReviewStatus: "approved", Mergeable: "mergeable"},
+			{Branch: "feat-a", PR: 42, Status: "open", SyncState: "in_sync", CommitsAhead: 3, CommitLog: []string{"abc1234 add users table"}, IsCurrent: true, CIStatus: "pass", ReviewStatus: "approved", Mergeable: "mergeable"},
 			{Branch: "feat-b", PR: 43, Status: "open", SyncState: "needs_sync", CommitsAhead: 1, CIStatus: "fail", ReviewStatus: "changes_requested", Mergeable: "conflicting"},
 		},
 		NeedsSync:     []string{"feat-b"},
@@ -55,6 +55,9 @@ func TestStatusResultJSON(t *testing.T) {
 	}
 	if roundtrip.Nodes[1].Mergeable != "conflicting" {
 		t.Errorf("mergeable = %q, want %q", roundtrip.Nodes[1].Mergeable, "conflicting")
+	}
+	if len(roundtrip.Nodes[0].CommitLog) != 1 {
+		t.Fatalf("commit_log len = %d, want 1", len(roundtrip.Nodes[0].CommitLog))
 	}
 }
 
