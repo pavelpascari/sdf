@@ -159,6 +159,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Build node results (used by both TTY and JSON)
 	var needsSync []string
 	var nodeResults []StatusNodeResult
+	baseTipsUpdated := false
 	for _, node := range s.Nodes {
 		nr := StatusNodeResult{
 			Branch:    node.Branch,
@@ -181,8 +182,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if node.BaseTip != "" {
 				currentParentTip, err := gitpkg.RevParse(parent)
 				if err == nil && currentParentTip != node.BaseTip {
-					nr.SyncState = "needs_sync"
-					needsSync = append(needsSync, node.Branch)
+					if gitpkg.IsAncestor(currentParentTip, node.Branch) {
+						nr.SyncState = "in_sync"
+						node.BaseTip = currentParentTip
+						baseTipsUpdated = true
+					} else {
+						nr.SyncState = "needs_sync"
+						needsSync = append(needsSync, node.Branch)
+					}
 				} else {
 					nr.SyncState = "in_sync"
 				}
@@ -195,6 +202,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 
 		nodeResults = append(nodeResults, nr)
+	}
+
+	if baseTipsUpdated {
+		_ = stack.Save(root, s)
 	}
 
 	if jsonFlag {

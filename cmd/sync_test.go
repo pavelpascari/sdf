@@ -168,25 +168,25 @@ func TestComputeSyncPlan_MergedHead(t *testing.T) {
 	// Should have: skip branchA (merged), rebase branchB onto main, push branchB
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
 	pushes := filterActions(plan, "push")
 
 	if len(skips) != 1 || skips[0].branch != "branchA" {
 		t.Errorf("expected 1 skip-merged for branchA, got %v", skips)
 	}
 
-	// branchB should be rebased onto main (since branchA merged)
-	// branchC should cascade (since branchB was rebased)
-	if len(rebases) < 1 {
-		t.Fatal("expected at least 1 rebase action")
+	// branchB is already correctly based on main ancestry; sync should
+	// refresh its tracked base tip without rewriting commits.
+	if len(rebases) != 0 {
+		t.Fatalf("expected no rebase actions, got %d", len(rebases))
 	}
-	if rebases[0].branch != "branchB" || rebases[0].onto != "main" {
-		t.Errorf("expected rebase branchB onto main, got rebase %s onto %s",
-			rebases[0].branch, rebases[0].onto)
+	if len(updateTips) != 1 || updateTips[0].branch != "branchB" {
+		t.Errorf("expected 1 update-tip for branchB, got %v", actionBranches(updateTips))
 	}
 
-	// branchB should be pushed
-	if len(pushes) < 1 || pushes[0].branch != "branchB" {
-		t.Errorf("expected push for branchB, got %v", pushes)
+	// No push is needed when only the recorded base tip is refreshed.
+	if len(pushes) != 0 {
+		t.Errorf("expected no pushes for update-tip-only sync, got %v", pushes)
 	}
 }
 
@@ -282,32 +282,24 @@ func TestComputeSyncPlan_CascadeFromMerge(t *testing.T) {
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
 	pushes := filterActions(plan, "push")
 
 	if len(skips) != 1 {
 		t.Errorf("expected 1 skip-merged, got %d", len(skips))
 	}
 
-	// Both branchB and branchC should be rebased
-	rebaseBranches := actionBranches(rebases)
-	if len(rebases) != 2 {
-		t.Fatalf("expected 2 rebases (branchB + branchC cascade), got %d: %v",
-			len(rebases), rebaseBranches)
+	// branchB can be handled by tip refresh; branchC stays unchanged.
+	if len(rebases) != 0 {
+		t.Fatalf("expected no rebases, got %d: %v", len(rebases), actionBranches(rebases))
 	}
-	if rebases[0].branch != "branchB" || rebases[0].onto != "main" {
-		t.Errorf("expected first rebase: branchB onto main, got %s onto %s",
-			rebases[0].branch, rebases[0].onto)
-	}
-	if rebases[1].branch != "branchC" || rebases[1].onto != "branchB" {
-		t.Errorf("expected second rebase: branchC onto branchB, got %s onto %s",
-			rebases[1].branch, rebases[1].onto)
+	if len(updateTips) != 1 || updateTips[0].branch != "branchB" {
+		t.Fatalf("expected one update-tip (branchB), got %v", actionBranches(updateTips))
 	}
 
-	// Both should be pushed
-	pushBranches := actionBranches(pushes)
-	if len(pushes) != 2 {
-		t.Fatalf("expected 2 pushes (branchB + branchC), got %d: %v",
-			len(pushes), pushBranches)
+	// No pushes are needed for update-tip-only operations.
+	if len(pushes) != 0 {
+		t.Fatalf("expected no pushes, got %d: %v", len(pushes), actionBranches(pushes))
 	}
 }
 
@@ -409,23 +401,23 @@ func TestComputeSyncPlan_MultipleMerged(t *testing.T) {
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
 	pushes := filterActions(plan, "push")
 
 	if len(skips) != 2 {
 		t.Errorf("expected 2 skip-merged, got %d", len(skips))
 	}
 
-	// branchC should be rebased onto main (both A and B are merged, skipped)
-	if len(rebases) < 1 {
-		t.Fatal("expected at least 1 rebase")
+	// branchC remains ancestry-correct and only needs its tracked base tip refreshed.
+	if len(rebases) != 0 {
+		t.Fatalf("expected no rebases, got %d", len(rebases))
 	}
-	if rebases[0].branch != "branchC" || rebases[0].onto != "main" {
-		t.Errorf("expected rebase branchC onto main, got %s onto %s",
-			rebases[0].branch, rebases[0].onto)
+	if len(updateTips) != 1 || updateTips[0].branch != "branchC" {
+		t.Errorf("expected update-tip for branchC, got %v", actionBranches(updateTips))
 	}
 
-	if len(pushes) < 1 {
-		t.Error("expected at least 1 push action")
+	if len(pushes) != 0 {
+		t.Errorf("expected no push actions, got %v", actionBranches(pushes))
 	}
 }
 
@@ -445,18 +437,18 @@ func TestComputeSyncPlan_MergedMiddle(t *testing.T) {
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
 
 	if len(skips) != 1 || skips[0].branch != "branchB" {
 		t.Errorf("expected skip-merged for branchB, got %v", skips)
 	}
 
-	// branchC should be rebased onto branchA (skipping merged branchB)
-	if len(rebases) < 1 {
-		t.Fatal("expected at least 1 rebase")
+	// branchC is already ancestry-correct on branchA and should use update-tip.
+	if len(rebases) != 0 {
+		t.Fatalf("expected no rebases, got %d", len(rebases))
 	}
-	if rebases[0].branch != "branchC" || rebases[0].onto != "branchA" {
-		t.Errorf("expected rebase branchC onto branchA, got %s onto %s",
-			rebases[0].branch, rebases[0].onto)
+	if len(updateTips) != 1 || updateTips[0].branch != "branchC" {
+		t.Errorf("expected update-tip for branchC, got %v", actionBranches(updateTips))
 	}
 }
 
@@ -708,19 +700,19 @@ func TestComputeSyncPlan_StackScopedWithMerge(t *testing.T) {
 
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
 
 	if len(skips) != 1 || skips[0].branch != "branchA" {
 		t.Errorf("expected 1 skip-merged for branchA, got %v", skips)
 	}
 
-	// branchB's parent is now main (A skipped), but its BaseTip was branchA's
-	// tip which differs from preFFBaseTip (old main) -- so rebase is needed.
-	if len(rebases) < 1 {
-		t.Fatal("expected at least 1 rebase for reparented branchB")
+	// branchB's parent changed to main, but ancestry is already valid, so
+	// sync should refresh BaseTip instead of rewriting history.
+	if len(rebases) != 0 {
+		t.Fatalf("expected no rebase for ancestry-correct branchB, got %d", len(rebases))
 	}
-	if rebases[0].branch != "branchB" || rebases[0].onto != "main" {
-		t.Errorf("expected rebase branchB onto main, got rebase %s onto %s",
-			rebases[0].branch, rebases[0].onto)
+	if len(updateTips) != 1 || updateTips[0].branch != "branchB" || updateTips[0].onto != "main" {
+		t.Errorf("expected update-tip branchB onto main, got %+v", updateTips)
 	}
 }
 
