@@ -17,7 +17,9 @@ const {
   ogType = 'website',
 } = Astro.props;
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://stacked-diffs-flow.com');
+const siteURL = Astro.site ?? new URL('https://stacked-diffs-flow.com');
+const canonicalURL = new URL(Astro.url.pathname, siteURL);
+const absoluteOgImage = new URL(ogImage, siteURL).href;
 ---
 
 <!doctype html>
@@ -29,19 +31,20 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? 'https://stacked-
 
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="robots" content="index, follow" />
 
     <!-- Open Graph -->
     <meta property="og:type" content={ogType} />
     <meta property="og:url" content={canonicalURL} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={ogImage} />
+    <meta property="og:image" content={absoluteOgImage} />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image" content={absoluteOgImage} />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
