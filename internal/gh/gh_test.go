@@ -182,6 +182,26 @@ func TestPREditBase_Arguments(t *testing.T) {
 	}
 }
 
+func TestIssueComment_Arguments(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.FakeBin(t, dir, "gh", map[string]string{
+		"issue comment": "",
+	})
+	testutil.SetBinary(t, &Binary, fake)
+
+	if err := IssueComment(153, "score: 5"); err != nil {
+		t.Fatalf("IssueComment failed: %v", err)
+	}
+
+	log := testutil.ReadLog(t, dir, "gh")
+	if len(log) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(log))
+	}
+	if log[0] != "issue comment 153 --body score: 5" {
+		t.Errorf("unexpected arguments: %s", log[0])
+	}
+}
+
 func TestPRMerge_Arguments(t *testing.T) {
 	dir := t.TempDir()
 	fake := testutil.GHFakeBinWith(t, dir, map[string]string{

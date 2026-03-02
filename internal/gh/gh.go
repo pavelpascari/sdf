@@ -231,6 +231,12 @@ func PREditTitle(prNumber int, title string) error {
 	return err
 }
 
+// IssueComment posts a comment to a GitHub issue.
+func IssueComment(issueNumber int, body string) error {
+	_, err := run("issue", "comment", fmt.Sprintf("%d", issueNumber), "--body", body)
+	return err
+}
+
 // PRMerge merges a PR using the specified method ("squash", "merge", or "rebase").
 // Also deletes the remote branch after merging.
 func PRMerge(prNumber int, method string) error {
