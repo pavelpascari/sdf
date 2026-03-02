@@ -202,6 +202,27 @@ func TestPRMerge_Arguments(t *testing.T) {
 	}
 }
 
+func TestPRMerge_IgnoresDeleteBranch404(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.FakeBinFail(t, dir, "gh",
+		"failed to delete remote branch feat/auth: HTTP 404: Reference does not exist")
+	testutil.SetBinary(t, &Binary, fake)
+
+	if err := PRMerge(42, "squash"); err != nil {
+		t.Fatalf("PRMerge should ignore delete-branch 404, got: %v", err)
+	}
+}
+
+func TestPRMerge_PropagatesOtherErrors(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.FakeBinFail(t, dir, "gh", "GraphQL: Pull request is not mergeable")
+	testutil.SetBinary(t, &Binary, fake)
+
+	if err := PRMerge(42, "squash"); err == nil {
+		t.Fatal("expected PRMerge to return error for non-404 failures")
+	}
+}
+
 func TestPRViewBody_ParsesJSON(t *testing.T) {
 	dir := t.TempDir()
 	// PRViewBody uses "pr view" prefix — the canonical default is the full

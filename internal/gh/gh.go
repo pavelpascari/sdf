@@ -234,8 +234,17 @@ func PREditTitle(prNumber int, title string) error {
 // PRMerge merges a PR using the specified method ("squash", "merge", or "rebase").
 // Also deletes the remote branch after merging.
 func PRMerge(prNumber int, method string) error {
-	_, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
+	out, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
 		"--"+method, "--delete-branch")
+	if err != nil {
+		// If merge succeeded but remote branch deletion returned 404, treat it
+		// as success: the branch is already gone, which is the desired state.
+		if strings.Contains(out, "failed to delete remote branch") &&
+			(strings.Contains(out, "HTTP 404") || strings.Contains(out, "Reference does not exist")) {
+			return nil
+		}
+		return err
+	}
 	return err
 }
 
