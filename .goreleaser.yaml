@@ -18,11 +18,11 @@ builds:
       - arm64
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: checksums.txt
@@ -30,6 +30,8 @@ checksum:
 release:
   # Append binaries to the GitHub Release that release-please created.
   mode: append
+  # Allow re-running the workflow without 422 "already_exists" errors.
+  replace_existing_artifacts: true
 
 changelog:
   # release-please maintains CHANGELOG.md; disable GoReleaser's changelog.
