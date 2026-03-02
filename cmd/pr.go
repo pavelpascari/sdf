@@ -81,6 +81,14 @@ func runPR(cmd *cobra.Command, args []string) error {
 	// Determine base branch
 	base := s.ParentBranch(branch)
 
+	commitsAhead, err := gitpkg.CommitCount(base, branch)
+	if err != nil {
+		return fmt.Errorf("cannot determine commit distance between %s and %s: %w", base, branch, err)
+	}
+	if commitsAhead == "0" {
+		return fmt.Errorf("%s has no commits ahead of %s — nothing to open a PR for", branch, base)
+	}
+
 	// Build default PR body
 	body := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
 
