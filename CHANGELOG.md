@@ -12,6 +12,11 @@
 
 * **www:** fix llms.txt encoding and add CI check to reject curly quotes and em dashes ([#152](https://github.com/pavelpascari/sdf/issues/152)) ([bcc3a82](https://github.com/pavelpascari/sdf/commit/bcc3a82))
 
+
+### Performance
+
+* **gh:** optimize PRList to scope search by branch name, avoiding GitHub API 502 on large repos ([#154](https://github.com/pavelpascari/sdf/issues/154))
+
 ## [0.3.4](https://github.com/pavelpascari/sdf/compare/v0.3.3...v0.3.4) (2026-03-01)
 
 
