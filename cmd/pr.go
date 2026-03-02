@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
@@ -90,7 +93,11 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build default PR body
-	body := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
+	stackBody := fmt.Sprintf("Part of stack: **%s**\n\nBase: `%s`", s.StackID, base)
+	body := stackBody
+	if tmpl := loadPRTemplate(root); tmpl != "" {
+		body = tmpl + "\n\n---\n\n" + stackBody
+	}
 
 	// Determine title
 	prTitle := title
@@ -159,4 +166,44 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// loadPRTemplate finds and returns the repository's PR template content.
+// Returns "" if no template is found.
+func loadPRTemplate(root string) string {
+	candidates := []string{
+		filepath.Join(root, ".github", "pull_request_template.md"),
+		filepath.Join(root, ".github", "PULL_REQUEST_TEMPLATE.md"),
+		filepath.Join(root, "docs", "pull_request_template.md"),
+		filepath.Join(root, "PULL_REQUEST_TEMPLATE.md"),
+	}
+	for _, p := range candidates {
+		if data, err := os.ReadFile(p); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+
+	dir := filepath.Join(root, ".github", "PULL_REQUEST_TEMPLATE")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var files []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(e.Name())
+		if ext != ".md" && ext != ".markdown" {
+			continue
+		}
+		files = append(files, filepath.Join(dir, e.Name()))
+	}
+	sort.Strings(files)
+	for _, p := range files {
+		if data, err := os.ReadFile(p); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return ""
 }
