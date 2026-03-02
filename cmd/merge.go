@@ -205,7 +205,7 @@ func runMergeLogic(stackFlag string, yes bool, method string, jsonMode bool) err
 		}
 
 		// Run sync with confirmation skipped (user already confirmed the merge)
-		if err := runSyncFull(root, s.StackID, true, false, jsonMode, nil, mergeBus); err != nil {
+		if err := runSyncFull(root, s.StackID, true, false, jsonMode, true, nil, mergeBus); err != nil {
 			if jsonMode {
 				result.Error = fmt.Sprintf("post-merge sync failed: %v", err)
 				_ = mergeBus.Finish()

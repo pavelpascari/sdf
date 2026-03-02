@@ -570,6 +570,160 @@ func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
 	}
 }
 
+// --- stack-scoped sync tests (--from-head) ---
+
+func TestComputeSyncPlan_StackScopedDefault(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record the current main tip (this is what nodes[0].BaseTip points to)
+	preFFBaseTip := git("rev-parse", "main")
+
+	// Advance main with an unrelated commit (simulating fast-forward)
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "unrelated.txt"), []byte("unrelated\n"), 0644)
+	git("add", "unrelated.txt")
+	git("commit", "-m", "unrelated work on main")
+	git("checkout", "branchC")
+
+	// With fromHead=false and preFFBaseTip matching the old main tip,
+	// no rebase should be triggered (main advanced from unrelated work).
+	opts := &syncOptions{
+		fromHead:     false,
+		preFFBaseTip: preFFBaseTip,
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	rebases := filterActions(plan, "rebase")
+	if len(rebases) != 0 {
+		t.Errorf("expected no rebases with stack-scoped sync when main advanced, got %d", len(rebases))
+		for _, a := range rebases {
+			t.Logf("  rebase %s onto %s", a.branch, a.onto)
+		}
+	}
+}
+
+func TestComputeSyncPlan_FromHead(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Advance main with an unrelated commit
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "unrelated.txt"), []byte("unrelated\n"), 0644)
+	git("add", "unrelated.txt")
+	git("commit", "-m", "unrelated work on main")
+	git("checkout", "branchC")
+
+	// With fromHead=true, should trigger full cascade rebase
+	opts := &syncOptions{
+		fromHead: true,
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	rebases := filterActions(plan, "rebase")
+	if len(rebases) != 3 {
+		t.Errorf("expected 3 rebases with --from-head when main advanced, got %d", len(rebases))
+		for _, a := range rebases {
+			t.Logf("  rebase %s onto %s", a.branch, a.onto)
+		}
+	}
+	if len(rebases) >= 1 && rebases[0].branch != "branchA" {
+		t.Errorf("expected first rebase to be branchA, got %s", rebases[0].branch)
+	}
+}
+
+func TestComputeSyncPlan_StackScopedWithMerge(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record pre-FF base tip
+	preFFBaseTip := git("rev-parse", "main")
+
+	// Advance main (simulating branchA merged + other work)
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "merged.txt"), []byte("merged\n"), 0644)
+	git("add", "merged.txt")
+	git("commit", "-m", "merged branchA into main")
+	git("checkout", "branchC")
+
+	// Mark branchA as merged
+	s.Nodes[0].Status = "merged"
+
+	// Even with fromHead=false, branchB should rebase because its parent
+	// changed (from branchA to main) and its BaseTip (branchA's old SHA)
+	// doesn't match preFFBaseTip (old main SHA).
+	opts := &syncOptions{
+		fromHead:     false,
+		preFFBaseTip: preFFBaseTip,
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	skips := filterActions(plan, "skip-merged")
+	rebases := filterActions(plan, "rebase")
+
+	if len(skips) != 1 || skips[0].branch != "branchA" {
+		t.Errorf("expected 1 skip-merged for branchA, got %v", skips)
+	}
+
+	// branchB's parent is now main (A skipped), but its BaseTip was branchA's
+	// tip which differs from preFFBaseTip (old main) -- so rebase is needed.
+	if len(rebases) < 1 {
+		t.Fatal("expected at least 1 rebase for reparented branchB")
+	}
+	if rebases[0].branch != "branchB" || rebases[0].onto != "main" {
+		t.Errorf("expected rebase branchB onto main, got rebase %s onto %s",
+			rebases[0].branch, rebases[0].onto)
+	}
+}
+
 // --- buildDescriptionPrompt tests ---
 
 func TestBuildDescriptionPrompt(t *testing.T) {

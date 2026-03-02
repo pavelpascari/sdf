@@ -23,9 +23,11 @@ import (
 
 // syncOptions holds optional behavior flags for a sync run.
 type syncOptions struct {
-	withContent bool
-	jsonMode    bool
-	cfg         cfgpkg.Config
+	withContent  bool
+	jsonMode     bool
+	cfg          cfgpkg.Config
+	fromHead     bool   // rebase onto the latest base branch tip
+	preFFBaseTip string // base branch SHA before fast-forward
 }
 
 // SyncResult is the structured output of sdf sync when --json is used.
@@ -69,9 +71,14 @@ var syncCmd = &cobra.Command{
 	Long: `Fetches from origin, queries GitHub for PR status, reconciles PR states,
 cascade-rebases downstream branches, pushes, and updates PR navigation links.
 
+By default, sync only rebases branches within the stack (e.g. after a PR is
+merged or a parent branch is amended). To also rebase onto the latest base
+branch tip (e.g. main), use --from-head.
+
 When a rebase conflict occurs, an interactive menu offers Claude resolution,
 manual resolution (pausing sync), skip, or abort.`,
-	Example: `  sdf sync                          # sync the stack of the current branch
+	Example: `  sdf sync                          # sync within the stack only
+  sdf sync --from-head              # also rebase onto latest base branch
   sdf sync my-feature               # sync a specific stack by name
   sdf sync -y                       # skip confirmation prompt
   sdf sync --continue               # resume after manual conflict resolution
@@ -88,6 +95,7 @@ func init() {
 	syncCmd.Flags().String("stack", "", "stack to sync (default: auto-detect)")
 	syncCmd.Flags().Bool("with-content", false, "update PR titles and descriptions")
 	syncCmd.Flags().Bool("json", false, "output result as JSON")
+	syncCmd.Flags().Bool("from-head", false, "also rebase onto the latest base branch")
 	_ = syncCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
@@ -97,6 +105,7 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	withContent, _ := cmd.Flags().GetBool("with-content")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
+	fromHead, _ := cmd.Flags().GetBool("from-head")
 
 	stackName := stackFlag
 	if stackName == "" && len(args) > 0 {
@@ -124,7 +133,7 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 	if cont {
 		err = runSyncContinue(root, result, bus)
 	} else {
-		err = runSyncFull(root, stackName, yes || jsonFlag, withContent, jsonFlag, result, bus)
+		err = runSyncFull(root, stackName, yes || jsonFlag, withContent, jsonFlag, fromHead, result, bus)
 	}
 
 	if jsonFlag {
@@ -180,7 +189,7 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 		bus.Printf("Rebase of %s was aborted. Starting a fresh sync.", ui.Branch(progress.PausedAt))
 		local.SyncProgress = nil
 		stack.SaveLocal(root, local)
-		return runSyncFull(root, "", false, false, false, result, bus)
+		return runSyncFull(root, "", false, false, false, false, result, bus)
 	}
 
 	s, err := stack.Load(root)
@@ -241,7 +250,7 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 }
 
 // runSyncFull runs a complete sync from scratch.
-func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode bool, result *SyncResult, bus *render.Bus) error {
+func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode, fromHead bool, result *SyncResult, bus *render.Bus) error {
 	// Check for stale sync progress
 	local, _ := stack.LoadLocal(root)
 	if local.SyncProgress != nil {
@@ -284,6 +293,10 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode 
 		bus.Warnf("warning: fetch failed: %v", err)
 	}
 
+	// Capture the base tip before fast-forwarding so we can distinguish
+	// "main advanced from unrelated work" from "stack node merged into main".
+	preFFBaseTip, _ := gitpkg.RevParse(s.Base)
+
 	// Fast-forward the base branch so RevParse returns the latest tip
 	if err := gitpkg.FastForward(s.Base); err != nil {
 		bus.Warnf("warning: could not fast-forward %s: %v", s.Base, err)
@@ -301,9 +314,11 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode 
 	}
 
 	opts := syncOptions{
-		withContent: cfg.WithContentEnabled() || flagWithContent,
-		jsonMode:    jsonMode,
-		cfg:         cfg,
+		withContent:  cfg.WithContentEnabled() || flagWithContent,
+		jsonMode:     jsonMode,
+		cfg:          cfg,
+		fromHead:     fromHead,
+		preFFBaseTip: preFFBaseTip,
 	}
 
 	// Compute and show the sync plan
@@ -366,9 +381,15 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 		if s.Nodes[i].Status != "merged" {
 			parent := s.ParentBranch(s.Nodes[i].Branch)
 			tip, err := gitpkg.RevParse(parent)
-			if err == nil && s.Nodes[i].BaseTip != "" && tip != s.Nodes[i].BaseTip {
-				hasRealWork = true
-				break
+			if err == nil && s.Nodes[i].BaseTip != "" {
+				compareTip := tip
+				if opts != nil && !opts.fromHead && parent == s.Base && opts.preFFBaseTip != "" {
+					compareTip = opts.preFFBaseTip
+				}
+				if compareTip != s.Nodes[i].BaseTip {
+					hasRealWork = true
+					break
+				}
 			}
 		}
 	}
@@ -415,7 +436,12 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			continue
 		}
 
-		if node.BaseTip != "" && currentParentTip != node.BaseTip {
+		compareTip := currentParentTip
+		if opts != nil && !opts.fromHead && parent == s.Base && opts.preFFBaseTip != "" {
+			compareTip = opts.preFFBaseTip
+		}
+
+		if node.BaseTip != "" && compareTip != node.BaseTip {
 			bus.Printf("  rebasing %s onto %s...", ui.Branch(node.Branch), ui.Branch(parent))
 
 			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
@@ -980,8 +1006,14 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 		needsRebase := rebased[parent]
 		if !needsRebase {
 			currentParentTip, err := gitpkg.RevParse(parent)
-			if err == nil && node.BaseTip != "" && currentParentTip != node.BaseTip {
-				needsRebase = true
+			if err == nil && node.BaseTip != "" {
+				compareTip := currentParentTip
+				if opts != nil && !opts.fromHead && parent == s.Base && opts.preFFBaseTip != "" {
+					compareTip = opts.preFFBaseTip
+				}
+				if compareTip != node.BaseTip {
+					needsRebase = true
+				}
 			}
 		}
 
