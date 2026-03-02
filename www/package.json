@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "generate:llms-full": "node ./scripts/generate-llms-full.mjs",
+    "build": "npm run generate:llms-full && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
