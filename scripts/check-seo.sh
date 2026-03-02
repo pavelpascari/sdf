@@ -35,6 +35,11 @@ if [ -f "$DIST/robots.txt" ]; then
   else
     fail "robots.txt exists but has no Sitemap directive"
   fi
+  if grep -q "^# LLMs:" "$DIST/robots.txt"; then
+    pass "robots.txt references llms.txt"
+  else
+    fail "robots.txt is missing LLMs hint"
+  fi
   if grep -qi "Disallow: /" "$DIST/robots.txt" && ! grep -qi "Disallow: /$" "$DIST/robots.txt"; then
     fail "robots.txt blocks indexing (broad Disallow: /)"
   fi
@@ -80,6 +85,28 @@ else
   fail "llms.txt is missing"
 fi
 
+# ── 3b. llms-full.txt ─────────────────────────────────────────────
+echo "-- llms-full.txt"
+if [ -f "$DIST/llms-full.txt" ]; then
+  LLMS_FULL_SIZE=$(wc -c < "$DIST/llms-full.txt" | tr -d ' ')
+  if [ "$LLMS_FULL_SIZE" -gt 5000 ]; then
+    pass "llms-full.txt exists (${LLMS_FULL_SIZE} bytes)"
+  else
+    fail "llms-full.txt appears too small (${LLMS_FULL_SIZE} bytes)"
+  fi
+
+  REQUIRED_SECTIONS=("What Are Stacked Diffs?" "Getting Started" "Core Concepts" "Commands")
+  for section in "${REQUIRED_SECTIONS[@]}"; do
+    if grep -q "$section" "$DIST/llms-full.txt"; then
+      pass "llms-full.txt includes section: $section"
+    else
+      fail "llms-full.txt missing expected section: $section"
+    fi
+  done
+else
+  fail "llms-full.txt is missing"
+fi
+
 # ── 4. HTML page checks ─────────────────────────────────────────
 echo "-- HTML pages"
 HTML_FILES=$(find "$DIST" -name '*.html' -type f)
@@ -110,6 +137,14 @@ for page in $HTML_FILES; do
   # Canonical URL must exist
   if ! grep -qi 'rel="canonical"' "$page"; then
     fail "$REL_PATH: missing canonical URL"
+  fi
+
+  # LLM discovery links should be present in head
+  if ! grep -qi 'rel="alternate"[^>]*href="/llms.txt"' "$page"; then
+    fail "$REL_PATH: missing link to /llms.txt"
+  fi
+  if ! grep -qi 'rel="alternate"[^>]*href="/llms-full.txt"' "$page"; then
+    fail "$REL_PATH: missing link to /llms-full.txt"
   fi
 
   # No more than one <h1> per page
