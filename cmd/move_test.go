@@ -372,3 +372,102 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 		t.Error("b1.txt should be reachable on branchC (inherited through parent chain)")
 	}
 }
+
+func TestRunMove_CherryPickConflictPreservesSourceCommit(t *testing.T) {
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	git("init", "-b", "main")
+	git("config", "user.email", "test@test.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+
+	write("shared.txt", "base\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "initial")
+	mainTip := git("rev-parse", "HEAD")
+
+	git("checkout", "-b", "branchA")
+	write("shared.txt", "A\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "a1")
+	branchATipAtFork := git("rev-parse", "HEAD")
+
+	git("checkout", "-b", "branchB")
+	write("shared.txt", "B\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "b1")
+	b1 := git("rev-parse", "HEAD")
+	write("b2.txt", "b2\n")
+	git("add", "b2.txt")
+	git("commit", "-m", "b2")
+
+	git("checkout", "branchA")
+	write("shared.txt", "A2\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "a2")
+
+	s := &stack.Stack{
+		StackID: "test-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "branchA", Status: "open", BaseTip: mainTip},
+			{Branch: "branchB", Status: "open", BaseTip: branchATipAtFork},
+		},
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	git("checkout", "branchB")
+	err = RunMove([]string{b1})
+	if err == nil {
+		t.Fatal("expected move to fail due to cherry-pick conflict")
+	}
+	if !strings.Contains(err.Error(), "cherry-pick") {
+		t.Fatalf("expected cherry-pick conflict error, got: %v", err)
+	}
+
+	// Source commit must remain reachable from branchB after failure.
+	if !gitpkg.IsAncestor(b1, "branchB") {
+		t.Fatal("source commit was lost from branchB after failed move")
+	}
+
+	// Parent branch should keep its own content (no partial application).
+	if err := gitpkg.Checkout("branchA"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "shared.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(data)) != "A2" {
+		t.Fatalf("branchA was unexpectedly modified after failed move: %q", strings.TrimSpace(string(data)))
+	}
+}
