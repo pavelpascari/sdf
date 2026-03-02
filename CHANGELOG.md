@@ -7,6 +7,11 @@
 
 * **www:** add SEO and AI discoverability with CI enforcement ([#150](https://github.com/pavelpascari/sdf/issues/150)) ([f742e21](https://github.com/pavelpascari/sdf/commit/f742e219315e72bd1b849f06b3bb713b306c085f))
 
+
+### Bug Fixes
+
+* **www:** fix llms.txt encoding and add CI check to reject curly quotes and em dashes ([#152](https://github.com/pavelpascari/sdf/issues/152)) ([bcc3a82](https://github.com/pavelpascari/sdf/commit/bcc3a82))
+
 ## [0.3.4](https://github.com/pavelpascari/sdf/compare/v0.3.3...v0.3.4) (2026-03-01)
 
 
