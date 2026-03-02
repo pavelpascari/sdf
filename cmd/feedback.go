@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultFeedbackIssue = 153
+const defaultFeedbackIssue = 178
 
 var feedbackCmd = &cobra.Command{
 	Use:         "feedback",

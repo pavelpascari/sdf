@@ -17,7 +17,7 @@ func TestRunFeedback_PostsIssueComment(t *testing.T) {
 	})
 	testutil.SetBinary(t, &ghpkg.Binary, fake)
 
-	t.Setenv("SDF_FEEDBACK_ISSUE", "153")
+	t.Setenv("SDF_FEEDBACK_ISSUE", "178")
 
 	c := &cobra.Command{}
 	c.Flags().Int("score", -1, "")
@@ -35,7 +35,7 @@ func TestRunFeedback_PostsIssueComment(t *testing.T) {
 	}
 	var matched string
 	for _, entry := range log {
-		if strings.Contains(entry, "issue comment 153 --body") {
+		if strings.Contains(entry, "issue comment 178 --body") {
 			matched = entry
 			break
 		}
