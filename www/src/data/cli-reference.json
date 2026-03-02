@@ -1,5 +1,5 @@
 {
-  "generated": "2026-03-02T16:56:33Z",
+  "generated": "2026-03-02T23:14:59Z",
   "commands": [
     {
       "name": "ai",
@@ -111,6 +111,26 @@
           "type": "bool",
           "default": "false",
           "description": "output result as JSON"
+        }
+      ]
+    },
+    {
+      "name": "feedback",
+      "category": "utility",
+      "use": "feedback",
+      "short": "Send product feedback to the project issue tracker",
+      "flags": [
+        {
+          "name": "note",
+          "type": "string",
+          "default": "",
+          "description": "optional feedback note"
+        },
+        {
+          "name": "score",
+          "type": "int",
+          "default": "-1",
+          "description": "satisfaction score from 0 to 5"
         }
       ]
     },
