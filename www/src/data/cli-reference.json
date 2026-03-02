@@ -142,6 +142,20 @@
       ]
     },
     {
+      "name": "ls",
+      "category": "stack",
+      "use": "ls",
+      "short": "List local sdf stacks and their statuses",
+      "flags": [
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        }
+      ]
+    },
+    {
       "name": "merge",
       "category": "stack",
       "use": "merge",
@@ -434,5 +448,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "8824fd4c7644386e798c8f55a253723f011ba087038c630b33a0eb2abc1fac7f"
+  "hash": "0deb092ee2e793ec1a447cde8d530a02ba6ee0699acfdc6531318c71579b4bb9"
 }
