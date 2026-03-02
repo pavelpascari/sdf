@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-seo.sh — Validate SEO and AI-discoverability requirements for stacked-diffs-flow.com.
+# check-seo.sh -- Validate SEO and AI-discoverability requirements for stacked-diffs-flow.com.
 #
 # Expects a built site in www/dist (run `npm run build` in www/ first).
 # Returns non-zero if any required check fails.
