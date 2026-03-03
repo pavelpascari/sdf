@@ -729,7 +729,8 @@ func TestBuildDescriptionPrompt(t *testing.T) {
 		"feat: add user auth",
 		"fix: handle edge case",
 		"auth.go",
-		"2-5 sentences",
+		"## Summary",
+		"## Changes",
 		"Diff:",
 	}
 
