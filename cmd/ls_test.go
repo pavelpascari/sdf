@@ -14,6 +14,12 @@ func TestSummarizeStackStatus(t *testing.T) {
 		wantMerged int
 	}{
 		{
+			name:       "empty",
+			nodes:      nil,
+			wantStatus: "active",
+			wantMerged: 0,
+		},
+		{
 			name:       "active",
 			nodes:      []stack.Node{{Status: "open"}, {Status: "draft"}},
 			wantStatus: "active",
