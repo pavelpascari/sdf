@@ -168,8 +168,8 @@ docs:
 .PHONY: docs-check
 docs-check:
 	@echo "Checking CLI reference freshness..."
-	@go run ./cmd/docgen --no-timestamp | jq '.' > /tmp/sdf-cli-ref-check.json
-	@jq 'del(.generated)' www/src/data/cli-reference.json > /tmp/sdf-cli-ref-current.json 2>/dev/null || cp www/src/data/cli-reference.json /tmp/sdf-cli-ref-current.json
+	@go run ./cmd/docgen | jq '.' > /tmp/sdf-cli-ref-check.json
+	@jq '.' www/src/data/cli-reference.json > /tmp/sdf-cli-ref-current.json
 	@diff -q /tmp/sdf-cli-ref-check.json /tmp/sdf-cli-ref-current.json > /dev/null 2>&1 \
 		|| (echo "ERROR: CLI reference is stale. Run 'make docs' and commit." && exit 1)
 	@echo "CLI reference is up to date."

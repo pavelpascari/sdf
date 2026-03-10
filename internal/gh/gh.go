@@ -129,6 +129,76 @@ func PRList(branches []string) ([]PRInfo, error) {
 	return filtered, nil
 }
 
+// PRListByBase returns open PRs whose base branch matches one of baseBranches.
+// This is used to detect collaborator-added child branches not present in the
+// local stack topology.
+func PRListByBase(baseBranches []string) ([]PRInfo, error) {
+	if len(baseBranches) == 0 {
+		return nil, nil
+	}
+
+	searchParts := make([]string, len(baseBranches))
+	for i, b := range baseBranches {
+		searchParts[i] = "base:" + b
+	}
+	searchQuery := strings.Join(searchParts, " ")
+
+	limit := len(baseBranches) * 3
+	if limit < 10 {
+		limit = 10
+	}
+
+	out, err := run("pr", "list",
+		"--state", "open",
+		"--json", "number,headRefName,state,baseRefName,url,statusCheckRollup,reviewDecision,mergeable,isDraft",
+		"--search", searchQuery,
+		"--limit", fmt.Sprintf("%d", limit),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var prs []PRInfo
+	if err := json.Unmarshal([]byte(out), &prs); err != nil {
+		return nil, fmt.Errorf("cannot parse gh pr list output: %w", err)
+	}
+
+	// Filter to only PRs whose base branch is one we asked for (safety net —
+	// GitHub search can return fuzzy matches).
+	baseSet := make(map[string]bool, len(baseBranches))
+	for _, b := range baseBranches {
+		baseSet[b] = true
+	}
+	filtered := make([]PRInfo, 0, len(prs))
+	for _, pr := range prs {
+		if baseSet[pr.BaseRefName] {
+			filtered = append(filtered, pr)
+		}
+	}
+	return filtered, nil
+}
+
+// MergePRResults combines primary PR results with child PR results, deduplicating
+// by head branch name. Primary results take precedence over child results.
+func MergePRResults(primary, child []PRInfo) []PRInfo {
+	if len(child) == 0 {
+		return primary
+	}
+	seen := make(map[string]bool, len(primary))
+	for _, pr := range primary {
+		seen[pr.HeadRefName] = true
+	}
+	merged := make([]PRInfo, len(primary), len(primary)+len(child))
+	copy(merged, primary)
+	for _, pr := range child {
+		if !seen[pr.HeadRefName] {
+			seen[pr.HeadRefName] = true
+			merged = append(merged, pr)
+		}
+	}
+	return merged
+}
+
 // PRCreate creates a PR with the given parameters.
 func PRCreate(title, body, base, head string) (string, error) {
 	args := []string{"pr", "create",

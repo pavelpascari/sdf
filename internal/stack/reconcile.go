@@ -7,7 +7,7 @@ import (
 
 // ReconcileChange describes a single difference between local and discovered state.
 type ReconcileChange struct {
-	Kind      string // "status", "pr-number", "append", "insert", "remove", "reorder", "base-change", "base-mismatch", "pr-missing"
+	Kind      string // "status", "pr-number", "append", "insert", "remove", "reorder", "base-change", "base-mismatch", "pr-missing", "new-child-pr"
 	Branch    string
 	Detail    string // human-readable, e.g. "PR #21: open → merged"
 	Notable   bool   // true = ⚠ (needs attention), false = ✓ (routine)
@@ -208,6 +208,11 @@ func ReconcileFromPRs(s *Stack, prs []PRState) []ReconcileChange {
 		prByBranch[pr.HeadRefName] = pr
 	}
 
+	localByBranch := make(map[string]bool)
+	for _, node := range s.Nodes {
+		localByBranch[node.Branch] = true
+	}
+
 	for i := range s.Nodes {
 		node := &s.Nodes[i]
 
@@ -257,6 +262,23 @@ func ReconcileFromPRs(s *Stack, prs []PRState) []ReconcileChange {
 				Notable: true,
 			})
 		}
+	}
+
+	// Detect child PRs that target known stack branches but are not yet in
+	// local topology (e.g., collaborator added branch on top or in the middle).
+	for _, pr := range prs {
+		if localByBranch[pr.HeadRefName] {
+			continue
+		}
+		if pr.BaseRefName == "" || !localByBranch[pr.BaseRefName] {
+			continue
+		}
+		changes = append(changes, ReconcileChange{
+			Kind:    "new-child-pr",
+			Branch:  pr.HeadRefName,
+			Detail:  fmt.Sprintf("new PR #%d (%s) targets %s but is not in local stack", pr.Number, pr.HeadRefName, pr.BaseRefName),
+			Notable: true,
+		})
 	}
 
 	return changes

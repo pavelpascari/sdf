@@ -127,6 +127,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if gh.Available() {
 		prs, err := gh.PRList(branches)
 		if err == nil {
+			if childPRs, childErr := gh.PRListByBase(branches); childErr == nil {
+				prs = gh.MergePRResults(prs, childPRs)
+			}
+
 			// Build PRState list for reconciliation
 			states := make([]stack.PRState, len(prs))
 			for i, pr := range prs {
@@ -155,7 +159,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Build node results (used by both TTY and JSON)
 	var needsSync []string
 	var nodeResults []StatusNodeResult
-	for _, node := range s.Nodes {
+	baseTipsUpdated := false
+	for i, node := range s.Nodes {
 		nr := StatusNodeResult{
 			Branch:    node.Branch,
 			PR:        node.PR,
@@ -177,8 +182,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if node.BaseTip != "" {
 				currentParentTip, err := gitpkg.RevParse(parent)
 				if err == nil && currentParentTip != node.BaseTip {
-					nr.SyncState = "needs_sync"
-					needsSync = append(needsSync, node.Branch)
+					if gitpkg.IsAncestor(currentParentTip, node.Branch) {
+						nr.SyncState = "in_sync"
+						s.Nodes[i].BaseTip = currentParentTip
+						baseTipsUpdated = true
+					} else {
+						nr.SyncState = "needs_sync"
+						needsSync = append(needsSync, node.Branch)
+					}
 				} else {
 					nr.SyncState = "in_sync"
 				}
@@ -191,6 +202,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 
 		nodeResults = append(nodeResults, nr)
+	}
+
+	if baseTipsUpdated {
+		if err := stack.Save(root, s); err != nil {
+			bus.Warnf("warning: could not save stack: %v", err)
+		}
 	}
 
 	if jsonFlag {
