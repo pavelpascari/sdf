@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +43,20 @@ func TestCompleteStackNames(t *testing.T) {
 
 func TestCompleteStackBranches(t *testing.T) {
 	dir := newTestRepo(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+	}
+
+	// Create local branches to be discovered by completion.
+	git("checkout", "-b", "my-feature/db-schema")
+	git("checkout", "-b", "my-feature/api")
+	git("checkout", "main")
 
 	// Create a stack with two branches
 	s := &stack.Stack{
@@ -79,6 +94,42 @@ func TestCompleteStackBranches(t *testing.T) {
 	}
 	if found["my-feature/merged-one"] {
 		t.Error("merged branches should not be suggested")
+	}
+}
+
+func TestCompleteStackBranches_ExcludesDeletedBranches(t *testing.T) {
+	dir := newTestRepo(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+	}
+
+	git("checkout", "-b", "my-feature/live")
+	git("checkout", "main")
+	git("branch", "-D", "my-feature/live")
+
+	s := &stack.Stack{
+		StackID: "my-feature",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "my-feature/live", Status: "open"},
+		},
+	}
+	if err := stack.Init(dir, "my-feature", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	branches, _ := completeStackBranches(nil, nil, "")
+	if len(branches) != 0 {
+		t.Fatalf("expected no completions for deleted branch, got %v", branches)
 	}
 }
 

@@ -242,7 +242,7 @@ func completeStackBranches(_ *cobra.Command, args []string, _ string) ([]string,
 	var branches []string
 	for _, s := range stacks {
 		for _, n := range s.Nodes {
-			if n.Status != "merged" {
+			if n.Status != "merged" && gitpkg.BranchExists(n.Branch) {
 				branches = append(branches, n.Branch)
 			}
 		}
