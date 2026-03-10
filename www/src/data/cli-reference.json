@@ -18,7 +18,7 @@
     {
       "name": "branch",
       "category": "stack",
-      "use": "branch \u003cname\u003e",
+      "use": "branch <name>",
       "short": "Add a new branch to the current stack",
       "flags": [
         {
@@ -44,9 +44,9 @@
     {
       "name": "completion",
       "category": "utility",
-      "use": "completion \u003cbash|zsh|fish|powershell\u003e",
+      "use": "completion <bash|zsh|fish|powershell>",
       "short": "Generate or install shell completion scripts",
-      "long": "Generate shell completion scripts for sdf.\n\nTo load completions manually:\n\n  Bash:\n    $ sdf completion bash \u003e ~/.local/share/bash-completion/completions/sdf\n\n  Zsh:\n    $ sdf completion zsh \u003e \"${fpath[1]}/_sdf\"\n\n  Fish:\n    $ sdf completion fish \u003e ~/.config/fish/completions/sdf.fish\n\n  PowerShell:\n    PS\u003e sdf completion powershell | Out-String | Invoke-Expression\n\nOr use 'sdf completion install' to auto-detect your shell and install.",
+      "long": "Generate shell completion scripts for sdf.\n\nTo load completions manually:\n\n  Bash:\n    $ sdf completion bash > ~/.local/share/bash-completion/completions/sdf\n\n  Zsh:\n    $ sdf completion zsh > \"${fpath[1]}/_sdf\"\n\n  Fish:\n    $ sdf completion fish > ~/.config/fish/completions/sdf.fish\n\n  PowerShell:\n    PS> sdf completion powershell | Out-String | Invoke-Expression\n\nOr use 'sdf completion install' to auto-detect your shell and install.",
       "subcommands": [
         {
           "name": "install",
@@ -64,7 +64,7 @@
       "subcommands": [
         {
           "name": "set",
-          "use": "set \u003ckey\u003e \u003cvalue\u003e",
+          "use": "set <key> <value>",
           "short": "Set a configuration value",
           "example": "  sdf config set branch_prefix.enabled true\n  sdf config set --global pr_title.conventional_commits true",
           "flags": [
@@ -179,7 +179,7 @@
     {
       "name": "move",
       "category": "stack",
-      "use": "move \u003ccommit\u003e...",
+      "use": "move <commit>...",
       "short": "Move commits from current branch to parent",
       "long": "Cherry-picks listed commits onto the parent branch, strips them from the\ncurrent branch via rebase, and cascade-rebases downstream branches.",
       "example": "  sdf move abc1234                   # move one commit\n  sdf move abc1234 def5678           # move multiple commits",
