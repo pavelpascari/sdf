@@ -690,6 +690,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncRe
 		node         stack.Node
 		prefix       string // conventional commit prefix (e.g. "feat: ")
 		localTitle   string // fallback title from branch name
+		currentTitle string // current PR title on GitHub
 		titlePrompt  string
 		descPrompt   string
 		titleSession string
@@ -711,14 +712,15 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncRe
 		}
 
 		localTitle := cfgpkg.GeneratePRTitle(opts.cfg, s.StackID, node.Branch, subjects)
+		currentTitle, _ := ghpkg.PRViewTitle(node.PR)
 		j := contentJob{
-			node:       *node,
-			localTitle: localTitle,
+			node:         *node,
+			localTitle:   localTitle,
+			currentTitle: currentTitle,
 		}
 
 		if hasClaude {
 			diff, _ := gitpkg.DiffFull(parent, node.Branch)
-			currentTitle, _ := ghpkg.PRViewTitle(node.PR)
 			currentBody, _ := ghpkg.PRViewBody(node.PR)
 			currentDesc := extractDescription(currentBody)
 
@@ -746,7 +748,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncRe
 			ID:   fmt.Sprintf("pr-%d-title", j.node.PR),
 			Name: fmt.Sprintf("PR %s title", ui.PR(j.node.PR)),
 			Fn: func(ctx context.Context, r *render.Reporter) error {
-				currentTitle, _ := ghpkg.PRViewTitle(j.node.PR)
+				currentTitle := j.currentTitle
 				prefix := j.prefix
 				if p, _, ok := splitConventionalTitle(currentTitle); ok {
 					prefix = p
@@ -848,15 +850,35 @@ func splitConventionalTitle(title string) (prefix, body string, ok bool) {
 	if head == "" {
 		return "", "", false
 	}
-	// Match "type" or "type(scope)" in ASCII lowercase.
+	// Match "type" or "type(scope)" — e.g. "feat", "fix(auth)".
+	// Type must start with lowercase ASCII letter; scope (if present)
+	// must be wrapped in balanced parens with no nesting.
+	inScope := false
 	for i, r := range head {
 		if i == 0 && (r < 'a' || r > 'z') {
 			return "", "", false
 		}
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '(' || r == ')' || r == '-' || r == '_' {
+		if r == '(' {
+			if inScope {
+				return "", "", false // nested paren
+			}
+			inScope = true
+			continue
+		}
+		if r == ')' {
+			if !inScope {
+				return "", "", false // unmatched close
+			}
+			inScope = false
+			continue
+		}
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
 			continue
 		}
 		return "", "", false
+	}
+	if inScope {
+		return "", "", false // unclosed paren
 	}
 	return head + ": ", parts[1], true
 }

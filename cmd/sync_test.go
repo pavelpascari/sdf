@@ -874,20 +874,38 @@ func TestSyncResultJSON_WithError(t *testing.T) {
 }
 
 func TestSplitConventionalTitle(t *testing.T) {
-	prefix, body, ok := splitConventionalTitle("fix(sync): preserve title prefix")
-	if !ok {
-		t.Fatal("expected conventional title to parse")
+	tests := []struct {
+		input      string
+		wantPrefix string
+		wantBody   string
+		wantOK     bool
+	}{
+		{"fix(sync): preserve title prefix", "fix(sync): ", "preserve title prefix", true},
+		{"feat: add feature", "feat: ", "add feature", true},
+		{"chore(deps-dev): bump eslint", "chore(deps-dev): ", "bump eslint", true},
+		{"ci: update workflow", "ci: ", "update workflow", true},
+		{"plain title", "", "", false},
+		{"no colon", "", "", false},
+		{"Uppercase: not conventional", "", "", false},
+		{"feat((nested): bad", "", "", false},
+		{"feat(unclosed: bad", "", "", false},
+		{"feat): unmatched close", "", "", false},
+		{": empty type", "", "", false},
 	}
-	if prefix != "fix(sync): " {
-		t.Fatalf("prefix = %q", prefix)
-	}
-	if body != "preserve title prefix" {
-		t.Fatalf("body = %q", body)
-	}
-
-	_, _, ok = splitConventionalTitle("plain title")
-	if ok {
-		t.Fatal("plain title should not parse as conventional")
+	for _, tt := range tests {
+		prefix, body, ok := splitConventionalTitle(tt.input)
+		if ok != tt.wantOK {
+			t.Errorf("splitConventionalTitle(%q): ok = %v, want %v", tt.input, ok, tt.wantOK)
+			continue
+		}
+		if ok {
+			if prefix != tt.wantPrefix {
+				t.Errorf("splitConventionalTitle(%q): prefix = %q, want %q", tt.input, prefix, tt.wantPrefix)
+			}
+			if body != tt.wantBody {
+				t.Errorf("splitConventionalTitle(%q): body = %q, want %q", tt.input, body, tt.wantBody)
+			}
+		}
 	}
 }
 
