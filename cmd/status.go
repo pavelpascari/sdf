@@ -160,7 +160,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	var needsSync []string
 	var nodeResults []StatusNodeResult
 	baseTipsUpdated := false
-	for _, node := range s.Nodes {
+	for i, node := range s.Nodes {
 		nr := StatusNodeResult{
 			Branch:    node.Branch,
 			PR:        node.PR,
@@ -184,7 +184,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				if err == nil && currentParentTip != node.BaseTip {
 					if gitpkg.IsAncestor(currentParentTip, node.Branch) {
 						nr.SyncState = "in_sync"
-						node.BaseTip = currentParentTip
+						s.Nodes[i].BaseTip = currentParentTip
 						baseTipsUpdated = true
 					} else {
 						nr.SyncState = "needs_sync"
@@ -205,7 +205,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if baseTipsUpdated {
-		_ = stack.Save(root, s)
+		if err := stack.Save(root, s); err != nil {
+			bus.Warnf("warning: could not save stack: %v", err)
+		}
 	}
 
 	if jsonFlag {

@@ -324,17 +324,16 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 	// Compute and show the sync plan
 	plan := computeSyncPlan(s, &opts)
 
-	// Check if there's any real work beyond acknowledging merged PRs and
-	// refreshing stale base-tip pointers for already-synced branches.
-	onlyTrivial := true
+	// Check if there's any real work beyond acknowledging merged PRs.
+	onlySkipMerged := true
 	for _, a := range plan {
-		if a.kind != "skip-merged" && a.kind != "update-tip" {
-			onlyTrivial = false
+		if a.kind != "skip-merged" {
+			onlySkipMerged = false
 			break
 		}
 	}
 
-	if len(plan) == 0 || onlyTrivial {
+	if len(plan) == 0 || onlySkipMerged {
 		bus.Print("\nEverything is in sync.")
 		// Save any state changes from reconciliation
 		if err := stack.Save(root, s); err != nil {

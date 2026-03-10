@@ -165,7 +165,7 @@ func TestComputeSyncPlan_MergedHead(t *testing.T) {
 
 	plan := computeSyncPlan(s, nil)
 
-	// Should have: skip branchA (merged), rebase branchB onto main, push branchB
+	// Should have: skip branchA (merged), update-tip branchB
 	skips := filterActions(plan, "skip-merged")
 	rebases := filterActions(plan, "rebase")
 	updateTips := filterActions(plan, "update-tip")
