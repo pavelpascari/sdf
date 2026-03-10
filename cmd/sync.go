@@ -59,7 +59,7 @@ type PRUpdate struct {
 
 // syncAction represents a single planned operation during sync.
 type syncAction struct {
-	kind   string // "skip-merged", "rebase", "push", "update-pr-base", "update-content"
+	kind   string // "skip-merged", "update-tip", "rebase", "push", "update-pr-base", "update-content"
 	branch string
 	onto   string // target base for rebase or PR base update
 	pr     int    // PR number (for update-pr-base, update-content)
@@ -324,7 +324,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 	// Compute and show the sync plan
 	plan := computeSyncPlan(s, &opts)
 
-	// Check if there's any real work beyond acknowledging merged PRs
+	// Check if there's any real work beyond acknowledging merged PRs.
 	onlySkipMerged := true
 	for _, a := range plan {
 		if a.kind != "skip-merged" {
@@ -375,7 +375,8 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	failed := make(map[string]error)
 	var prBasesUpdated int
 
-	// Check if there's any real work (rebases) beyond just merged PRs
+	// Check if there's any real work (rebases) beyond merged PRs and
+	// update-tip bookkeeping.
 	hasRealWork := false
 	for i := 0; i < len(s.Nodes); i++ {
 		if s.Nodes[i].Status != "merged" {
@@ -387,8 +388,10 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 					compareTip = opts.preFFBaseTip
 				}
 				if compareTip != s.Nodes[i].BaseTip {
-					hasRealWork = true
-					break
+					if !gitpkg.IsAncestor(compareTip, s.Nodes[i].Branch) {
+						hasRealWork = true
+						break
+					}
 				}
 			}
 		}
@@ -442,9 +445,47 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 		}
 
 		if node.BaseTip != "" && compareTip != node.BaseTip {
+			if gitpkg.IsAncestor(compareTip, node.Branch) {
+				node.BaseTip = currentParentTip
+				modified = true
+
+				baseUpdated := false
+				if node.PR > 0 && ghpkg.Available() {
+					directParent := s.Base
+					if i > 0 {
+						directParent = s.Nodes[i-1].Branch
+					}
+					if parent != directParent {
+						if err := ghpkg.PREditBase(node.PR, parent); err != nil {
+							bus.Warnf("  %s could not update PR %s base: %v", ui.SymWarn, ui.PR(node.PR), err)
+						} else {
+							prBasesUpdated++
+							baseUpdated = true
+						}
+					}
+				}
+
+				if result != nil {
+					result.Branches = append(result.Branches, BranchResult{
+						Branch:      node.Branch,
+						PR:          node.PR,
+						Action:      "updated-tip",
+						BaseUpdated: baseUpdated,
+					})
+				}
+				continue
+			}
+
+			rebaseOldBase := node.BaseTip
+			if !gitpkg.IsAncestor(rebaseOldBase, node.Branch) {
+				if fallbackBase, err := gitpkg.MergeBase(parent, node.Branch); err == nil && fallbackBase != "" {
+					rebaseOldBase = fallbackBase
+				}
+			}
+
 			bus.Printf("  rebasing %s onto %s...", ui.Branch(node.Branch), ui.Branch(parent))
 
-			if err := gitpkg.RebaseOnto(parent, node.BaseTip, node.Branch); err != nil {
+			if err := gitpkg.RebaseOnto(parent, rebaseOldBase, node.Branch); err != nil {
 				// In JSON mode, abort immediately — no interactive prompts.
 				if opts != nil && opts.jsonMode {
 					if result != nil {
@@ -1019,7 +1060,21 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 					compareTip = opts.preFFBaseTip
 				}
 				if compareTip != node.BaseTip {
-					needsRebase = true
+					if gitpkg.IsAncestor(compareTip, node.Branch) {
+						actions = append(actions, syncAction{kind: "update-tip", branch: node.Branch, onto: parent})
+
+						if node.PR > 0 && ghpkg.Available() {
+							directParent := s.Base
+							if i > 0 {
+								directParent = nodes[i-1].Branch
+							}
+							if parent != directParent {
+								actions = append(actions, syncAction{kind: "update-pr-base", branch: node.Branch, pr: node.PR, onto: parent})
+							}
+						}
+					} else {
+						needsRebase = true
+					}
 				}
 			}
 		}
@@ -1083,6 +1138,8 @@ func printSyncPlan(plan []syncAction, bus *render.Bus) {
 			}
 		case "push":
 			bus.Printf("  %s push %s", ui.SymPlan, ui.Branch(a.branch))
+		case "update-tip":
+			bus.Printf("  %s refresh %s base tip", ui.SymPlan, ui.Branch(a.branch))
 		case "update-pr-base":
 			bus.Printf("  %s update PR %s base → %s", ui.SymPlan, ui.PR(a.pr), ui.Branch(a.onto))
 		case "update-content":
