@@ -304,8 +304,16 @@ func PREditTitle(prNumber int, title string) error {
 // PRMerge merges a PR using the specified method ("squash", "merge", or "rebase").
 // Also deletes the remote branch after merging.
 func PRMerge(prNumber int, method string) error {
-	out, err := run("pr", "merge", fmt.Sprintf("%d", prNumber),
-		"--"+method, "--delete-branch")
+	return PRMergeWithOptions(prNumber, method, false)
+}
+
+// PRMergeWithOptions merges a PR and supports enabling auto-merge.
+func PRMergeWithOptions(prNumber int, method string, auto bool) error {
+	args := []string{"pr", "merge", fmt.Sprintf("%d", prNumber), "--" + method, "--delete-branch"}
+	if auto {
+		args = append(args, "--auto")
+	}
+	out, err := run(args...)
 	if err != nil && isRemoteBranchAlreadyDeleted(out) {
 		return nil
 	}

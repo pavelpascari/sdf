@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -26,6 +28,53 @@ func TestFindHeadPR_FirstOpen(t *testing.T) {
 	}
 	if node.PR != 10 {
 		t.Errorf("expected PR 10, got %d", node.PR)
+	}
+}
+
+func TestFormatMergeError_BranchProtectionSuggestsAuto(t *testing.T) {
+	err := errors.New("Pull request #91 is not mergeable: the base branch policy prohibits the merge")
+	msg := formatMergeError(err, false, "main")
+	if !strings.Contains(msg, "sdf merge --auto") {
+		t.Fatalf("expected auto-merge guidance, got: %s", msg)
+	}
+}
+
+func TestFormatMergeError_AuthHint(t *testing.T) {
+	err := errors.New("authentication required")
+	msg := formatMergeError(err, false, "main")
+	if !strings.Contains(msg, "gh auth login") {
+		t.Fatalf("expected auth guidance, got: %s", msg)
+	}
+}
+
+func TestFormatMergeError_BranchProtectionWithAutoAlready(t *testing.T) {
+	err := errors.New("Pull request #91 is not mergeable: the base branch policy prohibits the merge")
+	msg := formatMergeError(err, true, "main")
+	// When --auto was already used, don't suggest it again.
+	if strings.Contains(msg, "sdf merge --auto") {
+		t.Fatalf("should not suggest --auto when already used, got: %s", msg)
+	}
+	if !strings.Contains(msg, "merge blocked by branch protection") {
+		t.Fatalf("expected branch protection message, got: %s", msg)
+	}
+}
+
+func TestFormatMergeError_NetworkError(t *testing.T) {
+	err := errors.New("connection refused")
+	msg := formatMergeError(err, false, "main")
+	if !strings.Contains(msg, "network error") {
+		t.Fatalf("expected network error guidance, got: %s", msg)
+	}
+}
+
+func TestFormatMergeError_UnknownError(t *testing.T) {
+	err := errors.New("something unexpected happened")
+	msg := formatMergeError(err, false, "main")
+	if !strings.Contains(msg, "merge failed:") {
+		t.Fatalf("expected generic merge failed, got: %s", msg)
+	}
+	if strings.Contains(msg, "sdf merge --auto") || strings.Contains(msg, "gh auth login") {
+		t.Fatalf("should not contain specific guidance for unknown error, got: %s", msg)
 	}
 }
 

@@ -302,9 +302,30 @@ func TestPRMerge_Arguments(t *testing.T) {
 	}
 }
 
+func TestPRMergeWithOptions_AutoMergeArguments(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
+		"pr merge": "",
+	})
+	testutil.SetBinary(t, &Binary, fake)
+
+	if err := PRMergeWithOptions(42, "squash", true); err != nil {
+		t.Fatalf("PRMergeWithOptions failed: %v", err)
+	}
+
+	log := testutil.ReadLog(t, dir, "gh")
+	if len(log) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(log))
+	}
+	if log[0] != "pr merge 42 --squash --delete-branch --auto" {
+		t.Errorf("unexpected arguments: %s", log[0])
+	}
+}
+
 func TestPRMerge_IgnoresRemoteDelete404(t *testing.T) {
 	dir := t.TempDir()
-	fake := testutil.FakeBinFail(t, dir, "gh", `failed to delete remote branch feat/foo: HTTP 404: Reference does not exist`)
+	fake := testutil.FakeBinFail(t, dir, "gh",
+		"failed to delete remote branch feat/auth: HTTP 404: Reference does not exist")
 	testutil.SetBinary(t, &Binary, fake)
 
 	if err := PRMerge(42, "squash"); err != nil {
