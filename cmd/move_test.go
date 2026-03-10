@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -370,5 +371,345 @@ func TestRunMove_CascadeRebase(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "b1.txt")); err != nil {
 		t.Error("b1.txt should be reachable on branchC (inherited through parent chain)")
+	}
+}
+
+func TestRunMove_CherryPickConflictPreservesSourceCommit(t *testing.T) {
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	git("init", "-b", "main")
+	git("config", "user.email", "test@test.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+
+	write("shared.txt", "base\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "initial")
+	mainTip := git("rev-parse", "HEAD")
+
+	git("checkout", "-b", "branchA")
+	write("shared.txt", "A\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "a1")
+	branchATipAtFork := git("rev-parse", "HEAD")
+
+	git("checkout", "-b", "branchB")
+	write("shared.txt", "B\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "b1")
+	b1 := git("rev-parse", "HEAD")
+	write("b2.txt", "b2\n")
+	git("add", "b2.txt")
+	git("commit", "-m", "b2")
+
+	git("checkout", "branchA")
+	write("shared.txt", "A2\n")
+	git("add", "shared.txt")
+	git("commit", "-m", "a2")
+
+	s := &stack.Stack{
+		StackID: "test-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "branchA", Status: "open", BaseTip: mainTip},
+			{Branch: "branchB", Status: "open", BaseTip: branchATipAtFork},
+		},
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	git("checkout", "branchB")
+	err = RunMove([]string{b1})
+	if err == nil {
+		t.Fatal("expected move to fail due to cherry-pick conflict")
+	}
+	if !strings.Contains(err.Error(), "cherry-pick") {
+		t.Fatalf("expected cherry-pick conflict error, got: %v", err)
+	}
+
+	// Source commit must remain reachable from branchB after failure.
+	if !gitpkg.IsAncestor(b1, "branchB") {
+		t.Fatal("source commit was lost from branchB after failed move")
+	}
+
+	// Parent branch should keep its own content (no partial application).
+	if err := gitpkg.Checkout("branchA"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "shared.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(data)) != "A2" {
+		t.Fatalf("branchA was unexpectedly modified after failed move: %q", strings.TrimSpace(string(data)))
+	}
+}
+
+func TestRunMove_DivergedTarget(t *testing.T) {
+	dir, shas := testRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// Add a new commit to branchA after branchB was created (diverge).
+	git("checkout", "branchA")
+	os.WriteFile(filepath.Join(dir, "a3.txt"), []byte("a3\n"), 0644)
+	git("add", "a3.txt")
+	git("commit", "-m", "a3")
+	git("checkout", "branchB")
+
+	// Move b1 to branchA — should succeed despite divergence.
+	if err := RunMove([]string{shas["b1"]}); err != nil {
+		t.Fatalf("RunMove on diverged target failed: %v", err)
+	}
+
+	// Verify branchA has both a3 and b1 content.
+	if err := gitpkg.Checkout("branchA"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "a3.txt")); err != nil {
+		t.Error("a3.txt should still exist on branchA")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b1.txt")); err != nil {
+		t.Error("b1.txt should exist on branchA after move")
+	}
+
+	// branchB should still have b2 and b3.
+	if err := gitpkg.Checkout("branchB"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b2.txt")); err != nil {
+		t.Error("b2.txt should still exist on branchB")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b3.txt")); err != nil {
+		t.Error("b3.txt should still exist on branchB")
+	}
+}
+
+func TestRunMove_CommitCountPreserved(t *testing.T) {
+	dir, shas := testRepo(t)
+
+	// Count commits before move.
+	// branchA has 2 commits above main (a1, a2).
+	// branchB has 3 commits above branchA (b1, b2, b3).
+	// Total own commits: 5.
+	countCommits := func(base, branch string) int {
+		t.Helper()
+		cmd := exec.Command("git", "rev-list", "--count", base+".."+branch)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git rev-list --count %s..%s: %s", base, branch, string(out))
+		}
+		var n int
+		fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
+		return n
+	}
+
+	beforeA := countCommits("main", "branchA")
+	beforeB := countCommits("branchA", "branchB")
+	totalBefore := beforeA + beforeB
+
+	// Move b1 from branchB to branchA.
+	if err := RunMove([]string{shas["b1"]}); err != nil {
+		t.Fatalf("RunMove failed: %v", err)
+	}
+
+	afterA := countCommits("main", "branchA")
+	afterB := countCommits("branchA", "branchB")
+	totalAfter := afterA + afterB
+
+	if totalAfter != totalBefore {
+		t.Fatalf("total commits changed: before=%d (A:%d + B:%d), after=%d (A:%d + B:%d)",
+			totalBefore, beforeA, beforeB, totalAfter, afterA, afterB)
+	}
+
+	// branchA should have gained 1, branchB should have lost 1.
+	if afterA != beforeA+1 {
+		t.Errorf("branchA should have %d commits, got %d", beforeA+1, afterA)
+	}
+	if afterB != beforeB-1 {
+		t.Errorf("branchB should have %d commits, got %d", beforeB-1, afterB)
+	}
+}
+
+func TestRunMove_SingleCommitBranchError(t *testing.T) {
+	// Branch with exactly 1 commit — moving it should fail (branch would become empty).
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) })
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	git("init", "-b", "main")
+	git("config", "user.email", "test@test.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+
+	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test\n"), 0644)
+	git("add", "README.md")
+	git("commit", "-m", "initial")
+	mainTip := git("rev-parse", "HEAD")
+
+	git("checkout", "-b", "feat")
+	os.WriteFile(filepath.Join(dir, "f1.txt"), []byte("f1\n"), 0644)
+	git("add", "f1.txt")
+	git("commit", "-m", "f1")
+	f1 := git("rev-parse", "HEAD")
+
+	s := &stack.Stack{
+		StackID: "test-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "feat", Status: "open", BaseTip: mainTip},
+		},
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	err = RunMove([]string{f1})
+	if err == nil {
+		t.Fatal("expected error when moving the only commit")
+	}
+	if !strings.Contains(err.Error(), "would become empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Commit must still be on the branch.
+	if !gitpkg.IsAncestor(f1, "feat") {
+		t.Fatal("commit was lost after failed move of only commit")
+	}
+}
+
+func TestRunMove_TwoCommitsMoveOne(t *testing.T) {
+	// Branch with 2 commits — move 1, verify 1 remains.
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) })
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	git("init", "-b", "main")
+	git("config", "user.email", "test@test.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+
+	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test\n"), 0644)
+	git("add", "README.md")
+	git("commit", "-m", "initial")
+	mainTip := git("rev-parse", "HEAD")
+
+	git("checkout", "-b", "feat")
+	os.WriteFile(filepath.Join(dir, "f1.txt"), []byte("f1\n"), 0644)
+	git("add", "f1.txt")
+	git("commit", "-m", "f1")
+	f1 := git("rev-parse", "HEAD")
+
+	os.WriteFile(filepath.Join(dir, "f2.txt"), []byte("f2\n"), 0644)
+	git("add", "f2.txt")
+	git("commit", "-m", "f2")
+
+	s := &stack.Stack{
+		StackID: "test-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "feat", Status: "open", BaseTip: mainTip},
+		},
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RunMove([]string{f1}); err != nil {
+		t.Fatalf("RunMove failed: %v", err)
+	}
+
+	// main should now have f1 content.
+	if err := gitpkg.Checkout("main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "f1.txt")); err != nil {
+		t.Error("f1.txt should exist on main after move")
+	}
+
+	// feat should still have f2, and f1 via inheritance.
+	if err := gitpkg.Checkout("feat"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "f2.txt")); err != nil {
+		t.Error("f2.txt should still exist on feat")
+	}
+
+	// Exactly 1 own commit should remain on feat.
+	count := git("rev-list", "--count", "main..feat")
+	if count != "1" {
+		t.Fatalf("expected 1 commit on feat after move, got %s", count)
 	}
 }
