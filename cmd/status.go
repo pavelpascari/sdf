@@ -26,16 +26,17 @@ type StatusResult struct {
 
 // StatusNodeResult describes a single branch in the stack status.
 type StatusNodeResult struct {
-	Branch       string `json:"branch"`
-	PR           int    `json:"pr,omitempty"`
-	Status       string `json:"status"`
-	SyncState    string `json:"sync_state,omitempty"`
-	CommitsAhead int    `json:"commits_ahead,omitempty"`
-	IsCurrent    bool   `json:"is_current,omitempty"`
-	CIStatus     string `json:"ci_status,omitempty"`
-	ReviewStatus string `json:"review_status,omitempty"`
-	Mergeable    string `json:"mergeable,omitempty"`
-	IsDraft      bool   `json:"is_draft,omitempty"`
+	Branch       string   `json:"branch"`
+	PR           int      `json:"pr,omitempty"`
+	Status       string   `json:"status"`
+	SyncState    string   `json:"sync_state,omitempty"`
+	CommitsAhead int      `json:"commits_ahead,omitempty"`
+	CommitLog    []string `json:"commit_log,omitempty"`
+	IsCurrent    bool     `json:"is_current,omitempty"`
+	CIStatus     string   `json:"ci_status,omitempty"`
+	ReviewStatus string   `json:"review_status,omitempty"`
+	Mergeable    string   `json:"mergeable,omitempty"`
+	IsDraft      bool     `json:"is_draft,omitempty"`
 }
 
 var statusCmd = &cobra.Command{
@@ -50,6 +51,7 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().String("stack", "", "stack to show (default: auto-detect)")
 	statusCmd.Flags().Bool("json", false, "output result as JSON")
+	statusCmd.Flags().BoolP("verbose", "v", false, "show commit hashes and messages per branch")
 	_ = statusCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
@@ -62,6 +64,7 @@ func RunStatus(args []string) error {
 func runStatus(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
+	verbose, _ := cmd.Flags().GetBool("verbose")
 
 	// Accept positional arg as stack name: sdf status <stack-name>
 	stackName := stackFlag
@@ -201,6 +204,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		if verbose {
+			if logOut, err := gitpkg.Log(parent, node.Branch); err == nil && logOut != "" {
+				nr.CommitLog = strings.Split(logOut, "\n")
+			}
+		}
+
 		nodeResults = append(nodeResults, nr)
 	}
 
@@ -272,6 +281,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		mergeStr := formatMergeability(nr)
 
 		bus.Printf(" %s %s  %-30s %s %s%s%s", marker, icon, ui.Branch(nr.Branch), prInfo, statusStr, syncStr, mergeStr)
+		if verbose && len(nr.CommitLog) > 0 {
+			for _, line := range nr.CommitLog {
+				bus.Printf("     %s", line)
+			}
+		}
 	}
 
 	// Print sync suggestion

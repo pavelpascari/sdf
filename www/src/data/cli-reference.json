@@ -337,6 +337,13 @@
           "type": "string",
           "default": "",
           "description": "stack to show (default: auto-detect)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "description": "show commit hashes and messages per branch"
         }
       ]
     },
@@ -448,5 +455,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "0deb092ee2e793ec1a447cde8d530a02ba6ee0699acfdc6531318c71579b4bb9"
+  "hash": "2957e7baa578307ac5ca9664e7bdc5b88634250f773e7e7ce6c65c2e6f2b43b6"
 }
