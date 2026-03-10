@@ -230,7 +230,7 @@ func LogCommits(from, to string) ([]string, error) {
 
 // BranchExists returns true if the branch exists locally.
 func BranchExists(branch string) bool {
-	_, err := run("rev-parse", "--verify", branch)
+	_, err := run("rev-parse", "--verify", "refs/heads/"+branch)
 	return err == nil
 }
 
