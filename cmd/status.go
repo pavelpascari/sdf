@@ -127,6 +127,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if gh.Available() {
 		prs, err := gh.PRList(branches)
 		if err == nil {
+			if childPRs, childErr := gh.PRListByBase(branches); childErr == nil {
+				prs = gh.MergePRResults(prs, childPRs)
+			}
+
 			// Build PRState list for reconciliation
 			states := make([]stack.PRState, len(prs))
 			for i, pr := range prs {

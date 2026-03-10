@@ -59,8 +59,8 @@ func TestReconcileSyncPRStates_FillsFromGitHub(t *testing.T) {
 
 	// Verify gh was called
 	log := testutil.ReadLog(t, dir, "gh")
-	if len(log) != 1 {
-		t.Fatalf("expected 1 gh invocation, got %d", len(log))
+	if len(log) != 2 {
+		t.Fatalf("expected 2 gh invocations, got %d", len(log))
 	}
 }
 

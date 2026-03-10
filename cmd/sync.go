@@ -947,6 +947,13 @@ func reconcileSyncPRStates(s *stack.Stack, bus *render.Bus) {
 		return
 	}
 
+	childPRs, err := ghpkg.PRListByBase(branches)
+	if err != nil {
+		bus.Warnf("warning: could not poll child PR states: %v", err)
+	} else {
+		prs = ghpkg.MergePRResults(prs, childPRs)
+	}
+
 	// Convert gh.PRInfo → stack.PRState
 	states := make([]stack.PRState, len(prs))
 	for i, pr := range prs {
