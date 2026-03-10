@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -93,6 +95,14 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 
 	if fromBranch == base {
 		return fmt.Errorf("cannot split the base branch %q", base)
+	}
+
+	nearestAncestor, err := nearestAncestorBranch(fromBranch, base)
+	if err != nil {
+		return err
+	}
+	if nearestAncestor != "" && nearestAncestor != base {
+		return fmt.Errorf("branch %q is based on %q, not %q\nsdf split only works on branches based directly off the main branch", fromBranch, nearestAncestor, base)
 	}
 
 	root, err := gitpkg.RepoRoot()
@@ -489,4 +499,42 @@ func printStackChain(s *stack.Stack) {
 		parts = append(parts, label)
 	}
 	fmt.Printf("\n  %s\n", strings.Join(parts, " ← "))
+}
+
+// nearestAncestorBranch returns the closest local ancestor branch of target,
+// preferring the one with the fewest commits between ancestor and target.
+// Branches that are ancestors of base (i.e., already merged) are skipped.
+func nearestAncestorBranch(target, base string) (string, error) {
+	branches, err := gitpkg.LocalBranches()
+	if err != nil {
+		return "", fmt.Errorf("cannot inspect local branches: %w", err)
+	}
+
+	best := ""
+	bestDistance := math.MaxInt
+	for _, b := range branches {
+		if b == target {
+			continue
+		}
+		if gitpkg.IsAncestor(b, base) {
+			continue // merged into base, skip
+		}
+		if !gitpkg.IsAncestor(b, target) {
+			continue
+		}
+
+		countStr, err := gitpkg.CommitCount(b, target)
+		if err != nil {
+			continue
+		}
+		distance, err := strconv.Atoi(countStr)
+		if err != nil || distance <= 0 {
+			continue
+		}
+		if distance < bestDistance {
+			bestDistance = distance
+			best = b
+		}
+	}
+	return best, nil
 }
