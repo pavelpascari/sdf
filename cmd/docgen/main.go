@@ -1,10 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/pavelpascari/sdf/cmd"
 	"github.com/pavelpascari/sdf/internal/config"
@@ -14,9 +14,9 @@ import (
 
 // CLIReference is the top-level JSON output structure.
 type CLIReference struct {
-	Generated  string                 `json:"generated,omitempty"`
 	Commands   []CommandDoc           `json:"commands"`
 	ConfigKeys []config.ConfigKeyMeta `json:"config_keys"`
+	Hash       string                 `json:"hash"`
 }
 
 // CommandDoc describes a single CLI command.
@@ -42,22 +42,13 @@ type FlagDoc struct {
 }
 
 func main() {
-	noTimestamp := false
-	for _, arg := range os.Args[1:] {
-		if arg == "--no-timestamp" {
-			noTimestamp = true
-		}
-	}
-
 	root := cmd.RootCmd()
 
 	ref := CLIReference{
 		Commands:   extractCommands(root),
 		ConfigKeys: config.ConfigKeys(),
 	}
-	if !noTimestamp {
-		ref.Generated = time.Now().UTC().Format(time.RFC3339)
-	}
+	ref.Hash = computeHash(ref)
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -65,6 +56,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func computeHash(ref CLIReference) string {
+	clone := ref
+	clone.Hash = ""
+	data, err := json.Marshal(clone)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:])
 }
 
 func extractCommands(parent *cobra.Command) []CommandDoc {
