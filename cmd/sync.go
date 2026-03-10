@@ -1010,8 +1010,8 @@ func buildDescriptionPrompt(branch string, subjects []string, diff, currentDesc 
 	var b strings.Builder
 
 	b.WriteString("You are a PR description generator. Output ONLY the description text — nothing else.\n")
-	b.WriteString("No preamble, no thinking, no commentary, no markdown headers, no formatting.\n")
-	b.WriteString("Start directly with the first sentence of the description.\n\n")
+	b.WriteString("Use clean GitHub-flavored Markdown.\n")
+	b.WriteString("Do not include stack navigation or metadata sections — sdf adds those separately.\n\n")
 
 	if currentDesc != "" {
 		b.WriteString("Current description:\n")
@@ -1033,7 +1033,13 @@ func buildDescriptionPrompt(branch string, subjects []string, diff, currentDesc 
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\nWrite 2-5 sentences explaining what this change does and why. Focus on user impact and key changes.")
+	b.WriteString("\nWrite a concise Markdown description with this structure:\n")
+	b.WriteString("## Summary\n")
+	b.WriteString("- 1-3 bullets describing what changed and why\n")
+	b.WriteString("## Changes\n")
+	b.WriteString("- bullets listing key implementation details\n")
+	b.WriteString("Use inline code formatting for file/function names where helpful.\n")
+	b.WriteString("Keep it short and scannable.")
 
 	return b.String()
 }
