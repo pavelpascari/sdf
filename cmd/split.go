@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -95,7 +97,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot split the base branch %q", base)
 	}
 
-	nearestAncestor, err := nearestAncestorBranch(fromBranch)
+	nearestAncestor, err := nearestAncestorBranch(fromBranch, base)
 	if err != nil {
 		return err
 	}
@@ -501,17 +503,21 @@ func printStackChain(s *stack.Stack) {
 
 // nearestAncestorBranch returns the closest local ancestor branch of target,
 // preferring the one with the fewest commits between ancestor and target.
-func nearestAncestorBranch(target string) (string, error) {
+// Branches that are ancestors of base (i.e., already merged) are skipped.
+func nearestAncestorBranch(target, base string) (string, error) {
 	branches, err := gitpkg.LocalBranches()
 	if err != nil {
 		return "", fmt.Errorf("cannot inspect local branches: %w", err)
 	}
 
 	best := ""
-	bestDistance := int(^uint(0) >> 1) // max int
+	bestDistance := math.MaxInt
 	for _, b := range branches {
 		if b == target {
 			continue
+		}
+		if gitpkg.IsAncestor(b, base) {
+			continue // merged into base, skip
 		}
 		if !gitpkg.IsAncestor(b, target) {
 			continue
@@ -521,11 +527,8 @@ func nearestAncestorBranch(target string) (string, error) {
 		if err != nil {
 			continue
 		}
-		var distance int
-		if _, err := fmt.Sscanf(countStr, "%d", &distance); err != nil {
-			continue
-		}
-		if distance <= 0 {
+		distance, err := strconv.Atoi(countStr)
+		if err != nil || distance <= 0 {
 			continue
 		}
 		if distance < bestDistance {

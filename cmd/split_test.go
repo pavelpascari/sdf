@@ -179,6 +179,72 @@ func TestSplitRejectsNestedBranch(t *testing.T) {
 	}
 }
 
+func TestSplitAllowsBranchOnMain(t *testing.T) {
+	resetSplitFlags()
+	dir := splitTestRepo(t)
+
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+	}
+
+	git("checkout", "-b", "feat/clean", "main")
+	os.WriteFile(filepath.Join(dir, "clean.go"), []byte("package clean\n"), 0644)
+	git("add", "clean.go")
+	git("commit", "-m", "clean feature")
+
+	testutil.SetBinary(t, &claudepkg.Binary, "true")
+
+	// Should pass the ancestry guard (fails later because Claude is stubbed).
+	err := RunSplit([]string{"--from", "feat/clean", "--stack", "test", "--base", "main"})
+	if err != nil && strings.Contains(err.Error(), "based on") {
+		t.Fatalf("branch on main should pass ancestry check, got: %v", err)
+	}
+}
+
+func TestSplitIgnoresMergedBranch(t *testing.T) {
+	resetSplitFlags()
+	dir := splitTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// Create and merge a feature branch into main.
+	git("checkout", "-b", "feat/old", "main")
+	os.WriteFile(filepath.Join(dir, "old.go"), []byte("package old\n"), 0644)
+	git("add", "old.go")
+	git("commit", "-m", "old feature")
+	git("checkout", "main")
+	git("merge", "--no-ff", "feat/old", "-m", "merge feat/old")
+
+	// Create a new branch on main after the merge.
+	git("checkout", "-b", "feat/new")
+	os.WriteFile(filepath.Join(dir, "new.go"), []byte("package new\n"), 0644)
+	git("add", "new.go")
+	git("commit", "-m", "new feature")
+
+	testutil.SetBinary(t, &claudepkg.Binary, "true")
+
+	// feat/old is merged into main, so it should be skipped by the guard.
+	err := RunSplit([]string{"--from", "feat/new", "--stack", "test", "--base", "main"})
+	if err != nil && strings.Contains(err.Error(), "based on") {
+		t.Fatalf("merged branch should be ignored, got: %v", err)
+	}
+}
+
 func TestBuildSplitPRBody(t *testing.T) {
 	s := &stack.Stack{
 		StackID: "my-feature",
