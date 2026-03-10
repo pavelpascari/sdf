@@ -51,6 +51,7 @@ func main() {
 	ref.Hash = computeHash(ref)
 
 	enc := json.NewEncoder(os.Stdout)
+	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(ref); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
