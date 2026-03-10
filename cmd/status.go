@@ -128,20 +128,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		prs, err := gh.PRList(branches)
 		if err == nil {
 			if childPRs, childErr := gh.PRListByBase(branches); childErr == nil {
-				prByHead := make(map[string]gh.PRInfo, len(prs)+len(childPRs))
-				for _, pr := range prs {
-					prByHead[pr.HeadRefName] = pr
-				}
-				for _, pr := range childPRs {
-					if _, exists := prByHead[pr.HeadRefName]; !exists {
-						prByHead[pr.HeadRefName] = pr
-					}
-				}
-				merged := make([]gh.PRInfo, 0, len(prByHead))
-				for _, pr := range prByHead {
-					merged = append(merged, pr)
-				}
-				prs = merged
+				prs = gh.MergePRResults(prs, childPRs)
 			}
 
 			// Build PRState list for reconciliation

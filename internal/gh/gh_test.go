@@ -143,6 +143,79 @@ func TestPRListByBase_Arguments(t *testing.T) {
 	}
 }
 
+func TestPRListByBase_FiltersBaseBranch(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
+		"pr list": `[
+			{"number":21,"headRefName":"feat/new","state":"OPEN","baseRefName":"feat/a","url":""},
+			{"number":22,"headRefName":"feat/unrelated","state":"OPEN","baseRefName":"other","url":""}
+		]`,
+	})
+	testutil.SetBinary(t, &Binary, fake)
+
+	prs, err := PRListByBase([]string{"feat/a"})
+	if err != nil {
+		t.Fatalf("PRListByBase failed: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 filtered PR, got %d", len(prs))
+	}
+	if prs[0].HeadRefName != "feat/new" {
+		t.Errorf("expected feat/new, got %s", prs[0].HeadRefName)
+	}
+}
+
+func TestPRListByBase_EmptyBranches(t *testing.T) {
+	prs, err := PRListByBase(nil)
+	if err != nil {
+		t.Fatalf("PRListByBase(nil) failed: %v", err)
+	}
+	if prs != nil {
+		t.Fatalf("expected nil, got %v", prs)
+	}
+}
+
+func TestMergePRResults(t *testing.T) {
+	primary := []PRInfo{
+		{Number: 1, HeadRefName: "feat/a"},
+		{Number: 2, HeadRefName: "feat/b"},
+	}
+
+	t.Run("empty child returns primary", func(t *testing.T) {
+		got := MergePRResults(primary, nil)
+		if len(got) != 2 {
+			t.Fatalf("expected 2 PRs, got %d", len(got))
+		}
+	})
+
+	t.Run("adds new child PRs", func(t *testing.T) {
+		child := []PRInfo{
+			{Number: 3, HeadRefName: "feat/c"},
+		}
+		got := MergePRResults(primary, child)
+		if len(got) != 3 {
+			t.Fatalf("expected 3 PRs, got %d", len(got))
+		}
+	})
+
+	t.Run("deduplicates by head branch", func(t *testing.T) {
+		child := []PRInfo{
+			{Number: 99, HeadRefName: "feat/a"}, // duplicate
+			{Number: 3, HeadRefName: "feat/c"},  // new
+		}
+		got := MergePRResults(primary, child)
+		if len(got) != 3 {
+			t.Fatalf("expected 3 PRs, got %d", len(got))
+		}
+		// primary takes precedence
+		for _, pr := range got {
+			if pr.HeadRefName == "feat/a" && pr.Number != 1 {
+				t.Errorf("expected primary PR #1 for feat/a, got #%d", pr.Number)
+			}
+		}
+	})
+}
+
 func TestPRCreate_Arguments(t *testing.T) {
 	dir := t.TempDir()
 	fake := testutil.GHFakeBinWith(t, dir, map[string]string{
