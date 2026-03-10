@@ -28,7 +28,7 @@ func TestSummarizeStackStatus(t *testing.T) {
 		{
 			name:       "fully merged",
 			nodes:      []stack.Node{{Status: "merged"}, {Status: "closed"}},
-			wantStatus: "fully merged",
+			wantStatus: "completed",
 			wantMerged: 2,
 		},
 		{

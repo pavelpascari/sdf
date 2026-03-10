@@ -122,7 +122,7 @@ func summarizeStackStatus(s *stack.Stack) (status string, merged int) {
 	case merged == 0:
 		return "active", 0
 	case merged == len(s.Nodes):
-		return "fully merged", merged
+		return "completed", merged
 	default:
 		return "partial", merged
 	}
