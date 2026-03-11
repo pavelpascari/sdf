@@ -85,32 +85,62 @@ func TestPruneLocalState(t *testing.T) {
 func TestPruneLegacyDir(t *testing.T) {
 	dir := newTestRepo(t)
 
-	for _, name := range []string{"context", "split-plans"} {
-		t.Run(name, func(t *testing.T) {
-			legacyDir := filepath.Join(dir, ".sdf", name)
-			os.MkdirAll(legacyDir, 0755)
-			os.WriteFile(filepath.Join(legacyDir, "file.txt"), []byte("legacy"), 0644)
+	legacyDir := filepath.Join(dir, ".sdf", "context")
+	os.MkdirAll(legacyDir, 0755)
+	os.WriteFile(filepath.Join(legacyDir, "file.txt"), []byte("legacy"), 0644)
 
-			// Dry-run: should report but not delete.
-			result := PruneResult{}
-			pruneLegacyDir(dir, name, false, &result)
-			if len(result.Actions) != 1 {
-				t.Fatalf("expected 1 action, got %d: %v", len(result.Actions), result.Actions)
-			}
-			if _, err := os.Stat(legacyDir); err != nil {
-				t.Fatal("dry-run should not delete directory")
-			}
+	// Dry-run: should report but not delete.
+	result := PruneResult{}
+	pruneLegacyDir(dir, "context", false, &result)
+	if len(result.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d: %v", len(result.Actions), result.Actions)
+	}
+	if _, err := os.Stat(legacyDir); err != nil {
+		t.Fatal("dry-run should not delete directory")
+	}
 
-			// Apply: should remove the directory.
-			result = PruneResult{}
-			pruneLegacyDir(dir, name, true, &result)
-			if len(result.Actions) != 1 {
-				t.Fatalf("expected 1 action, got %d", len(result.Actions))
-			}
-			if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
-				t.Fatal("apply should delete legacy directory")
-			}
-		})
+	// Apply: should remove the directory.
+	result = PruneResult{}
+	pruneLegacyDir(dir, "context", true, &result)
+	if len(result.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(result.Actions))
+	}
+	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
+		t.Fatal("apply should delete legacy directory")
+	}
+}
+
+func TestPruneSplitPlans(t *testing.T) {
+	dir := newTestRepo(t)
+
+	plansDir := filepath.Join(dir, ".sdf", "split-plans")
+	os.MkdirAll(plansDir, 0755)
+	os.WriteFile(filepath.Join(plansDir, "active.yaml"), []byte("plan"), 0644)
+	os.WriteFile(filepath.Join(plansDir, "stale.yaml"), []byte("plan"), 0644)
+
+	keep := map[string]bool{"active": true}
+
+	// Dry-run: report stale file but don't delete.
+	result := PruneResult{}
+	pruneSplitPlans(dir, keep, false, &result)
+	if len(result.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d: %v", len(result.Actions), result.Actions)
+	}
+	if _, err := os.Stat(filepath.Join(plansDir, "stale.yaml")); err != nil {
+		t.Fatal("dry-run should not delete file")
+	}
+
+	// Apply: delete stale, keep active.
+	result = PruneResult{}
+	pruneSplitPlans(dir, keep, true, &result)
+	if len(result.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(result.Actions))
+	}
+	if _, err := os.Stat(filepath.Join(plansDir, "stale.yaml")); !os.IsNotExist(err) {
+		t.Fatal("apply should delete stale split plan")
+	}
+	if _, err := os.Stat(filepath.Join(plansDir, "active.yaml")); err != nil {
+		t.Fatal("active split plan should still exist")
 	}
 }
 

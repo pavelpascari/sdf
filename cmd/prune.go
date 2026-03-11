@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -80,9 +81,11 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Remove legacy directories that are no longer used.
+	// Remove legacy .sdf/context/ directory (no longer used).
 	pruneLegacyDir(root, "context", apply, &result)
-	pruneLegacyDir(root, "split-plans", apply, &result)
+
+	// Remove stale split plan files for stacks that no longer exist.
+	pruneSplitPlans(root, keepStacks, apply, &result)
 
 	if pruneLocalState(local, keepStacks) {
 		result.LocalPruned = true
@@ -163,6 +166,29 @@ func pruneLegacyDir(root, name string, apply bool, result *PruneResult) {
 	result.Actions = append(result.Actions, fmt.Sprintf("delete legacy .sdf/%s/ directory", name))
 	if apply {
 		_ = os.RemoveAll(dir)
+	}
+}
+
+// pruneSplitPlans removes .sdf/split-plans/<stack>.yaml files whose stack
+// no longer exists.
+func pruneSplitPlans(root string, keepStacks map[string]bool, apply bool, result *PruneResult) {
+	dir := filepath.Join(root, stack.SDFDir, "split-plans")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		if keepStacks[name] {
+			continue
+		}
+		result.Actions = append(result.Actions, fmt.Sprintf("delete stale split plan %s", e.Name()))
+		if apply {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
 	}
 }
 
