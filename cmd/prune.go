@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/spf13/cobra"
 )
@@ -97,7 +98,17 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var rdr render.Renderer
 	if jsonFlag {
+		rdr = &render.JSONRenderer{}
+	}
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{Renderer: rdr})
+	if !jsonFlag {
+		defer func() { _ = bus.Finish() }()
+	}
+
+	if jsonFlag {
+		_ = bus.Finish()
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return err
@@ -107,7 +118,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(result.Actions) == 0 {
-		fmt.Println("No stale .sdf artifacts found.")
+		bus.Print("No stale .sdf artifacts found.")
 		return nil
 	}
 
@@ -115,12 +126,12 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	if apply {
 		mode = "Applied"
 	}
-	fmt.Printf("%s prune actions:\n", mode)
+	bus.Printf("%s prune actions:", mode)
 	for _, a := range result.Actions {
-		fmt.Printf("  - %s\n", a)
+		bus.Printf("  - %s", a)
 	}
 	if !apply {
-		fmt.Println("\nRe-run with --apply to apply.")
+		bus.Print("\nRe-run with --apply to apply.")
 	}
 	return nil
 }
