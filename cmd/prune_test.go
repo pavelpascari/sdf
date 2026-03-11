@@ -82,38 +82,44 @@ func TestPruneLocalState(t *testing.T) {
 	}
 }
 
-func TestPruneContextDirs(t *testing.T) {
+func TestPruneLegacyDir(t *testing.T) {
 	dir := newTestRepo(t)
 
-	// Create context directories: one matching a kept stack, one orphaned.
-	contextDir := filepath.Join(dir, ".sdf", "context")
-	os.MkdirAll(filepath.Join(contextDir, "active-stack"), 0755)
-	os.WriteFile(filepath.Join(contextDir, "active-stack", "notes.md"), []byte("keep"), 0644)
-	os.MkdirAll(filepath.Join(contextDir, "old-stack"), 0755)
-	os.WriteFile(filepath.Join(contextDir, "old-stack", "notes.md"), []byte("remove"), 0644)
+	for _, name := range []string{"context", "split-plans"} {
+		t.Run(name, func(t *testing.T) {
+			legacyDir := filepath.Join(dir, ".sdf", name)
+			os.MkdirAll(legacyDir, 0755)
+			os.WriteFile(filepath.Join(legacyDir, "file.txt"), []byte("legacy"), 0644)
 
-	keep := map[string]bool{"active-stack": true}
+			// Dry-run: should report but not delete.
+			result := PruneResult{}
+			pruneLegacyDir(dir, name, false, &result)
+			if len(result.Actions) != 1 {
+				t.Fatalf("expected 1 action, got %d: %v", len(result.Actions), result.Actions)
+			}
+			if _, err := os.Stat(legacyDir); err != nil {
+				t.Fatal("dry-run should not delete directory")
+			}
 
-	// Dry-run: should report but not delete.
+			// Apply: should remove the directory.
+			result = PruneResult{}
+			pruneLegacyDir(dir, name, true, &result)
+			if len(result.Actions) != 1 {
+				t.Fatalf("expected 1 action, got %d", len(result.Actions))
+			}
+			if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
+				t.Fatal("apply should delete legacy directory")
+			}
+		})
+	}
+}
+
+func TestPruneLegacyDir_NoDir(t *testing.T) {
+	dir := newTestRepo(t)
+
 	result := PruneResult{}
-	pruneContextDirs(dir, keep, false, &result)
-	if len(result.Actions) != 1 {
-		t.Fatalf("expected 1 action, got %d: %v", len(result.Actions), result.Actions)
-	}
-	if _, err := os.Stat(filepath.Join(contextDir, "old-stack")); err != nil {
-		t.Fatal("dry-run should not delete directory")
-	}
-
-	// Apply: should delete orphaned directory.
-	result = PruneResult{}
-	pruneContextDirs(dir, keep, true, &result)
-	if len(result.Actions) != 1 {
-		t.Fatalf("expected 1 action, got %d", len(result.Actions))
-	}
-	if _, err := os.Stat(filepath.Join(contextDir, "old-stack")); !os.IsNotExist(err) {
-		t.Fatal("apply should delete orphaned context directory")
-	}
-	if _, err := os.Stat(filepath.Join(contextDir, "active-stack", "notes.md")); err != nil {
-		t.Fatal("kept stack context should still exist")
+	pruneLegacyDir(dir, "nonexistent", true, &result)
+	if len(result.Actions) != 0 {
+		t.Fatalf("expected 0 actions when no dir, got %d", len(result.Actions))
 	}
 }

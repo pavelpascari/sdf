@@ -80,8 +80,9 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Prune orphaned context directories.
-	pruneContextDirs(root, keepStacks, apply, &result)
+	// Remove legacy directories that are no longer used.
+	pruneLegacyDir(root, "context", apply, &result)
+	pruneLegacyDir(root, "split-plans", apply, &result)
 
 	if pruneLocalState(local, keepStacks) {
 		result.LocalPruned = true
@@ -153,25 +154,15 @@ func shouldDeleteStack(s *stack.Stack) bool {
 	return true
 }
 
-// pruneContextDirs removes .sdf/context/<name> directories that have no
-// matching stack file.
-func pruneContextDirs(root string, keepStacks map[string]bool, apply bool, result *PruneResult) {
-	contextDir := filepath.Join(root, stack.SDFDir, "context")
-	entries, err := os.ReadDir(contextDir)
-	if err != nil {
-		return // no context dir is fine
+// pruneLegacyDir removes a legacy .sdf/<name> directory if it exists.
+func pruneLegacyDir(root, name string, apply bool, result *PruneResult) {
+	dir := filepath.Join(root, stack.SDFDir, name)
+	if _, err := os.Stat(dir); err != nil {
+		return
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if keepStacks[e.Name()] {
-			continue
-		}
-		result.Actions = append(result.Actions, fmt.Sprintf("delete orphaned context directory %s", e.Name()))
-		if apply {
-			_ = os.RemoveAll(filepath.Join(contextDir, e.Name()))
-		}
+	result.Actions = append(result.Actions, fmt.Sprintf("delete legacy .sdf/%s/ directory", name))
+	if apply {
+		_ = os.RemoveAll(dir)
 	}
 }
 
