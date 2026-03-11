@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.3.7](https://github.com/pavelpascari/sdf/compare/v0.3.6...v0.3.7) (2026-03-11)
+
+
+### Features
+
+* **gh:** ignore remote delete 404 in PR merge ([#190](https://github.com/pavelpascari/sdf/issues/190)) ([0f604fd](https://github.com/pavelpascari/sdf/commit/0f604fd633dc143dcd1340185970d79e2e01ea73))
+* improve sdf merge policy-error handling and add --auto ([#181](https://github.com/pavelpascari/sdf/issues/181)) ([38b9100](https://github.com/pavelpascari/sdf/commit/38b91000652426a63ee722dc233466c2b9dd8636))
+* **ls:** add sdf ls to list local stacks and statuses ([#184](https://github.com/pavelpascari/sdf/issues/184)) ([27aebb2](https://github.com/pavelpascari/sdf/commit/27aebb20fcba5c58f8d9d7abe90f89707aa232a0))
+* **pr:** include repository PR templates in sdf pr ([#187](https://github.com/pavelpascari/sdf/issues/187)) ([741cf34](https://github.com/pavelpascari/sdf/commit/741cf34e36351e3d319bf630c17930de096cd5af))
+* **prune:** add sdf prune for stale metadata cleanup ([#185](https://github.com/pavelpascari/sdf/issues/185)) ([3c70f08](https://github.com/pavelpascari/sdf/commit/3c70f08341f83252301e9745590e734186d1814f))
+* **status:** add verbose commit log output ([#186](https://github.com/pavelpascari/sdf/issues/186)) ([b360c36](https://github.com/pavelpascari/sdf/commit/b360c365ba34df83132dd16448fb6a6758b445b6))
+* **sync/status:** make ancestry checks skip unnecessary rebases ([#189](https://github.com/pavelpascari/sdf/issues/189)) ([a005b57](https://github.com/pavelpascari/sdf/commit/a005b57a3477d592d5533a8374c056504604d9cb))
+* **sync:** detect collaborator-added child branches in sync/status ([#175](https://github.com/pavelpascari/sdf/issues/175)) ([58b2705](https://github.com/pavelpascari/sdf/commit/58b2705654a7eea01cdf04dcc809c0493db4ce96))
+
+
+### Bug Fixes
+
+* **completion:** exclude deleted branches from switch suggestions ([#191](https://github.com/pavelpascari/sdf/issues/191)) ([39f8cfa](https://github.com/pavelpascari/sdf/commit/39f8cfa8dd66fb578d070f5b5f047867d9938d4a))
+* preserve conventional prefix on PR title updates ([#183](https://github.com/pavelpascari/sdf/issues/183)) ([0aa1e4c](https://github.com/pavelpascari/sdf/commit/0aa1e4c0d232e3920d09b7d731662e41dcec7371))
+* **pr:** fail early when branch has no commits ahead ([#192](https://github.com/pavelpascari/sdf/issues/192)) ([2e9fba7](https://github.com/pavelpascari/sdf/commit/2e9fba7389fb4ed741daa348e5369ac2070ff826))
+* **split:** block sdf split on branches based on non-main ancestors ([#180](https://github.com/pavelpascari/sdf/issues/180)) ([64b0ef3](https://github.com/pavelpascari/sdf/commit/64b0ef3e1ecc6a4146ff9788a1d3f6b995fe0ed3))
+* update goreleaser config for v2 deprecations and re-run safety ([#163](https://github.com/pavelpascari/sdf/issues/163)) ([98e32df](https://github.com/pavelpascari/sdf/commit/98e32df1fd070d4ee90eb2566795c9ebdcb5bf12))
+
+
+### CI/CD
+
+* bump actions/checkout from 4 to 6 ([#169](https://github.com/pavelpascari/sdf/issues/169)) ([fba8b33](https://github.com/pavelpascari/sdf/commit/fba8b335017f3c67c2270d5eb8346b04df4a709f))
+* bump actions/create-github-app-token from 1 to 2 ([#171](https://github.com/pavelpascari/sdf/issues/171)) ([abce15e](https://github.com/pavelpascari/sdf/commit/abce15e68f79d7490b6c7956cd1f6fc14fdd424f))
+* bump actions/setup-node from 4 to 6 ([#170](https://github.com/pavelpascari/sdf/issues/170)) ([3c30aff](https://github.com/pavelpascari/sdf/commit/3c30aff1cf71d31d0c5ca64dd96bbc23f24efd27))
+* **e2e:** Add some more e2e test cases  ([#167](https://github.com/pavelpascari/sdf/issues/167)) ([e01242d](https://github.com/pavelpascari/sdf/commit/e01242dbf333f9d7a5b6b9930944cfe7dfc5616a))
+
+
+### Miscellaneous
+
+* **docgen:** replace generated timestamp with content hash ([#179](https://github.com/pavelpascari/sdf/issues/179)) ([a102c79](https://github.com/pavelpascari/sdf/commit/a102c79936e16107a443af98c2ae54c1e343378f))
+* **move:** strengthen move invariants for conflict safety ([#182](https://github.com/pavelpascari/sdf/issues/182)) ([570cc21](https://github.com/pavelpascari/sdf/commit/570cc21ed30d9c9636e62a721fed616cfba0aa6b))
+
 ## [0.3.6](https://github.com/pavelpascari/sdf/compare/v0.3.5...v0.3.6) (2026-03-02)
 
 
