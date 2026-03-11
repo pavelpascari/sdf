@@ -273,7 +273,7 @@
       "short": "Clean stale .sdf metadata",
       "flags": [
         {
-          "name": "force",
+          "name": "apply",
           "type": "bool",
           "default": "false",
           "description": "apply changes (default: dry-run)"
@@ -475,5 +475,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "bef085781181a6d60966f8d1170d0886d88230915b0f74c275089f075756bd7c"
+  "hash": "edd7fed39dd81d7fe5e9caedd8fda1a316dc790801e89659f3e4ce74c7bfc4da"
 }

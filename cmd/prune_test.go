@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -77,5 +79,41 @@ func TestPruneLocalState(t *testing.T) {
 	}
 	if local.SyncProgress != nil {
 		t.Fatal("expected stale sync progress to be removed")
+	}
+}
+
+func TestPruneContextDirs(t *testing.T) {
+	dir := newTestRepo(t)
+
+	// Create context directories: one matching a kept stack, one orphaned.
+	contextDir := filepath.Join(dir, ".sdf", "context")
+	os.MkdirAll(filepath.Join(contextDir, "active-stack"), 0755)
+	os.WriteFile(filepath.Join(contextDir, "active-stack", "notes.md"), []byte("keep"), 0644)
+	os.MkdirAll(filepath.Join(contextDir, "old-stack"), 0755)
+	os.WriteFile(filepath.Join(contextDir, "old-stack", "notes.md"), []byte("remove"), 0644)
+
+	keep := map[string]bool{"active-stack": true}
+
+	// Dry-run: should report but not delete.
+	result := PruneResult{}
+	pruneContextDirs(dir, keep, false, &result)
+	if len(result.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d: %v", len(result.Actions), result.Actions)
+	}
+	if _, err := os.Stat(filepath.Join(contextDir, "old-stack")); err != nil {
+		t.Fatal("dry-run should not delete directory")
+	}
+
+	// Apply: should delete orphaned directory.
+	result = PruneResult{}
+	pruneContextDirs(dir, keep, true, &result)
+	if len(result.Actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(result.Actions))
+	}
+	if _, err := os.Stat(filepath.Join(contextDir, "old-stack")); !os.IsNotExist(err) {
+		t.Fatal("apply should delete orphaned context directory")
+	}
+	if _, err := os.Stat(filepath.Join(contextDir, "active-stack", "notes.md")); err != nil {
+		t.Fatal("kept stack context should still exist")
 	}
 }

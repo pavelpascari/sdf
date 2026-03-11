@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -27,12 +28,12 @@ var pruneCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(pruneCmd)
-	pruneCmd.Flags().Bool("force", false, "apply changes (default: dry-run)")
+	pruneCmd.Flags().Bool("apply", false, "apply changes (default: dry-run)")
 	pruneCmd.Flags().Bool("json", false, "output result as JSON")
 }
 
 func runPrune(cmd *cobra.Command, args []string) error {
-	force, _ := cmd.Flags().GetBool("force")
+	apply, _ := cmd.Flags().GetBool("apply")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 
 	root, err := stack.FindRoot()
@@ -50,7 +51,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		local = &stack.LocalState{}
 	}
 
-	result := PruneResult{DryRun: !force}
+	result := PruneResult{DryRun: !apply}
 	keepStacks := make(map[string]bool)
 
 	for _, s := range stacks {
@@ -65,24 +66,27 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		if shouldDeleteStack(s) {
 			result.StacksPruned++
 			result.Actions = append(result.Actions, fmt.Sprintf("delete stack file %s", s.StackID))
-			if force {
+			if apply {
 				_ = os.Remove(stack.StackPath(root, s.StackID))
 			}
 			continue
 		}
 
 		keepStacks[s.StackID] = true
-		if force && removedNodes > 0 {
+		if apply && removedNodes > 0 {
 			if err := stack.Save(root, s); err != nil {
 				return fmt.Errorf("cannot save stack %s: %w", s.StackID, err)
 			}
 		}
 	}
 
+	// Prune orphaned context directories.
+	pruneContextDirs(root, keepStacks, apply, &result)
+
 	if pruneLocalState(local, keepStacks) {
 		result.LocalPruned = true
 		result.Actions = append(result.Actions, "prune stale entries from .sdf/local.json")
-		if force {
+		if apply {
 			if err := stack.SaveLocal(root, local); err != nil {
 				return fmt.Errorf("cannot save local state: %w", err)
 			}
@@ -104,15 +108,15 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	}
 
 	mode := "Dry-run"
-	if force {
+	if apply {
 		mode = "Applied"
 	}
 	fmt.Printf("%s prune actions:\n", mode)
 	for _, a := range result.Actions {
 		fmt.Printf("  - %s\n", a)
 	}
-	if !force {
-		fmt.Println("\nRe-run with --force to apply.")
+	if !apply {
+		fmt.Println("\nRe-run with --apply to apply.")
 	}
 	return nil
 }
@@ -147,6 +151,28 @@ func shouldDeleteStack(s *stack.Stack) bool {
 		}
 	}
 	return true
+}
+
+// pruneContextDirs removes .sdf/context/<name> directories that have no
+// matching stack file.
+func pruneContextDirs(root string, keepStacks map[string]bool, apply bool, result *PruneResult) {
+	contextDir := filepath.Join(root, stack.SDFDir, "context")
+	entries, err := os.ReadDir(contextDir)
+	if err != nil {
+		return // no context dir is fine
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if keepStacks[e.Name()] {
+			continue
+		}
+		result.Actions = append(result.Actions, fmt.Sprintf("delete orphaned context directory %s", e.Name()))
+		if apply {
+			_ = os.RemoveAll(filepath.Join(contextDir, e.Name()))
+		}
+	}
 }
 
 func pruneLocalState(local *stack.LocalState, keepStacks map[string]bool) bool {
