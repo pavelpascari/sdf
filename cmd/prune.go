@@ -54,6 +54,8 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	keepStacks := make(map[string]bool)
 
 	for _, s := range stacks {
+		// Remove orphan nodes first, then check if the stack should be deleted.
+		// A stack that becomes empty after orphan removal is intentionally deleted.
 		removedNodes := pruneMissingNodes(s)
 		result.NodesPruned += removedNodes
 		if removedNodes > 0 {
