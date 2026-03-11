@@ -1,0 +1,105 @@
+---
+title: "SDF v0.3.7: Sharper Edges"
+description: "SDF v0.3.7 adds sdf ls and sdf prune, smarter sync that skips unnecessary rebases, verbose status output, PR template support, better merge error handling, and a batch of reliability fixes."
+datePublished: 2026-03-11
+tags: [release]
+version: "0.3.7"
+author: "Pavel Pascari"
+published: true
+---
+
+This release is about polish. No new paradigms &mdash; just a bunch of improvements that make the day-to-day workflow smoother. Smarter sync, better housekeeping, and fewer paper cuts.
+
+## `sdf ls` &mdash; see all your stacks at a glance
+
+If you work on multiple stacks in a repo, you've probably forgotten what's in flight. `sdf ls` fixes that:
+
+```
+*  auth-stack           3 PRs   partial (1/3 merged)
+   payments-refactor    2 PRs   active
+   old-migration        4 PRs   completed
+```
+
+The `*` marks the stack your current branch belongs to. Statuses tell you what needs attention: **active** means work in progress, **partial** means some PRs have merged (time to run `sdf sync`), and **completed** means the whole stack has landed.
+
+```bash
+sdf ls --json    # structured output for scripts
+```
+
+## `sdf prune` &mdash; clean up stale metadata
+
+Over time, `.sdf/` accumulates artifacts from deleted branches and completed stacks. `sdf prune` cleans them up:
+
+```bash
+sdf prune          # dry-run by default, shows what would change
+sdf prune --apply  # actually delete stale files
+```
+
+It removes orphaned nodes (branches that no longer exist locally), deletes stack files that are fully merged or empty, prunes stale split plan files, and cleans up legacy directories. Dry-run by default, so you can always preview before committing.
+
+## Smarter sync &mdash; skip unnecessary rebases
+
+Previously, `sdf sync` would rebase every branch in the stack, even when the parent's tip was already an ancestor of the child. That meant rewriting commits for no reason &mdash; new SHAs, lost signatures, and wasted time.
+
+v0.3.7 introduces ancestry-aware sync. Before rebasing, SDF checks `git merge-base --is-ancestor`. If the parent tip is already in the child's history, it skips the rebase and just updates the recorded base tip. The sync plan now shows `update-tip` actions alongside the usual `rebase` actions, so you can see exactly what's being skipped and why.
+
+This matters most after a force-push or amend where only some branches actually diverged. Sync used to touch everything; now it only touches what needs it.
+
+## `sdf status -v` &mdash; see what's in each branch
+
+The verbose flag adds commit hashes and subject lines to the status output:
+
+```
+  my-stack  (base: main)
+
+ → ●  feat/auth       PR #42  open   2 commits ahead, in sync
+       abc1234 add login endpoint
+       def5678 add session middleware
+   ●  feat/dashboard  PR #43  open   1 commits ahead, in sync
+       789abcd wire up auth to dashboard
+```
+
+Useful when you're reviewing a stack and want to quickly see what each branch contains without switching to it.
+
+## Better merge error handling
+
+`sdf merge` now handles GitHub policy errors gracefully. If branch protection rules prevent a merge (required reviews, failing CI), you get a clear message explaining what's blocking you &mdash; not a raw API error.
+
+The new `--auto` flag passes through to GitHub's auto-merge, so you can queue a merge that executes once CI passes:
+
+```bash
+sdf merge --auto
+```
+
+If the merge itself fails, SDF now rolls back any downstream PR retargeting it already did, so you don't end up with a half-updated stack.
+
+## PR templates
+
+`sdf pr` now detects and includes your repository's PR template. It checks the standard GitHub template locations (`.github/pull_request_template.md`, root-level `PULL_REQUEST_TEMPLATE.md`, and the `.github/PULL_REQUEST_TEMPLATE/` directory) and prepends the template content to the PR body, separated from the stack metadata.
+
+## Collaborator branch detection
+
+When a teammate pushes a branch that targets one of your stack branches, `sdf sync` and `sdf status` now detect it. Instead of silently ignoring branches they didn't create, they surface collaborator-added child branches so you know when someone is building on top of your stack.
+
+## Everything else
+
+- **Conventional prefix preservation** &mdash; `sdf sync --with-content` now preserves `feat(scope):` prefixes when updating PR titles, instead of occasionally dropping them
+- **Empty branch guard** &mdash; `sdf pr` fails early with a clear message when you try to create a PR from a branch with no commits ahead of its base
+- **Completion fix** &mdash; `sdf switch` tab completion no longer suggests deleted branches
+- **Split safety** &mdash; `sdf split` now blocks when the source branch is based on a non-main ancestor, preventing invalid split operations
+- **Move safety** &mdash; `sdf move` has stronger invariant checks for conflict scenarios
+- **Content hash** &mdash; CLI reference docs use a content hash instead of a timestamp, eliminating spurious merge conflicts across PRs
+
+## Upgrade
+
+```bash
+brew upgrade sdf
+```
+
+Or install fresh:
+
+```bash
+brew install pavelpascari/tap/sdf
+```
+
+Full changelog: [v0.3.6...v0.3.7](https://github.com/pavelpascari/sdf/compare/v0.3.6...v0.3.7)
