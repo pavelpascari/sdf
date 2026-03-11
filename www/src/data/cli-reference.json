@@ -267,6 +267,26 @@
       ]
     },
     {
+      "name": "prune",
+      "category": "stack",
+      "use": "prune",
+      "short": "Clean stale .sdf metadata",
+      "flags": [
+        {
+          "name": "apply",
+          "type": "bool",
+          "default": "false",
+          "description": "apply changes (default: dry-run)"
+        },
+        {
+          "name": "json",
+          "type": "bool",
+          "default": "false",
+          "description": "output result as JSON"
+        }
+      ]
+    },
+    {
       "name": "register",
       "category": "stack",
       "use": "register",
@@ -455,5 +475,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "2957e7baa578307ac5ca9664e7bdc5b88634250f773e7e7ce6c65c2e6f2b43b6"
+  "hash": "edd7fed39dd81d7fe5e9caedd8fda1a316dc790801e89659f3e4ce74c7bfc4da"
 }
