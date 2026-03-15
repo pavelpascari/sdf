@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(sdf:*)",
+      "Bash(go:*)",
+      "Bash(make:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(govulncheck:*)",
+      "Bash(gofmt:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(cd:*)",
+      "Bash(xargs:*)",
+      "Bash(grep:*)",
+      "Bash(bin/sdf:*)",
+      "Bash(./sdf:*)",
+      "Bash(.git/hooks/pre-push:*)",
+      "Bash(python3:*)",
+      "Bash(npm:*)",
+      "Bash(brew info:*)",
+      "mcp__ide__getDiagnostics",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:leg100.github.io)",
+      "WebFetch(domain:nx.dev)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:goreleaser.com)"
+    ]
+  }
+}
