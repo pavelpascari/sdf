@@ -207,13 +207,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 					if !full && parent == s.Base && preFFBaseTip != "" {
 						compareTip = preFFBaseTip
 					}
-					if compareTip == node.BaseTip {
+					switch {
+					case compareTip == node.BaseTip:
 						nr.SyncState = "in_sync"
-					} else if gitpkg.IsAncestor(currentParentTip, node.Branch) {
+					case gitpkg.IsAncestor(currentParentTip, node.Branch):
 						nr.SyncState = "in_sync"
 						s.Nodes[i].BaseTip = currentParentTip
 						baseTipsUpdated = true
-					} else {
+					default:
 						nr.SyncState = "needs_sync"
 						needsSync = append(needsSync, node.Branch)
 					}
