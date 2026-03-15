@@ -72,13 +72,14 @@ var syncCmd = &cobra.Command{
 cascade-rebases downstream branches, pushes, and updates PR navigation links.
 
 By default, sync only rebases branches within the stack (e.g. after a PR is
-merged or a parent branch is amended). To also rebase onto the latest base
-branch tip (e.g. main), use --from-head.
+merged or a parent branch is amended). If the base branch has advanced from
+unrelated work, a hint is shown. To also rebase onto the latest base branch
+tip (e.g. main), use --full.
 
 When a rebase conflict occurs, an interactive menu offers Claude resolution,
 manual resolution (pausing sync), skip, or abort.`,
 	Example: `  sdf sync                          # sync within the stack only
-  sdf sync --from-head              # also rebase onto latest base branch
+  sdf sync --full                   # also rebase onto latest base branch
   sdf sync my-feature               # sync a specific stack by name
   sdf sync -y                       # skip confirmation prompt
   sdf sync --continue               # resume after manual conflict resolution
@@ -95,7 +96,9 @@ func init() {
 	syncCmd.Flags().String("stack", "", "stack to sync (default: auto-detect)")
 	syncCmd.Flags().Bool("with-content", false, "update PR titles and descriptions")
 	syncCmd.Flags().Bool("json", false, "output result as JSON")
-	syncCmd.Flags().Bool("from-head", false, "also rebase onto the latest base branch")
+	syncCmd.Flags().Bool("full", false, "also rebase onto the latest base branch tip")
+	syncCmd.Flags().Bool("from-head", false, "alias for --full (deprecated)")
+	_ = syncCmd.Flags().MarkHidden("from-head")
 	_ = syncCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
@@ -105,7 +108,9 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	withContent, _ := cmd.Flags().GetBool("with-content")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
+	full, _ := cmd.Flags().GetBool("full")
 	fromHead, _ := cmd.Flags().GetBool("from-head")
+	fromHead = fromHead || full // --full is the canonical flag
 
 	stackName := stackFlag
 	if stackName == "" && len(args) > 0 {
