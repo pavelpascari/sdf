@@ -103,6 +103,8 @@ sdf sync
 
 This rebases the remaining branches onto `main`, pushes them, and updates their PR bases in GitHub — no manual rebase required.
 
+By default, `sdf sync` only acts on changes within the stack (merged PRs, amended parents). If the base branch has advanced from unrelated work, a hint is shown. Use `sdf sync --full` to also rebase onto the latest base branch tip.
+
 ### Working with multiple stacks
 
 You can have multiple independent stacks in the same repo:
