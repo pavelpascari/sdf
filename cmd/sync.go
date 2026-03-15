@@ -329,6 +329,14 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 	// Compute and show the sync plan
 	plan := computeSyncPlan(s, &opts)
 
+	// Show base-branch drift hint (only when not using --full)
+	if !opts.fromHead {
+		currentBaseTip, _ := gitpkg.RevParse(s.Base)
+		if hint := detectBaseDrift(s, opts.preFFBaseTip, currentBaseTip); hint != "" {
+			bus.Printf("\n  %s %s", ui.SymInfo, hint)
+		}
+	}
+
 	// Check if there's any real work beyond acknowledging merged PRs.
 	onlySkipMerged := true
 	for _, a := range plan {
@@ -1191,6 +1199,26 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 	}
 
 	return actions
+}
+
+// detectBaseDrift returns a user-visible hint string if the base branch has
+// advanced since the stack was last synced. Returns "" if no drift detected.
+func detectBaseDrift(s *stack.Stack, preFFBaseTip, currentBaseTip string) string {
+	if preFFBaseTip == "" || currentBaseTip == "" {
+		return ""
+	}
+	if preFFBaseTip == currentBaseTip {
+		return ""
+	}
+	count, err := gitpkg.CommitCount(preFFBaseTip, currentBaseTip)
+	if err != nil || count == "0" {
+		return ""
+	}
+	noun := "commits"
+	if count == "1" {
+		noun = "commit"
+	}
+	return fmt.Sprintf("%s has %s new %s. Run `sdf sync --full` to rebase onto latest.", s.Base, count, noun)
 }
 
 func printSyncPlan(plan []syncAction, bus *render.Bus) {

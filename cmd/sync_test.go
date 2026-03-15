@@ -910,6 +910,57 @@ func TestSplitConventionalTitle(t *testing.T) {
 	}
 }
 
+func TestDetectBaseDrift(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preFFBaseTip := git("rev-parse", "main")
+
+	// Advance main
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "drift.txt"), []byte("drift\n"), 0644)
+	git("add", "drift.txt")
+	git("commit", "-m", "unrelated on main")
+	newMainTip := git("rev-parse", "main")
+	git("checkout", "branchC")
+
+	// When base advanced, hint should be non-empty
+	hint := detectBaseDrift(s, preFFBaseTip, newMainTip)
+	if hint == "" {
+		t.Fatal("expected base drift hint when main advanced, got empty string")
+	}
+	if !strings.Contains(hint, "main") {
+		t.Error("hint should mention the base branch name")
+	}
+	if !strings.Contains(hint, "--full") {
+		t.Error("hint should mention --full flag")
+	}
+	if !strings.Contains(hint, "1 new commit") {
+		t.Error("hint should mention commit count")
+	}
+
+	// When tips are the same, no drift
+	noHint := detectBaseDrift(s, preFFBaseTip, preFFBaseTip)
+	if noHint != "" {
+		t.Errorf("expected no hint when tips match, got %q", noHint)
+	}
+}
+
 func TestStripConventionalPrefix(t *testing.T) {
 	got := stripConventionalPrefix("feat(auth): add login endpoint")
 	if got != "add login endpoint" {

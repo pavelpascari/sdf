@@ -26,6 +26,7 @@ var (
 	SymConflict = Yellow.Render("⚡")
 	SymWarn     = Yellow.Render("⚠")
 	SymPlan     = Cyan.Render("→")
+	SymInfo     = Cyan.Render("ℹ")
 )
 
 // PR renders a PR number like "#42" in magenta.
