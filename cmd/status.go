@@ -22,6 +22,7 @@ type StatusResult struct {
 	Nodes         []StatusNodeResult `json:"nodes"`
 	NeedsSync     []string           `json:"needs_sync,omitempty"`
 	DriftWarnings []string           `json:"drift_warnings,omitempty"`
+	BaseDriftHint string             `json:"base_drift_hint,omitempty"`
 }
 
 // StatusNodeResult describes a single branch in the stack status.
@@ -40,8 +41,18 @@ type StatusNodeResult struct {
 }
 
 var statusCmd = &cobra.Command{
-	Use:               "status [stack-name]",
-	Short:             "Show stack topology and sync state",
+	Use:   "status [stack-name]",
+	Short: "Show stack topology and sync state",
+	Long: `Shows the topology, sync state, and PR status of a stack.
+
+By default, only stack-internal sync state is shown. If the base branch has
+advanced from unrelated work, an info hint is displayed. Use --full to include
+base-branch drift in the sync state calculation.`,
+	Example: `  sdf status                        # show stack status (stack-scoped)
+  sdf status --full                 # include base branch drift
+  sdf status my-feature             # show a specific stack
+  sdf status --json                 # output as JSON
+  sdf status -v                     # show commit logs per branch`,
 	Annotations:       map[string]string{"category": "stack"},
 	ValidArgsFunction: completeStackNames,
 	RunE:              runStatus,
@@ -52,6 +63,7 @@ func init() {
 	statusCmd.Flags().String("stack", "", "stack to show (default: auto-detect)")
 	statusCmd.Flags().Bool("json", false, "output result as JSON")
 	statusCmd.Flags().BoolP("verbose", "v", false, "show commit hashes and messages per branch")
+	statusCmd.Flags().Bool("full", false, "include base branch drift in sync state")
 	_ = statusCmd.RegisterFlagCompletionFunc("stack", completeStackNames)
 }
 
@@ -65,6 +77,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	stackFlag, _ := cmd.Flags().GetString("stack")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 	verbose, _ := cmd.Flags().GetBool("verbose")
+	full, _ := cmd.Flags().GetBool("full")
 
 	// Accept positional arg as stack name: sdf status <stack-name>
 	stackName := stackFlag
@@ -114,6 +127,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Fetch and fast-forward the base branch so sync checks are accurate
 	gitpkg.FetchAll()
+	preFFBaseTip, _ := gitpkg.RevParse(s.Base)
 	gitpkg.FastForward(s.Base)
 
 	// Try to get current branch for highlighting
@@ -185,7 +199,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if node.BaseTip != "" {
 				currentParentTip, err := gitpkg.RevParse(parent)
 				if err == nil && currentParentTip != node.BaseTip {
-					if gitpkg.IsAncestor(currentParentTip, node.Branch) {
+					// When not using --full, ignore base-branch drift for
+					// the first branch in the stack (its parent is s.Base).
+					// Use preFFBaseTip for the comparison, but keep
+					// currentParentTip for IsAncestor and BaseTip updates.
+					compareTip := currentParentTip
+					if !full && parent == s.Base && preFFBaseTip != "" {
+						compareTip = preFFBaseTip
+					}
+					if compareTip == node.BaseTip {
+						nr.SyncState = "in_sync"
+					} else if gitpkg.IsAncestor(currentParentTip, node.Branch) {
 						nr.SyncState = "in_sync"
 						s.Nodes[i].BaseTip = currentParentTip
 						baseTipsUpdated = true
@@ -219,6 +243,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Detect base branch drift (only when not --full)
+	var baseDriftHint string
+	if !full {
+		currentBaseTip, _ := gitpkg.RevParse(s.Base)
+		baseDriftHint = detectBaseDrift(s, preFFBaseTip, currentBaseTip)
+	}
+
 	if jsonFlag {
 		result := StatusResult{
 			Stack:         s.StackID,
@@ -227,6 +258,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			Nodes:         nodeResults,
 			NeedsSync:     needsSync,
 			DriftWarnings: driftWarnings,
+			BaseDriftHint: baseDriftHint,
 		}
 		_ = bus.Finish()
 		data, err := json.MarshalIndent(result, "", "  ")
@@ -292,6 +324,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if len(needsSync) > 0 {
 		bus.Print("")
 		bus.Printf("  run `sdf sync` to rebase %s", strings.Join(needsSync, ", "))
+	}
+
+	// Print base branch drift hint
+	if baseDriftHint != "" {
+		bus.Print("")
+		bus.Printf("  %s %s", ui.SymInfo, baseDriftHint)
 	}
 
 	// Print drift warnings
