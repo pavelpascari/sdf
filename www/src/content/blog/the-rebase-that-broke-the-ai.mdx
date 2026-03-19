@@ -1,6 +1,15 @@
-# The Rebase That Broke the AI: Why Stacked Diffs Need Topology Awareness
+---
+title: "The Rebase That Broke the AI: Why Stacked Diffs Need Topology Awareness"
+description: "A real conversation with Claude Code exposed a fundamental problem with manual rebasing of stacked branches. Here's the story, the test that captures it, and why git rebase --onto knowledge shouldn't live in your head."
+datePublished: 2026-03-19
+tags: [case-study, show-and-tell]
+author: "SDF Team"
+published: true
+---
 
-A real conversation with Claude Code exposed a fundamental problem with manual rebasing of stacked branches. Here's the story, the test that captures it, and why `git rebase --onto` knowledge shouldn't live in your head.
+Large features are hard to review as monolithic PRs. Stacked PRs solve this by splitting work into focused, reviewable layers. But managing the dependency chain &mdash; rebasing, updating bases, resolving conflicts &mdash; is tedious enough that most teams avoid the approach entirely.
+
+A real conversation with Claude Code exposed exactly why manual rebasing of stacked branches is so error-prone &mdash; and how SDF eliminates the problem.
 
 ## The Incident
 
@@ -27,7 +36,7 @@ CONFLICT (content): Merge conflict in CODEOWNERS
 ...
 ```
 
-**28 lines of conflicts.** Not because the wiring code conflicted with anything -- because git tried to replay the shared engine commits that were already in the new base. The wiring branch's history included commits from the engine branch (they were stacked), and after the engine was rewritten, those shared commits collided with their own rewritten versions.
+**28 lines of conflicts.** Not because the wiring code conflicted with anything &mdash; because git tried to replay the shared engine commits that were already in the new base. The wiring branch's history included commits from the engine branch (they were stacked), and after the engine was rewritten, those shared commits collided with their own rewritten versions.
 
 ## The Manual Recovery
 
@@ -66,9 +75,9 @@ This replays only the 2 wiring-specific commits on top of the rewritten engine. 
 sdf sync
 ```
 
-That's it. SDF tracks each branch's `BaseTip` -- the SHA of the parent branch at the time the child was last synced. When it detects that the parent has moved, it computes the `--onto` rebase automatically:
+That's it. SDF tracks each branch's `BaseTip` &mdash; the SHA of the parent branch at the time the child was last synced. When it detects that the parent has moved, it computes the `--onto` rebase automatically:
 
-```go
+```
 git rebase --onto <parent> <node.BaseTip> <branch>
 ```
 
@@ -88,7 +97,7 @@ Both branches get PRs via `sdf pr`.
 
 ### Phase 2: Rewrite the upstream branch
 
-The engine branch gets new commits (simulating review feedback). This is the trigger -- the wiring branch's `BaseTip` now points at the old engine tip, but the engine has moved forward.
+The engine branch gets new commits (simulating review feedback). This is the trigger &mdash; the wiring branch's `BaseTip` now points at the old engine tip, but the engine has moved forward.
 
 ### Phase 3: Sync
 
@@ -114,7 +123,7 @@ This is where the test earns its keep. Each assertion targets a specific failure
 
 Assertion **4g** is the one that catches the original failure mode. If SDF had naively run `git rebase` instead of `git rebase --onto`, the wiring branch would show 6 commits ahead of engine (4 duplicated shared commits + 2 wiring commits) instead of 2.
 
-Assertion **4c** is the sneakiest. After a rewrite, the old engine tip should NOT be in the wiring branch's ancestry. If it is, the wiring branch wasn't actually rebased -- it's still sitting on the old history. This catches a subtle bug where `sdf sync` might detect the branch as "already up to date" by checking ancestry in the wrong direction.
+Assertion **4c** is the sneakiest. After a rewrite, the old engine tip should NOT be in the wiring branch's ancestry. If it is, the wiring branch wasn't actually rebased &mdash; it's still sitting on the old history. This catches a subtle bug where `sdf sync` might detect the branch as "already up to date" by checking ancestry in the wrong direction.
 
 ## Why This Matters
 
@@ -125,7 +134,7 @@ The manual recovery took 3 minutes of an experienced AI assistant reasoning thro
 3. Identifying the correct boundary commit for `--onto`
 4. Remembering `--force-with-lease` for the push
 
-Each of those is a decision point where things can go wrong. The `--onto` boundary commit is especially dangerous -- pick the wrong one and you either lose commits or duplicate them.
+Each of those is a decision point where things can go wrong. The `--onto` boundary commit is especially dangerous &mdash; pick the wrong one and you either lose commits or duplicate them.
 
 SDF encodes this knowledge in the `BaseTip` tracking. Every branch remembers where its parent was when it was last synced. The rebase math is always:
 
@@ -151,6 +160,6 @@ The test creates real branches and PRs against a GitHub repository, verifies the
 
 ## The Takeaway
 
-Stacked branches create topology relationships that plain git doesn't track. When an upstream branch is rewritten, every downstream branch needs a topology-aware rebase -- not a naive one. The difference is `git rebase` (which replays shared history and explodes) vs `git rebase --onto` (which replays only branch-specific commits).
+Stacked branches create topology relationships that plain git doesn't track. When an upstream branch is rewritten, every downstream branch needs a topology-aware rebase &mdash; not a naive one. The difference is `git rebase` (which replays shared history and explodes) vs `git rebase --onto` (which replays only branch-specific commits).
 
 SDF's `BaseTip` tracking turns a manual git archaeology exercise into a single command. The e2e test ensures it stays that way.
