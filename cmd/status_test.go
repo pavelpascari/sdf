@@ -2,8 +2,13 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pavelpascari/sdf/internal/stack"
 )
 
 func TestStatusResultJSON(t *testing.T) {
@@ -120,5 +125,89 @@ func TestStatusResultJSON_EmptyNodes(t *testing.T) {
 		if strings.Contains(s, "\""+absent+"\"") {
 			t.Errorf("expected %q to be omitted", absent)
 		}
+	}
+}
+
+func TestStatusBaseDriftHint(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record old main tip (same as branchA's BaseTip)
+	oldMainTip := s.Nodes[0].BaseTip
+
+	// Advance main
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "drift.txt"), []byte("drift\n"), 0644)
+	git("add", "drift.txt")
+	git("commit", "-m", "unrelated on main")
+	git("checkout", "branchC")
+
+	currentMainTip := git("rev-parse", "main")
+	if oldMainTip == currentMainTip {
+		t.Fatal("test setup error: main should have advanced")
+	}
+
+	hint := detectBaseDrift(s, oldMainTip, currentMainTip)
+	if hint == "" {
+		t.Fatal("expected drift hint")
+	}
+	if !strings.Contains(hint, "--full") {
+		t.Error("hint should suggest --full")
+	}
+}
+
+func TestStatusFullShowsBaseDriftAsNeedsSync(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Advance main
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "drift.txt"), []byte("drift\n"), 0644)
+	git("add", "drift.txt")
+	git("commit", "-m", "unrelated on main")
+	git("checkout", "branchC")
+
+	// With --full, the current main tip is used → branchA's BaseTip is stale
+	currentMainTip := git("rev-parse", "main")
+	if currentMainTip == s.Nodes[0].BaseTip {
+		t.Fatal("test setup error: main tip should differ from branchA BaseTip")
+	}
+
+	// computeSyncPlan with fromHead=true should detect the drift
+	opts := &syncOptions{fromHead: true}
+	plan := computeSyncPlan(s, opts)
+	rebases := filterActions(plan, "rebase")
+	if len(rebases) == 0 {
+		t.Error("expected rebases with --full when base drifted")
 	}
 }

@@ -345,7 +345,15 @@
       "category": "stack",
       "use": "status [stack-name]",
       "short": "Show stack topology and sync state",
+      "long": "Shows the topology, sync state, and PR status of a stack.\n\nBy default, only stack-internal sync state is shown. If the base branch has\nadvanced from unrelated work, an info hint is displayed. Use --full to include\nbase-branch drift in the sync state calculation.",
+      "example": "  sdf status                        # show stack status (stack-scoped)\n  sdf status --full                 # include base branch drift\n  sdf status my-feature             # show a specific stack\n  sdf status --json                 # output as JSON\n  sdf status -v                     # show commit logs per branch",
       "flags": [
+        {
+          "name": "full",
+          "type": "bool",
+          "default": "false",
+          "description": "include base branch drift in sync state"
+        },
         {
           "name": "json",
           "type": "bool",
@@ -388,8 +396,8 @@
       "category": "stack",
       "use": "sync [stack-name]",
       "short": "Detect merged PRs and cascade-rebase downstream branches",
-      "long": "Fetches from origin, queries GitHub for PR status, reconciles PR states,\ncascade-rebases downstream branches, pushes, and updates PR navigation links.\n\nBy default, sync only rebases branches within the stack (e.g. after a PR is\nmerged or a parent branch is amended). To also rebase onto the latest base\nbranch tip (e.g. main), use --from-head.\n\nWhen a rebase conflict occurs, an interactive menu offers Claude resolution,\nmanual resolution (pausing sync), skip, or abort.",
-      "example": "  sdf sync                          # sync within the stack only\n  sdf sync --from-head              # also rebase onto latest base branch\n  sdf sync my-feature               # sync a specific stack by name\n  sdf sync -y                       # skip confirmation prompt\n  sdf sync --continue               # resume after manual conflict resolution\n  sdf sync --with-content           # also update PR titles and descriptions",
+      "long": "Fetches from origin, queries GitHub for PR status, reconciles PR states,\ncascade-rebases downstream branches, pushes, and updates PR navigation links.\n\nBy default, sync only rebases branches within the stack (e.g. after a PR is\nmerged or a parent branch is amended). If the base branch has advanced from\nunrelated work, a hint is shown. To also rebase onto the latest base branch\ntip (e.g. main), use --full.\n\nWhen a rebase conflict occurs, an interactive menu offers Claude resolution,\nmanual resolution (pausing sync), skip, or abort.",
+      "example": "  sdf sync                          # sync within the stack only\n  sdf sync --full                   # also rebase onto latest base branch\n  sdf sync my-feature               # sync a specific stack by name\n  sdf sync -y                       # skip confirmation prompt\n  sdf sync --continue               # resume after manual conflict resolution\n  sdf sync --with-content           # also update PR titles and descriptions",
       "flags": [
         {
           "name": "continue",
@@ -398,10 +406,10 @@
           "description": "resume after manual conflict resolution"
         },
         {
-          "name": "from-head",
+          "name": "full",
           "type": "bool",
           "default": "false",
-          "description": "also rebase onto the latest base branch"
+          "description": "also rebase onto the latest base branch tip"
         },
         {
           "name": "json",
@@ -475,5 +483,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "edd7fed39dd81d7fe5e9caedd8fda1a316dc790801e89659f3e4ce74c7bfc4da"
+  "hash": "d2efe92f52bf05b262ea429723f3c0e28129b85f16a4b7246e5ad22f12c35d3f"
 }
