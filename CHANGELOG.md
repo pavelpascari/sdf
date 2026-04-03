@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.8](https://github.com/pavelpascari/sdf/compare/v0.3.7...v0.3.8) (2026-04-03)
+
+
+### Features
+
+* scope sync and status to stack branches by default ([#206](https://github.com/pavelpascari/sdf/issues/206)) ([d8d77a4](https://github.com/pavelpascari/sdf/commit/d8d77a4af19a50cad2e33daf525be645139676de))
+
+
+### Bug Fixes
+
+* use stack name instead of branch_prefix.scope for PR title scope ([#212](https://github.com/pavelpascari/sdf/issues/212)) ([#213](https://github.com/pavelpascari/sdf/issues/213)) ([0ee67c9](https://github.com/pavelpascari/sdf/commit/0ee67c9818f20890e51648ccef035edabd494059))
+
+
+### CI/CD
+
+* bump actions/create-github-app-token from 2 to 3 ([#207](https://github.com/pavelpascari/sdf/issues/207)) ([e13bbde](https://github.com/pavelpascari/sdf/commit/e13bbde1eb07d841d8b379527d3b5fd288fa4757))
+
+
+### Miscellaneous
+
+* commit Claude Code settings and clean up permissions ([#204](https://github.com/pavelpascari/sdf/issues/204)) ([3e3110b](https://github.com/pavelpascari/sdf/commit/3e3110bdb04821363ca13c56c37668bda39d630c))
+
 ## [0.3.7](https://github.com/pavelpascari/sdf/compare/v0.3.6...v0.3.7) (2026-03-11)
 
 
