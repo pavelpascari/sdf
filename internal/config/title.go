@@ -29,7 +29,7 @@ func GeneratePRTitle(cfg Config, stackID, branch string, commitSubjects []string
 
 	scope := ticket
 	if scope == "" {
-		scope = cfg.EffectivePrefix(stackID)
+		scope = stackID
 	}
 
 	if scope != "" {
@@ -51,7 +51,7 @@ func TitlePrefix(cfg Config, stackID, branch string, commitSubjects []string) st
 
 	scope := ticket
 	if scope == "" {
-		scope = cfg.EffectivePrefix(stackID)
+		scope = stackID
 	}
 
 	if scope != "" {

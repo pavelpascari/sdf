@@ -86,13 +86,15 @@ func TestGeneratePRTitle_ConventionalCommits_MostCommonWins(t *testing.T) {
 	}
 }
 
-func TestGeneratePRTitle_CustomScope(t *testing.T) {
+func TestGeneratePRTitle_CustomScope_UsesStackID(t *testing.T) {
 	cfg := Defaults()
 	cfg.BranchPrefix.Scope = "api"
 
+	// branch_prefix.scope should only affect branch naming, not PR title scope.
+	// PR title scope should always use the stack name.
 	title := GeneratePRTitle(cfg, "my-stack", "api/add-login", nil)
-	if title != "feat(api): add login" {
-		t.Errorf("expected 'feat(api): add login', got %q", title)
+	if title != "feat(my-stack): add login" {
+		t.Errorf("expected 'feat(my-stack): add login', got %q", title)
 	}
 }
 
