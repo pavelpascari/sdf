@@ -456,7 +456,7 @@
       "key": "branch_prefix.scope",
       "type": "string",
       "default": "",
-      "description": "Scope string used as branch prefix and conventional commit scope (empty = use stack ID)"
+      "description": "Scope string used as branch prefix (empty = use stack ID). Does not affect PR title scope."
     },
     {
       "key": "branch_prefix.separator",
@@ -483,5 +483,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "d2efe92f52bf05b262ea429723f3c0e28129b85f16a4b7246e5ad22f12c35d3f"
+  "hash": "323924a9369ebfb1352d8466867ae09b23c402d5630d1bea4bede364ba8af8f6"
 }

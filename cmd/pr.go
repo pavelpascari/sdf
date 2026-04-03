@@ -99,6 +99,11 @@ func runPR(cmd *cobra.Command, args []string) error {
 		body = tmpl + "\n\n---\n\n" + stackBody
 	}
 
+	// Warn if branch_prefix.scope was previously influencing PR titles
+	if cfg.BranchPrefix.Scope != "" && !jsonFlag {
+		fmt.Fprintf(os.Stderr, "note: branch_prefix.scope no longer affects PR titles — PR titles now use the stack name as scope\n")
+	}
+
 	// Determine title
 	prTitle := title
 	if prTitle == "" {

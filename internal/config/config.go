@@ -168,7 +168,7 @@ type ConfigKeyMeta struct {
 func ConfigKeys() []ConfigKeyMeta {
 	return []ConfigKeyMeta{
 		{"branch_prefix.enabled", "bool", "true", "Enable/disable branch prefix enforcement"},
-		{"branch_prefix.scope", "string", "", "Scope string used as branch prefix and conventional commit scope (empty = use stack ID)"},
+		{"branch_prefix.scope", "string", "", "Scope string used as branch prefix (empty = use stack ID). Does not affect PR title scope."},
 		{"branch_prefix.separator", "string", "/", "Separator character between prefix and branch name"},
 		{"pr_title.conventional_commits", "bool", "true", "Enable conventional commit prefixes in PR titles"},
 		{"pr_title.ticket_pattern", "string", "", "Regex to extract ticket ID from branch name for PR titles"},
