@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -360,6 +361,172 @@ func TestReplaceDescription_ThenNav_Roundtrip(t *testing.T) {
 	}
 	if !strings.Contains(body, "pull/2") {
 		t.Error("new nav content missing")
+	}
+}
+
+// --- backfillMissingPRs tests ---
+
+func TestBackfillMissingPRs_FillsGaps(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "web",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "web/cost", PR: 5, Status: "open"},
+			{Branch: "web/branches", PR: 9, Status: "open"},
+			{Branch: "web/deploy", PR: 8, Status: "open"},
+		},
+	}
+
+	// Simulate PRList missing the newly created PR #9 (search indexing delay)
+	prMap := map[int]ghpkg.PRInfo{
+		5: {Number: 5, URL: "https://github.com/owner/repo/pull/5", HeadRefName: "web/cost", State: "OPEN"},
+		8: {Number: 8, URL: "https://github.com/owner/repo/pull/8", HeadRefName: "web/deploy", State: "OPEN"},
+	}
+
+	// Provide a lookup function that records calls and returns the missing PR
+	var lookupCalls []string
+	lookup := func(branch string) (ghpkg.PRInfo, error) {
+		lookupCalls = append(lookupCalls, branch)
+		if branch == "web/branches" {
+			return ghpkg.PRInfo{
+				Number:      9,
+				URL:         "https://github.com/owner/repo/pull/9",
+				HeadRefName: "web/branches",
+				State:       "OPEN",
+			}, nil
+		}
+		return ghpkg.PRInfo{}, fmt.Errorf("not found")
+	}
+
+	backfillMissingPRs(s, prMap, lookup)
+
+	// Should only look up the missing branch, not ones already in prMap
+	if len(lookupCalls) != 1 {
+		t.Fatalf("expected 1 lookup call, got %d: %v", len(lookupCalls), lookupCalls)
+	}
+	if lookupCalls[0] != "web/branches" {
+		t.Errorf("expected lookup for %q, got %q", "web/branches", lookupCalls[0])
+	}
+
+	if _, ok := prMap[9]; !ok {
+		t.Fatal("PR #9 should have been backfilled into prMap")
+	}
+	if prMap[9].URL != "https://github.com/owner/repo/pull/9" {
+		t.Errorf("expected URL for PR #9, got %q", prMap[9].URL)
+	}
+}
+
+func TestBackfillMissingPRs_NoOpWhenComplete(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "web",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "web/cost", PR: 5, Status: "open"},
+			{Branch: "web/branches", PR: 9, Status: "open"},
+		},
+	}
+
+	prMap := map[int]ghpkg.PRInfo{
+		5: {Number: 5, URL: "https://github.com/owner/repo/pull/5", HeadRefName: "web/cost", State: "OPEN"},
+		9: {Number: 9, URL: "https://github.com/owner/repo/pull/9", HeadRefName: "web/branches", State: "OPEN"},
+	}
+
+	lookupCalled := false
+	lookup := func(branch string) (ghpkg.PRInfo, error) {
+		lookupCalled = true
+		return ghpkg.PRInfo{}, fmt.Errorf("should not be called")
+	}
+
+	backfillMissingPRs(s, prMap, lookup)
+
+	if lookupCalled {
+		t.Error("lookup should not be called when prMap is complete")
+	}
+}
+
+func TestBackfillMissingPRs_SkipsNodesWithoutPR(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "web",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "web/cost", PR: 5, Status: "open"},
+			{Branch: "web/branches", PR: 0, Status: "open"}, // no PR yet
+		},
+	}
+
+	prMap := map[int]ghpkg.PRInfo{
+		5: {Number: 5, URL: "https://github.com/owner/repo/pull/5", HeadRefName: "web/cost", State: "OPEN"},
+	}
+
+	lookupCalled := false
+	lookup := func(branch string) (ghpkg.PRInfo, error) {
+		lookupCalled = true
+		return ghpkg.PRInfo{}, fmt.Errorf("should not be called")
+	}
+
+	backfillMissingPRs(s, prMap, lookup)
+
+	if lookupCalled {
+		t.Error("lookup should not be called for nodes without PR numbers")
+	}
+}
+
+func TestBackfillMissingPRs_LookupFailureSkips(t *testing.T) {
+	s := &stack.Stack{
+		StackID: "web",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "web/cost", PR: 5, Status: "open"},
+			{Branch: "web/branches", PR: 9, Status: "open"},
+		},
+	}
+
+	prMap := map[int]ghpkg.PRInfo{
+		5: {Number: 5, URL: "https://github.com/owner/repo/pull/5", HeadRefName: "web/cost", State: "OPEN"},
+	}
+
+	lookup := func(branch string) (ghpkg.PRInfo, error) {
+		return ghpkg.PRInfo{}, fmt.Errorf("gh failed")
+	}
+
+	backfillMissingPRs(s, prMap, lookup)
+
+	// PR #9 should NOT be in the map since lookup failed
+	if _, ok := prMap[9]; ok {
+		t.Error("PR #9 should not be in prMap when lookup fails")
+	}
+}
+
+func TestBuildStackNav_WithBackfilledPR(t *testing.T) {
+	// End-to-end: after backfill, buildStackNav should include the URL
+	s := &stack.Stack{
+		StackID: "web",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "web/cost", PR: 5, Status: "open"},
+			{Branch: "web/branches", PR: 9, Status: "open"},
+			{Branch: "web/deploy", PR: 8, Status: "open"},
+		},
+	}
+
+	prMap := map[int]ghpkg.PRInfo{
+		5: {Number: 5, URL: "https://github.com/owner/repo/pull/5", State: "OPEN"},
+		8: {Number: 8, URL: "https://github.com/owner/repo/pull/8", State: "OPEN"},
+	}
+
+	// Backfill PR #9
+	lookup := func(branch string) (ghpkg.PRInfo, error) {
+		return ghpkg.PRInfo{
+			Number: 9, URL: "https://github.com/owner/repo/pull/9",
+			HeadRefName: "web/branches", State: "OPEN",
+		}, nil
+	}
+	backfillMissingPRs(s, prMap, lookup)
+
+	nav := buildStackNav(s, prMap, "web/cost")
+
+	if !strings.Contains(nav, "https://github.com/owner/repo/pull/9") {
+		t.Error("nav should contain URL for backfilled PR #9, got branch name instead")
 	}
 }
 

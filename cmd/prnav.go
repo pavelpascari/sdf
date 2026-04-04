@@ -98,6 +98,25 @@ func replaceDescription(body, description string) string {
 	return section + "\n\n" + body
 }
 
+// backfillMissingPRs fills gaps in prMap for nodes that have a PR number but
+// were not returned by PRList (e.g. due to GitHub search indexing delay for
+// newly created PRs). It calls lookup for each missing branch individually.
+func backfillMissingPRs(s *stack.Stack, prMap map[int]ghpkg.PRInfo, lookup func(branch string) (ghpkg.PRInfo, error)) {
+	for _, node := range s.Nodes {
+		if node.PR == 0 {
+			continue
+		}
+		if _, ok := prMap[node.PR]; ok {
+			continue
+		}
+		pr, err := lookup(node.Branch)
+		if err != nil {
+			continue
+		}
+		prMap[pr.Number] = pr
+	}
+}
+
 // updateStackNavForAllPRs fetches PR info and updates the stack navigation
 // section in every PR's description.
 func updateStackNavForAllPRs(root string, s *stack.Stack, result *SyncResult, bus *render.Bus) error {
@@ -123,6 +142,16 @@ func updateStackNavForAllPRs(root string, s *stack.Stack, result *SyncResult, bu
 	for _, pr := range prList {
 		prMap[pr.Number] = pr
 	}
+
+	// Backfill PRs missing from search results (e.g. newly created PRs
+	// not yet indexed by GitHub search).
+	backfillMissingPRs(s, prMap, func(branch string) (ghpkg.PRInfo, error) {
+		pr, err := ghpkg.PRView(branch)
+		if err != nil {
+			return ghpkg.PRInfo{}, err
+		}
+		return *pr, nil
+	})
 
 	// Pre-compute hashes and filter to only PRs that need updating.
 	type navJob struct {
