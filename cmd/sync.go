@@ -337,16 +337,16 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 		}
 	}
 
-	// Check if there's any real work beyond acknowledging merged PRs.
-	onlySkipMerged := true
+	// Check if there's any real work beyond acknowledging merged/closed PRs.
+	onlySkips := true
 	for _, a := range plan {
-		if a.kind != "skip-merged" {
-			onlySkipMerged = false
+		if a.kind != "skip-merged" && a.kind != "skip-closed" {
+			onlySkips = false
 			break
 		}
 	}
 
-	if len(plan) == 0 || onlySkipMerged {
+	if len(plan) == 0 || onlySkips {
 		bus.Print("\nEverything is in sync.")
 		// Save any state changes from reconciliation
 		if err := stack.Save(root, s); err != nil {
@@ -398,7 +398,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	// update-tip bookkeeping.
 	hasRealWork := false
 	for i := 0; i < len(s.Nodes); i++ {
-		if s.Nodes[i].Status != "merged" {
+		if s.Nodes[i].Status != "merged" && s.Nodes[i].Status != "closed" {
 			parent := s.ParentBranch(s.Nodes[i].Branch)
 			tip, err := gitpkg.RevParse(parent)
 			if err == nil && s.Nodes[i].BaseTip != "" {
@@ -431,6 +431,22 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			if result != nil {
 				result.Branches = append(result.Branches, BranchResult{
 					Branch: node.Branch, PR: node.PR, Action: "merged",
+				})
+			}
+			continue
+		}
+
+		if node.Status == "closed" {
+			if hasRealWork {
+				if node.PR > 0 {
+					bus.Printf("  %s PR %s (%s) closed", ui.SymWarn, ui.PR(node.PR), ui.Branch(node.Branch))
+				} else {
+					bus.Printf("  %s %s closed", ui.SymWarn, ui.Branch(node.Branch))
+				}
+			}
+			if result != nil {
+				result.Branches = append(result.Branches, BranchResult{
+					Branch: node.Branch, PR: node.PR, Action: "closed",
 				})
 			}
 			continue
@@ -589,10 +605,10 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 	// If the original branch was merged, switch to the first open branch
 	// in the stack (or the base branch if all are merged).
 	checkoutTarget := originalBranch
-	if node := s.FindNode(originalBranch); node != nil && node.Status == "merged" {
+	if node := s.FindNode(originalBranch); node != nil && (node.Status == "merged" || node.Status == "closed") {
 		checkoutTarget = s.Base
 		for _, n := range s.Nodes {
-			if n.Status != "merged" {
+			if n.Status != "merged" && n.Status != "closed" {
 				checkoutTarget = n.Branch
 				break
 			}
@@ -642,7 +658,7 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, resu
 
 	var missing []int // indices of nodes without PRs
 	for i, node := range s.Nodes {
-		if node.Status != "merged" && node.PR == 0 {
+		if node.Status != "merged" && node.Status != "closed" && node.PR == 0 {
 			missing = append(missing, i)
 		}
 	}
@@ -725,7 +741,7 @@ func updatePRContent(_ string, s *stack.Stack, opts *syncOptions, result *SyncRe
 	var jobs []contentJob
 	for i := range s.Nodes {
 		node := &s.Nodes[i]
-		if node.PR == 0 || node.Status == "merged" {
+		if node.PR == 0 || node.Status == "merged" || node.Status == "closed" {
 			continue
 		}
 		parent := s.ParentBranch(node.Branch)
