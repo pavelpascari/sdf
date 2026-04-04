@@ -1263,6 +1263,17 @@ func printSyncPlan(plan []syncAction, bus *render.Bus) {
 			} else {
 				bus.Printf("  %s %s merged", ui.SymOK, ui.Branch(a.branch))
 			}
+		case "skip-closed":
+			if a.pr > 0 {
+				bus.Printf("  %s PR %s (%s) closed", ui.SymWarn, ui.PR(a.pr), ui.Branch(a.branch))
+			} else {
+				bus.Printf("  %s %s closed", ui.SymWarn, ui.Branch(a.branch))
+			}
+			// Warn if the next action is a rebase (downstream branch rebasing past closed node)
+			if i+1 < len(plan) && plan[i+1].kind == "rebase" {
+				bus.Printf("  %s %s will rebase onto %s (skipping closed %s) — conflicts possible",
+					ui.SymWarn, ui.Branch(plan[i+1].branch), ui.Branch(plan[i+1].onto), ui.Branch(a.branch))
+			}
 		case "rebase":
 			// Combine with next push action for same branch
 			if i+1 < len(plan) && plan[i+1].kind == "push" && plan[i+1].branch == a.branch {

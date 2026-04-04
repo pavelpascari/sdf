@@ -597,6 +597,69 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 	}
 }
 
+func TestPrintSyncPlan_ClosedOutput(t *testing.T) {
+	plan := []syncAction{
+		{kind: "skip-closed", branch: "feat/auth", pr: 10},
+		{kind: "rebase", branch: "feat/api", onto: "feat/base"},
+		{kind: "push", branch: "feat/api"},
+	}
+
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
+	output := stripANSI(buf.String())
+
+	if !strings.Contains(output, "PR #10 (feat/auth) closed") {
+		t.Errorf("expected closed PR output, got:\n%s", output)
+	}
+}
+
+func TestPrintSyncPlan_ClosedConflictWarning(t *testing.T) {
+	plan := []syncAction{
+		{kind: "skip-closed", branch: "feat/validation", pr: 5},
+		{kind: "rebase", branch: "feat/api", onto: "feat/auth"},
+		{kind: "push", branch: "feat/api"},
+	}
+
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
+	output := stripANSI(buf.String())
+
+	if !strings.Contains(output, "feat/api will rebase onto feat/auth") {
+		t.Errorf("expected conflict warning for feat/api, got:\n%s", output)
+	}
+	if !strings.Contains(output, "skipping closed feat/validation") {
+		t.Errorf("expected skipped branch name in warning, got:\n%s", output)
+	}
+}
+
+func TestPrintSyncPlan_ClosedTailNoWarning(t *testing.T) {
+	plan := []syncAction{
+		{kind: "rebase", branch: "feat/auth", onto: "main"},
+		{kind: "push", branch: "feat/auth"},
+		{kind: "skip-closed", branch: "feat/dead", pr: 99},
+	}
+
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
+	output := stripANSI(buf.String())
+
+	if strings.Contains(output, "will rebase") {
+		t.Errorf("should not warn when closed node is at tail, got:\n%s", output)
+	}
+}
+
 // --- computeSyncPlan with update options ---
 
 func TestComputeSyncPlan_WithContent(t *testing.T) {
