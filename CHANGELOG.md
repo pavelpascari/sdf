@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.9](https://github.com/pavelpascari/sdf/compare/v0.3.8...v0.3.9) (2026-04-04)
+
+
+### Bug Fixes
+
+* **sync:** prevent stale base commit embedded in downstream branches ([#200](https://github.com/pavelpascari/sdf/issues/200)) ([#214](https://github.com/pavelpascari/sdf/issues/214)) ([a91335c](https://github.com/pavelpascari/sdf/commit/a91335c27b5cab8188396bbda4d703cd6fe019df))
+
 ## [0.3.8](https://github.com/pavelpascari/sdf/compare/v0.3.7...v0.3.8) (2026-04-03)
 
 
