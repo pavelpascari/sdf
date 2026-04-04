@@ -11,7 +11,7 @@ There's a class of bug that only appears when you squint at commit graphs long e
 
 This post is about finding and fixing that exact bug in SDF's `sdf sync` cascade rebase. It's a story about `git rebase --onto`, the difference between two SHAs that _look_ like they should be the same, and why a fast-path optimization needs to be very careful about which question it asks.
 
-The bug was introduced in [PR #189](https://github.com/pavelpascari/sdf/pull/189) (v0.3.7, March 10) as part of an "update-tip" optimization, lived through v0.3.8, and was fixed in [PR #214](https://github.com/pavelpascari/sdf/pull/214) (v0.3.9, April 4) &mdash; 25 days in the wild. It was written in an agentic coding loop, reviewed by a human who didn't question the test changes closely enough, and caught only after the symptoms became impossible to ignore.
+The bug was introduced in PR #189 (v0.3.7, March 10) as part of an “update-tip” optimization, remained in v0.3.8, and was fixed in PR #214 (v0.3.9, April 4) — 25 days in the wild. It emerged during an agentic coding loop, made it through review, and was ultimately caught once the symptoms became too visible to overlook.
 
 ## The setup: how cascade rebase works
 
@@ -30,6 +30,23 @@ git rebase --onto <new-parent> <old-base> <branch>
 ```
 
 This tells Git: "take the commits between `<old-base>` and `<branch>`, and replay them onto `<new-parent>`." The `<old-base>` is the boundary &mdash; it defines which commits belong to the branch versus which belong to the parent. Get it wrong, and you either lose commits or include ones that shouldn't be there.
+
+If you've ever wondered why `git rebase --onto` has three arguments instead of two, this bug is a good illustration.
+
+<img src="/images/git-rebase-onto-dark.gif" alt="How git rebase --onto works: take commits after oldbase on branch, replay them onto newbase" />
+
+The animated diagram above shows the three roles in a `git rebase --onto` call. The three-argument form:
+
+```bash
+git rebase --onto <newbase> <upstream> <branch>
+```
+
+is really answering: "which commits are _mine_?" The range `<upstream>..<branch>` defines the commits to replay. Everything in that range gets cherry-picked onto `<newbase>`. Everything outside it stays behind.
+
+When `<upstream>` is wrong &mdash; pointing to a commit that's not actually in the branch's ancestry, or pointing too far back &mdash; Git falls back to `merge-base` heuristics. Sometimes it works. Sometimes it includes commits from a sibling rebase (same original commit, different base), producing the "phantom commit" symptom.
+
+In our case, the corrupted `BaseTip` was a _sibling_ SHA: a different rebase of the same original commit onto a different base. SHAs `d93407b` and `7954b4c` are both "branchA rebased onto main" &mdash; just onto different versions of main. Neither is an ancestor of the other. Using the wrong one as `<upstream>` breaks the boundary.
+
 
 ## The bug: two SHAs walk into a bar
 
@@ -142,24 +159,6 @@ And wired it through the `--continue` path, so that after manual conflict resolu
 return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus,
     map[string]bool{progress.PausedAt: true})
 ```
-
-## The git internals angle
-
-If you've ever wondered why `git rebase --onto` has three arguments instead of two, this bug is a good illustration.
-
-<img src="/images/git-rebase-onto-dark.gif" alt="How git rebase --onto works: take commits after oldbase on branch, replay them onto newbase" />
-
-The animated diagram above shows the three roles in a `git rebase --onto` call. The three-argument form:
-
-```bash
-git rebase --onto <newbase> <upstream> <branch>
-```
-
-is really answering: "which commits are _mine_?" The range `<upstream>..<branch>` defines the commits to replay. Everything in that range gets cherry-picked onto `<newbase>`. Everything outside it stays behind.
-
-When `<upstream>` is wrong &mdash; pointing to a commit that's not actually in the branch's ancestry, or pointing too far back &mdash; Git falls back to `merge-base` heuristics. Sometimes it works. Sometimes it includes commits from a sibling rebase (same original commit, different base), producing the "phantom commit" symptom.
-
-In our case, the corrupted `BaseTip` was a _sibling_ SHA: a different rebase of the same original commit onto a different base. SHAs `d93407b` and `7954b4c` are both "branchA rebased onto main" &mdash; just onto different versions of main. Neither is an ancestor of the other. Using the wrong one as `<upstream>` breaks the boundary.
 
 ## What we tested
 
