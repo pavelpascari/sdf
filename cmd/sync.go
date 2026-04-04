@@ -59,7 +59,7 @@ type PRUpdate struct {
 
 // syncAction represents a single planned operation during sync.
 type syncAction struct {
-	kind   string // "skip-merged", "update-tip", "rebase", "push", "update-pr-base", "update-content"
+	kind   string // "skip-merged", "skip-closed", "update-tip", "rebase", "push", "update-pr-base", "update-content"
 	branch string
 	onto   string // target base for rebase or PR base update
 	pr     int    // PR number (for update-pr-base, update-content)
@@ -1143,6 +1143,11 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 			continue
 		}
 
+		if node.Status == "closed" {
+			actions = append(actions, syncAction{kind: "skip-closed", branch: node.Branch, pr: node.PR})
+			continue
+		}
+
 		parent := s.ParentBranch(node.Branch)
 
 		needsRebase := rebased[parent]
@@ -1197,7 +1202,7 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 	// Append PR content update action for open PRs
 	if opts != nil && opts.withContent {
 		for _, node := range nodes {
-			if node.PR == 0 || node.Status == "merged" {
+			if node.PR == 0 || node.Status == "merged" || node.Status == "closed" {
 				continue
 			}
 			actions = append(actions, syncAction{

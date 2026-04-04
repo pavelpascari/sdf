@@ -662,6 +662,83 @@ func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
 	}
 }
 
+// --- computeSyncPlan closed-node tests ---
+
+func TestComputeSyncPlan_ClosedMiddle(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchB (middle) as closed → branchC rebases onto branchA
+	s.Nodes[1].Status = "closed"
+
+	plan := computeSyncPlan(s, nil)
+
+	skipsClosed := filterActions(plan, "skip-closed")
+	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
+
+	if len(skipsClosed) != 1 || skipsClosed[0].branch != "branchB" {
+		t.Errorf("expected 1 skip-closed for branchB, got %v", skipsClosed)
+	}
+
+	if len(rebases) != 0 {
+		t.Errorf("expected no rebases for closed middle, got %v", actionBranches(rebases))
+	}
+
+	if len(updateTips) != 1 || updateTips[0].branch != "branchC" {
+		t.Errorf("expected update-tip for branchC, got %v", actionBranches(updateTips))
+	}
+}
+
+func TestComputeSyncPlan_ClosedHead(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Nodes[0].Status = "closed"
+
+	plan := computeSyncPlan(s, nil)
+
+	skipsClosed := filterActions(plan, "skip-closed")
+	if len(skipsClosed) != 1 || skipsClosed[0].branch != "branchA" {
+		t.Errorf("expected skip-closed for branchA, got %v", skipsClosed)
+	}
+}
+
+func TestComputeSyncPlan_SkipsClosedForUpdates(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Nodes[0].PR = 10
+	s.Nodes[1].PR = 20
+	s.Nodes[1].Status = "closed"
+	s.Nodes[2].PR = 30
+
+	opts := &syncOptions{withContent: true}
+	plan := computeSyncPlan(s, opts)
+
+	contentUpdates := filterActions(plan, "update-content")
+	if len(contentUpdates) != 2 {
+		t.Errorf("expected 2 content updates (branchA, branchC), got %d", len(contentUpdates))
+	}
+	for _, a := range contentUpdates {
+		if a.branch == "branchB" {
+			t.Error("closed branchB should not get content update")
+		}
+	}
+}
+
 // --- stack-scoped sync tests (--from-head) ---
 
 func TestComputeSyncPlan_StackScopedDefault(t *testing.T) {
