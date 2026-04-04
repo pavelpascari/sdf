@@ -7,15 +7,19 @@ author: "Pavel Pascari"
 published: true
 ---
 
-There's a class of bug that only appears when you squint at commit graphs long enough. The tool runs, prints green checkmarks, pushes branches &mdash; and three syncs later you notice that `git log main..your-branch` shows five commits where there should be four. One of them is a ghost: a commit from a parent branch that has no business being there.
+There's a class of bug that only appears when you squint at commit graphs long enough. The tool runs, prints green checkmarks, pushes branches &mdash; and three syncs later you'd notice that `git log main..your-branch` shows five commits where there should be four. One of them is a ghost: a commit from a parent branch that has no business being there.
+
+For weeks, nothing seemed wrong. The tests passed. The optimization was doing what I'd asked for. Then one day I was reviewing a PR diff and saw a commit I'd never written sitting in a branch where it didn't belong. Then I checked another branch. Same thing. The bug hadn't spread through the code &mdash; it had spread through _history_.
 
 This post is about finding and fixing that exact bug in SDF's `sdf sync` cascade rebase. It's a story about `git rebase --onto`, the difference between two SHAs that _look_ like they should be the same, and why a fast-path optimization needs to be very careful about which question it asks.
+
+The bug was introduced in PR #189 as part of an “update-tip” optimization, remained for one release, and was fixed in PR #214 &mdash; 25 days in the wild. It emerged during an agentic coding loop, made it through review, and was ultimately caught once the symptoms became too visible to overlook.
 
 ## The setup: how cascade rebase works
 
 SDF manages stacked PRs &mdash; chains of dependent branches where each one builds on the previous. A three-branch stack looks like this:
 
-```
+```text
 main (M1) → branchA [a1] → branchB [b1] → branchC [c1]
 ```
 
@@ -29,7 +33,24 @@ git rebase --onto <new-parent> <old-base> <branch>
 
 This tells Git: "take the commits between `<old-base>` and `<branch>`, and replay them onto `<new-parent>`." The `<old-base>` is the boundary &mdash; it defines which commits belong to the branch versus which belong to the parent. Get it wrong, and you either lose commits or include ones that shouldn't be there.
 
-## The bug: two SHAs walk into a bar
+If you've ever wondered why `git rebase --onto` has three arguments instead of two, this bug is a good illustration.
+
+<img src="/images/git-rebase-onto-dark.gif" alt="How git rebase --onto works: take commits after oldbase on branch, replay them onto newbase" />
+
+The animated diagram above shows the three roles in a `git rebase --onto` call. The three-argument form:
+
+```bash
+git rebase --onto <newbase> <upstream> <branch>
+```
+
+is really answering: "which commits are _mine_?" The range `<upstream>..<branch>` defines the commits to replay. Everything in that range gets cherry-picked onto `<newbase>`. Everything outside it stays behind.
+
+When `<upstream>` is wrong &mdash; pointing to a commit that's not actually in the branch's ancestry, or pointing too far back &mdash; Git falls back to `merge-base` heuristics. Sometimes it guesses right. Sometimes it includes commits from a sibling rebase (same original commit, different base), producing the "phantom commit" symptom.
+
+In our case, the corrupted `BaseTip` was a _sibling_ SHA: a different rebase of the same original commit onto a different base. SHAs `d93407b` and `7954b4c` are both "branchA rebased onto main" &mdash; just onto different versions of main. Neither is an ancestor of the other. Using the wrong one as `<upstream>` breaks the boundary.
+
+
+## The bug: one check, two SHAs
 
 SDF has a feature where `sdf sync` (without the `--full` flag) intentionally skips rebasing when `main` advances from unrelated work. The idea is: if someone merged a totally unrelated PR into `main`, you don't want to rebase your entire stack just because the base moved. You want to keep working and only rebase when you choose to (via `sdf sync --full`).
 
@@ -65,7 +86,7 @@ if compareTip != node.BaseTip {
 
 Spot it? The `IsAncestor` check uses `compareTip` (which might be `preFFBaseTip` &mdash; the _old_ base), but then stores `currentParentTip` (the _new_ base) as `BaseTip`.
 
-When those two values differ, the code is asking: "is the _old_ base an ancestor of this branch?" &mdash; and if yes, recording: "the branch is based on the _new_ base." But the new base might not be an ancestor at all. The branch was never rebased onto it.
+When those two values differ, the code is asking: "is the _old_ base an ancestor of this branch?" &mdash; but then records: "the branch is based on the _new_ base." But the new base might not be an ancestor at all. The branch was never rebased onto it.
 
 ## The corruption cascade
 
@@ -93,9 +114,11 @@ git rebase --onto branchA <corrupted-BaseTip> branchB
 
 The `<corrupted-BaseTip>` doesn't properly identify the boundary between branchA's commits and branchB's commits. The result: commits from branchA's old rebase get included in branchB's history. Ghost commits.
 
+This is the mechanism that makes cascade rebase bugs systemic. The corruption doesn't stay local &mdash; it encodes itself into the metadata that drives the _next_ rebase. Each sync propagates the lie one branch further down the stack. The invariant that was broken: **`BaseTip` must always be an ancestor of the branch it describes.** Once that invariant fails, every downstream rebase computes the wrong commit boundary.
+
 ## The fix: ask the right question
 
-The fix is one-line-per-call-site simple:
+The fix is one line per call site:
 
 ```go
 // Before (buggy):
@@ -107,11 +130,11 @@ if gitpkg.IsAncestor(currentParentTip, node.Branch) {
 
 The `compareTip` variable should only control whether to _enter_ the check ("has anything changed?"). The ancestor verification must always use the _actual_ current parent tip &mdash; because that's the value we're about to store. If `currentParentTip` isn't an ancestor of the branch, the branch needs a real rebase, period.
 
-This change was needed in three places: the execution loop (`runSyncFrom`), the plan computation (`computeSyncPlan`), and the "has real work" pre-scan.
+This change was needed in three places: the execution loop (`runSyncFrom`), the plan computation (`computeSyncPlan`), and the `hasRealWork` pre-scan.
 
 ## Defense in depth: the `rebased` map
 
-While tracing through the code, we noticed another asymmetry. The plan computation (`computeSyncPlan`) maintains a `rebased` map &mdash; when a branch is rebased, its children are force-checked regardless of SHA comparison:
+While tracing through the code, I noticed another asymmetry. The plan computation (`computeSyncPlan`) maintains a `rebased` map &mdash; when a branch is rebased, its children are force-checked regardless of SHA comparison:
 
 ```go
 rebased := make(map[string]bool)
@@ -121,7 +144,7 @@ needsRebase := rebased[parent]  // force cascade if parent was rebased
 
 The execution loop (`runSyncFrom`) had no such map. It relied entirely on SHA comparison for cascade propagation: after rebasing branchA, branchA's tip changes, so branchB's `BaseTip` differs from `currentParentTip`, triggering branchB's rebase.
 
-This works in practice &mdash; a rebase always produces a new SHA. But it's fragile by design. The plan says one thing; the execution relies on a different mechanism. We added a matching `rebased` map to the execution loop:
+This works in practice &mdash; a rebase always produces a new SHA. But it's fragile by design. The plan says one thing; the execution relies on a different mechanism. I added a matching `rebased` map to the execution loop:
 
 ```go
 forceCascade := rebased[parent]
@@ -141,23 +164,9 @@ return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus,
     map[string]bool{progress.PausedAt: true})
 ```
 
-## The git internals angle
+## What I tested
 
-If you've ever wondered why `git rebase --onto` has three arguments instead of two, this bug is a good illustration. The three-argument form:
-
-```bash
-git rebase --onto <newbase> <upstream> <branch>
-```
-
-is really answering: "which commits are _mine_?" The range `<upstream>..<branch>` defines the commits to replay. Everything in that range gets cherry-picked onto `<newbase>`. Everything outside it stays behind.
-
-When `<upstream>` is wrong &mdash; pointing to a commit that's not actually in the branch's ancestry, or pointing too far back &mdash; Git falls back to `merge-base` heuristics. Sometimes it works. Sometimes it includes commits from a sibling rebase (same original commit, different base), producing the "phantom commit" symptom.
-
-In our case, the corrupted `BaseTip` was a _sibling_ SHA: a different rebase of the same original commit onto a different base. SHAs `d93407b` and `7954b4c` are both "branchA rebased onto main" &mdash; just onto different versions of main. Neither is an ancestor of the other. Using the wrong one as `<upstream>` breaks the boundary.
-
-## What we tested
-
-The existing test suite only covered `computeSyncPlan` (the dry-run planner). The execution path (`runSyncFrom`) had zero test coverage. We added six tests:
+The existing test suite only covered `computeSyncPlan` (the dry-run planner). The execution path (`runSyncFrom`) had zero test coverage. I added six tests:
 
 | Test | What it proves |
 |------|---------------|
@@ -170,6 +179,40 @@ The existing test suite only covered `computeSyncPlan` (the dry-run planner). Th
 
 The first two are the ones that caught the bug &mdash; they failed before the fix and passed after. The rest are characterization tests that document the correct cascade behavior.
 
+## How the tests looked the other way
+
+Here's the part that stings. The bug in PR #189 didn't sneak past the test suite &mdash; the test suite _caught_ it. Five existing tests failed against the new "update-tip" optimization. Every one of them was asserting that downstream branches should be rebased after a merge. Every one of them was correct.
+
+Instead of questioning the implementation, the tests were rewritten to agree with it. The pattern was the same in each:
+
+| Test | Before (correct) | After (rewritten) |
+|------|-----------------|-------------------|
+| `MergedHead` | expect rebase branchB onto main + push | expect no rebases, no pushes, just update-tip |
+| `CascadeFromMerge` | expect 2 rebases (branchB + branchC) + 2 pushes | expect no rebases, no pushes, 1 update-tip |
+| `MultipleMerged` | expect rebase branchC onto main + push | expect no rebases, no pushes, just update-tip |
+| `MergedMiddle` | expect rebase branchC onto branchA | expect no rebases, just update-tip |
+| `StackScopedWithMerge` | expect rebase branchB onto main | expect no rebases, just update-tip |
+
+The comments were rewritten too. `CascadeFromMerge` went from _"Both branchB and branchC should be rebased"_ to _"branchB can be handled by tip refresh; branchC stays unchanged."_ The new assertions came with plausible explanations.
+
+The reason the rewritten tests passed is subtle: the test repo setups happened to create scenarios where `compareTip` and `currentParentTip` were the same value. The `IsAncestor` check used the wrong variable but got the right answer. The tests passed for the wrong reason, and the bug hid behind them for 25 days.
+
+## Self-reflection: agentic loops and code review
+
+PR #189 was written in an agentic coding loop. An AI agent wrote the implementation and rewrote the failing tests. The PR had well-commented code and plausible test assertions. I reviewed it and merged it.
+
+I didn't ask why five cascade tests all flipped from "rebase expected" to "no rebase expected." The explanations in the rewritten test comments sounded reasonable. The test suite was green. The optimization was doing what I'd asked for &mdash; skipping unnecessary rebases. I moved on.
+
+This is the same failure mode that happens on any team. When a colleague sends a PR that changes tests alongside implementation, the reviewer needs to ask: _"are these test changes correct, or are they papering over a problem?"_ When five tests all weaken their assertions in the same direction, that's a signal worth pausing on.
+
+But the system made it hard to catch. The agentic loop produces coherent, well-commented code. It rewrites tests with explanations that sound like the right reasoning. The volume of changes is high, and the reviewer's trust calibration drifts. The agent won't push back. It won't say "I'm not sure about this" or "these test changes seem suspicious." It will confidently rewrite the assertions with a comment explaining why the new behavior is correct. There's no friction, no hesitation &mdash; and those are exactly the signals a reviewer unconsciously relies on.
+
+The human is the last line of defense. And in this case, I didn't hold it.
+
+The contributing factors weren't any single decision &mdash; they were the combination: a fast-path optimization that split a check from its store, an agent that rewrote tests to match, test setups that happened to hide the divergence, and a reviewer who trusted the green signal. No single factor would have been enough. Together, they created a 25-day window.
+
+The practices that catch bugs in team settings &mdash; skeptical PR review, questioning test changes that weaken assertions, requiring a second opinion on subtle invariants &mdash; are exactly the practices that catch bugs in agentic settings. There's nothing new here. The tools changed, but the discipline didn't.
+
 ## Takeaways
 
 **Fast paths need to validate what they store, not just what they check.** The bug was a mismatch between the condition variable (`compareTip`) and the stored value (`currentParentTip`). The fast path asked "is X an ancestor?" but recorded "Y is the base." When X ≠ Y, corruption follows.
@@ -177,5 +220,11 @@ The first two are the ones that caught the bug &mdash; they failed before the fi
 **Plan and execution should use the same cascade mechanism.** Having `computeSyncPlan` use a `rebased` map while `runSyncFrom` relied on SHA comparison meant the plan could say "rebase needed" while execution might disagree. They should converge.
 
 **Test the execution path, not just the planner.** It's tempting to only test the function that computes the plan &mdash; it's pure, deterministic, easy to assert on. But the bugs live in the loop that actually calls `git rebase --onto`, handles conflicts, updates state, and pushes. That's where the SHAs interact with real Git.
+
+**When tests fail against new code, interrogate the code first.** Five tests going from "expect rebase" to "expect no rebase" after adding an optimization is a signal. Those tests were written when the behavior was correct. Changing them should require the same burden of proof as changing the implementation.
+
+**Agentic workflows need the same review rigor as team workflows.** An AI agent writing code is a colleague who never pushes back, never says "I'm not sure about this," and always produces plausible explanations. The practices that catch bugs in team settings &mdash; skeptical PR review, questioning test changes, requiring a second pair of eyes &mdash; are exactly the practices that catch bugs in agentic settings. The tools changed. The discipline didn't.
+
+**Any system that rewrites history and generates code needs stronger invariants than human review alone.** This is the deeper lesson. The bug wasn't exotic &mdash; it was a mismatch between two variables in a conditional. What made it dangerous was the context: history-rewriting operations where correctness is invisible, combined with a workflow that produces confident explanations for incorrect behavior. When your system rewrites commit graphs, "the tests pass" isn't enough. You need invariants that can't be rewritten along with the tests.
 
 The fix is in [PR #214](https://github.com/pavelpascari/sdf/pull/214). Two files changed, three call sites fixed, one map added. The kind of bug that takes longer to understand than to fix.
