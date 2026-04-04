@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.10](https://github.com/pavelpascari/sdf/compare/v0.3.9...v0.3.10) (2026-04-04)
+
+
+### Features
+
+* **blog-rebase-images:** blog rebase images ([#220](https://github.com/pavelpascari/sdf/issues/220)) ([f1efab3](https://github.com/pavelpascari/sdf/commit/f1efab3032cc00179235da3753717f313bef48d3))
+* **sync:** handle mid-chain PR closure during sync ([#222](https://github.com/pavelpascari/sdf/issues/222)) ([66ec6cc](https://github.com/pavelpascari/sdf/commit/66ec6cc40b9922ae7307be3ea487bf9b3d8ac9aa))
+
+
+### Bug Fixes
+
+* **prnav:** backfill newly created PRs missing from GitHub search index ([#208](https://github.com/pavelpascari/sdf/issues/208)) ([#221](https://github.com/pavelpascari/sdf/issues/221)) ([29274e1](https://github.com/pavelpascari/sdf/commit/29274e1bd1cc71df9c00af82803484d36186ff83))
+
+
+### Tests
+
+* **sync:** verify branches are pushed after merged PRs ([#197](https://github.com/pavelpascari/sdf/issues/197)) ([#217](https://github.com/pavelpascari/sdf/issues/217)) ([148695a](https://github.com/pavelpascari/sdf/commit/148695a31ad7a47be6ee75f88989cca6398910ff))
+
+
+### Miscellaneous
+
+* **tests:** Issue 197 push verify issue 197 push verify ([#219](https://github.com/pavelpascari/sdf/issues/219)) ([236344d](https://github.com/pavelpascari/sdf/commit/236344d6718c4128c10b1533c389b896ac2e73f7))
+
 ## [0.3.9](https://github.com/pavelpascari/sdf/compare/v0.3.8...v0.3.9) (2026-04-04)
 
 
