@@ -7,17 +7,17 @@ author: "Pavel Pascari"
 published: true
 ---
 
-There's a class of bug that only appears when you squint at commit graphs long enough. The tool runs, prints green checkmarks, pushes branches &mdash; and three syncs later you notice that `git log main..your-branch` shows five commits where there should be four. One of them is a ghost: a commit from a parent branch that has no business being there.
+There's a class of bug that only appears when you squint at commit graphs long enough. The tool runs, prints green checkmarks, pushes branches &mdash; and three syncs later you'd notice that `git log main..your-branch` shows five commits where there should be four. One of them is a ghost: a commit from a parent branch that has no business being there.
 
 This post is about finding and fixing that exact bug in SDF's `sdf sync` cascade rebase. It's a story about `git rebase --onto`, the difference between two SHAs that _look_ like they should be the same, and why a fast-path optimization needs to be very careful about which question it asks.
 
-The bug was introduced in PR #189 (v0.3.7, March 10) as part of an “update-tip” optimization, remained in v0.3.8, and was fixed in PR #214 (v0.3.9, April 4) — 25 days in the wild. It emerged during an agentic coding loop, made it through review, and was ultimately caught once the symptoms became too visible to overlook.
+The bug was introduced in PR #189 as part of an “update-tip” optimization, remained for one release, and was fixed in PR #214 &mdash; 25 days in the wild. It emerged during an agentic coding loop, made it through review, and was ultimately caught once the symptoms became too visible to overlook.
 
 ## The setup: how cascade rebase works
 
 SDF manages stacked PRs &mdash; chains of dependent branches where each one builds on the previous. A three-branch stack looks like this:
 
-```
+```text
 main (M1) → branchA [a1] → branchB [b1] → branchC [c1]
 ```
 
@@ -43,12 +43,12 @@ git rebase --onto <newbase> <upstream> <branch>
 
 is really answering: "which commits are _mine_?" The range `<upstream>..<branch>` defines the commits to replay. Everything in that range gets cherry-picked onto `<newbase>`. Everything outside it stays behind.
 
-When `<upstream>` is wrong &mdash; pointing to a commit that's not actually in the branch's ancestry, or pointing too far back &mdash; Git falls back to `merge-base` heuristics. Sometimes it works. Sometimes it includes commits from a sibling rebase (same original commit, different base), producing the "phantom commit" symptom.
+When `<upstream>` is wrong &mdash; pointing to a commit that's not actually in the branch's ancestry, or pointing too far back &mdash; Git falls back to `merge-base` heuristics. Sometimes it guesses right. Sometimes it includes commits from a sibling rebase (same original commit, different base), producing the "phantom commit" symptom.
 
 In our case, the corrupted `BaseTip` was a _sibling_ SHA: a different rebase of the same original commit onto a different base. SHAs `d93407b` and `7954b4c` are both "branchA rebased onto main" &mdash; just onto different versions of main. Neither is an ancestor of the other. Using the wrong one as `<upstream>` breaks the boundary.
 
 
-## The bug: two SHAs walk into a bar
+## The bug: one check, two SHAs
 
 SDF has a feature where `sdf sync` (without the `--full` flag) intentionally skips rebasing when `main` advances from unrelated work. The idea is: if someone merged a totally unrelated PR into `main`, you don't want to rebase your entire stack just because the base moved. You want to keep working and only rebase when you choose to (via `sdf sync --full`).
 
@@ -84,7 +84,7 @@ if compareTip != node.BaseTip {
 
 Spot it? The `IsAncestor` check uses `compareTip` (which might be `preFFBaseTip` &mdash; the _old_ base), but then stores `currentParentTip` (the _new_ base) as `BaseTip`.
 
-When those two values differ, the code is asking: "is the _old_ base an ancestor of this branch?" &mdash; and if yes, recording: "the branch is based on the _new_ base." But the new base might not be an ancestor at all. The branch was never rebased onto it.
+When those two values differ, the code is asking: "is the _old_ base an ancestor of this branch?" &mdash; but then records: "the branch is based on the _new_ base." But the new base might not be an ancestor at all. The branch was never rebased onto it.
 
 ## The corruption cascade
 
@@ -114,7 +114,7 @@ The `<corrupted-BaseTip>` doesn't properly identify the boundary between branchA
 
 ## The fix: ask the right question
 
-The fix is one-line-per-call-site simple:
+The fix is one line per call site:
 
 ```go
 // Before (buggy):
@@ -126,11 +126,11 @@ if gitpkg.IsAncestor(currentParentTip, node.Branch) {
 
 The `compareTip` variable should only control whether to _enter_ the check ("has anything changed?"). The ancestor verification must always use the _actual_ current parent tip &mdash; because that's the value we're about to store. If `currentParentTip` isn't an ancestor of the branch, the branch needs a real rebase, period.
 
-This change was needed in three places: the execution loop (`runSyncFrom`), the plan computation (`computeSyncPlan`), and the "has real work" pre-scan.
+This change was needed in three places: the execution loop (`runSyncFrom`), the plan computation (`computeSyncPlan`), and the `hasRealWork` pre-scan.
 
 ## Defense in depth: the `rebased` map
 
-While tracing through the code, we noticed another asymmetry. The plan computation (`computeSyncPlan`) maintains a `rebased` map &mdash; when a branch is rebased, its children are force-checked regardless of SHA comparison:
+While tracing through the code, I noticed another asymmetry. The plan computation (`computeSyncPlan`) maintains a `rebased` map &mdash; when a branch is rebased, its children are force-checked regardless of SHA comparison:
 
 ```go
 rebased := make(map[string]bool)
@@ -140,7 +140,7 @@ needsRebase := rebased[parent]  // force cascade if parent was rebased
 
 The execution loop (`runSyncFrom`) had no such map. It relied entirely on SHA comparison for cascade propagation: after rebasing branchA, branchA's tip changes, so branchB's `BaseTip` differs from `currentParentTip`, triggering branchB's rebase.
 
-This works in practice &mdash; a rebase always produces a new SHA. But it's fragile by design. The plan says one thing; the execution relies on a different mechanism. We added a matching `rebased` map to the execution loop:
+This works in practice &mdash; a rebase always produces a new SHA. But it's fragile by design. The plan says one thing; the execution relies on a different mechanism. I added a matching `rebased` map to the execution loop:
 
 ```go
 forceCascade := rebased[parent]
@@ -160,9 +160,9 @@ return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus,
     map[string]bool{progress.PausedAt: true})
 ```
 
-## What we tested
+## What I tested
 
-The existing test suite only covered `computeSyncPlan` (the dry-run planner). The execution path (`runSyncFrom`) had zero test coverage. We added six tests:
+The existing test suite only covered `computeSyncPlan` (the dry-run planner). The execution path (`runSyncFrom`) had zero test coverage. I added six tests:
 
 | Test | What it proves |
 |------|---------------|
@@ -195,7 +195,7 @@ The reason the rewritten tests passed is subtle: the test repo setups happened t
 
 ## Self-reflection: agentic loops and code review
 
-PR #189 was written in an agentic coding loop. An AI agent wrote the implementation, rewrote the failing tests, and produced a coherent PR with well-commented code and plausible test assertions. I reviewed it and merged it.
+PR #189 was written in an agentic coding loop. An AI agent wrote the implementation and rewrote the failing tests. The PR had well-commented code and plausible test assertions. I reviewed it and merged it.
 
 I didn't ask why five cascade tests all flipped from "rebase expected" to "no rebase expected." The explanations in the rewritten test comments sounded reasonable. The test suite was green. The optimization was doing what I'd asked for &mdash; skipping unnecessary rebases. I moved on.
 
