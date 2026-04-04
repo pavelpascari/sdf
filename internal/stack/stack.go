@@ -14,7 +14,7 @@ import (
 type Node struct {
 	Branch  string `json:"branch"`
 	PR      int    `json:"pr,omitempty"`
-	Status  string `json:"status"` // "open", "merged", "draft"
+	Status  string `json:"status"` // "open", "merged", "closed"
 	BaseTip string `json:"base_tip,omitempty"`
 	NavHash string `json:"nav_hash,omitempty"`
 }
@@ -285,9 +285,9 @@ func (s *Stack) ParentBranch(branch string) string {
 	if idx <= 0 {
 		return s.Base
 	}
-	// Skip over merged nodes — their changes are already in the base branch
+	// Skip over merged and closed nodes — they are no longer active in the chain
 	for j := idx - 1; j >= 0; j-- {
-		if s.Nodes[j].Status != "merged" {
+		if s.Nodes[j].Status != "merged" && s.Nodes[j].Status != "closed" {
 			return s.Nodes[j].Branch
 		}
 	}

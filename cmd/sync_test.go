@@ -597,6 +597,69 @@ func TestPrintSyncPlan_Output(t *testing.T) {
 	}
 }
 
+func TestPrintSyncPlan_ClosedOutput(t *testing.T) {
+	plan := []syncAction{
+		{kind: "skip-closed", branch: "feat/auth", pr: 10},
+		{kind: "rebase", branch: "feat/api", onto: "feat/base"},
+		{kind: "push", branch: "feat/api"},
+	}
+
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
+	output := stripANSI(buf.String())
+
+	if !strings.Contains(output, "PR #10 (feat/auth) closed") {
+		t.Errorf("expected closed PR output, got:\n%s", output)
+	}
+}
+
+func TestPrintSyncPlan_ClosedConflictWarning(t *testing.T) {
+	plan := []syncAction{
+		{kind: "skip-closed", branch: "feat/validation", pr: 5},
+		{kind: "rebase", branch: "feat/api", onto: "feat/auth"},
+		{kind: "push", branch: "feat/api"},
+	}
+
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
+	output := stripANSI(buf.String())
+
+	if !strings.Contains(output, "feat/api will rebase onto feat/auth") {
+		t.Errorf("expected conflict warning for feat/api, got:\n%s", output)
+	}
+	if !strings.Contains(output, "skipping closed feat/validation") {
+		t.Errorf("expected skipped branch name in warning, got:\n%s", output)
+	}
+}
+
+func TestPrintSyncPlan_ClosedTailNoWarning(t *testing.T) {
+	plan := []syncAction{
+		{kind: "rebase", branch: "feat/auth", onto: "main"},
+		{kind: "push", branch: "feat/auth"},
+		{kind: "skip-closed", branch: "feat/dead", pr: 99},
+	}
+
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+
+	printSyncPlan(plan, bus)
+
+	_ = bus.Finish()
+	output := stripANSI(buf.String())
+
+	if strings.Contains(output, "will rebase") {
+		t.Errorf("should not warn when closed node is at tail, got:\n%s", output)
+	}
+}
+
 // --- computeSyncPlan with update options ---
 
 func TestComputeSyncPlan_WithContent(t *testing.T) {
@@ -659,6 +722,83 @@ func TestComputeSyncPlan_SkipsMergedForUpdates(t *testing.T) {
 	// Should have content updates for open PRs (branchB #11 and branchC #12)
 	if len(contentActions) != 2 {
 		t.Errorf("expected 2 update-content actions for open PRs, got %d", len(contentActions))
+	}
+}
+
+// --- computeSyncPlan closed-node tests ---
+
+func TestComputeSyncPlan_ClosedMiddle(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark branchB (middle) as closed → branchC rebases onto branchA
+	s.Nodes[1].Status = "closed"
+
+	plan := computeSyncPlan(s, nil)
+
+	skipsClosed := filterActions(plan, "skip-closed")
+	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
+
+	if len(skipsClosed) != 1 || skipsClosed[0].branch != "branchB" {
+		t.Errorf("expected 1 skip-closed for branchB, got %v", skipsClosed)
+	}
+
+	if len(rebases) != 0 {
+		t.Errorf("expected no rebases for closed middle, got %v", actionBranches(rebases))
+	}
+
+	if len(updateTips) != 1 || updateTips[0].branch != "branchC" {
+		t.Errorf("expected update-tip for branchC, got %v", actionBranches(updateTips))
+	}
+}
+
+func TestComputeSyncPlan_ClosedHead(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Nodes[0].Status = "closed"
+
+	plan := computeSyncPlan(s, nil)
+
+	skipsClosed := filterActions(plan, "skip-closed")
+	if len(skipsClosed) != 1 || skipsClosed[0].branch != "branchA" {
+		t.Errorf("expected skip-closed for branchA, got %v", skipsClosed)
+	}
+}
+
+func TestComputeSyncPlan_SkipsClosedForUpdates(t *testing.T) {
+	syncTestRepo(t)
+
+	s, err := stack.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Nodes[0].PR = 10
+	s.Nodes[1].PR = 20
+	s.Nodes[1].Status = "closed"
+	s.Nodes[2].PR = 30
+
+	opts := &syncOptions{withContent: true}
+	plan := computeSyncPlan(s, opts)
+
+	contentUpdates := filterActions(plan, "update-content")
+	if len(contentUpdates) != 2 {
+		t.Errorf("expected 2 content updates (branchA, branchC), got %d", len(contentUpdates))
+	}
+	for _, a := range contentUpdates {
+		if a.branch == "branchB" {
+			t.Error("closed branchB should not get content update")
+		}
 	}
 }
 
