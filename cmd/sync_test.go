@@ -1512,6 +1512,90 @@ func TestRunSyncFrom_WarnOnMergeBaseFallback(t *testing.T) {
 	}
 }
 
+// --- Issue #197: sync must push all rebased branches ---
+
+// TestRunSyncFrom_PushesBranchesAfterMergedPRs reproduces the scenario from
+// issue #197: merged PRs at the top of a stack cause downstream branches to be
+// re-parented to main. After sync, every rebased branch must be pushed to the
+// remote — not just have its BaseTip bookkeeping updated.
+//
+// The bug (fixed in #214) was that the update-tip fast path checked
+// IsAncestor(preFFBaseTip, branch) — which was true because the old main was
+// in the branch's ancestry — but then stored currentParentTip (new main) and
+// skipped the rebase+push entirely.
+func TestRunSyncFrom_PushesBranchesAfterMergedPRs(t *testing.T) {
+	dir := syncTestRepoWithRemote(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Capture the pre-FF base tip (old main, before the "merge" advances it).
+	preFFBaseTip := git("rev-parse", "main")
+
+	// Simulate: branchA's PR was squash-merged into main via GitHub UI.
+	// This advances main with a new commit (the squash merge result).
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "merged-a.txt"), []byte("squash merge of branchA\n"), 0644)
+	git("add", "merged-a.txt")
+	git("commit", "-m", "squash merge branchA into main")
+	git("checkout", "branchC")
+
+	// Mark branchA as merged in the stack (reconciliation would do this).
+	s.Nodes[0].Status = "merged"
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Push the updated main to the remote so the remote knows about the merge.
+	git("push", "origin", "main")
+
+	bus, _ := testBus(t)
+	defer bus.Finish()
+
+	// Run sync with fromHead=false (default mode, NOT --full).
+	// preFFBaseTip is the old main (before the squash merge).
+	// currentParentTip will be the new main (after the squash merge).
+	opts := syncOptions{
+		fromHead:     false,
+		preFFBaseTip: preFFBaseTip,
+	}
+
+	err = runSyncFrom(dir, s, 0, &opts, nil, bus)
+	if err != nil {
+		t.Fatalf("runSyncFrom failed: %v", err)
+	}
+
+	// The critical assertion from #197: after sync, every open branch's local
+	// tip must match its remote tip. If a branch is "ahead of origin", the
+	// push was silently skipped.
+	for _, node := range s.Nodes {
+		if node.Status == "merged" {
+			continue
+		}
+
+		localTip := git("rev-parse", node.Branch)
+		remoteTip := git("rev-parse", "origin/"+node.Branch)
+
+		if localTip != remoteTip {
+			t.Errorf("node %s: local tip %s != remote tip %s — branch was NOT pushed (issue #197)",
+				node.Branch, localTip[:8], remoteTip[:8])
+		}
+	}
+}
+
 func TestStripConventionalPrefix(t *testing.T) {
 	got := stripConventionalPrefix("feat(auth): add login endpoint")
 	if got != "add login endpoint" {
