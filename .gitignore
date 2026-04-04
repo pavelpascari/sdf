@@ -43,3 +43,6 @@ e2e/testdata/recordings/
 
 # Claude Code — commit settings so collaborators share permissions
 !.claude/settings.local.json
+
+.remember
+
