@@ -143,7 +143,11 @@ return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus,
 
 ## The git internals angle
 
-If you've ever wondered why `git rebase --onto` has three arguments instead of two, this bug is a good illustration. The three-argument form:
+If you've ever wondered why `git rebase --onto` has three arguments instead of two, this bug is a good illustration.
+
+<img src="/images/git-rebase-onto-dark.gif" alt="How git rebase --onto works: take commits after oldbase on branch, replay them onto newbase" />
+
+The three-argument form:
 
 ```bash
 git rebase --onto <newbase> <upstream> <branch>
