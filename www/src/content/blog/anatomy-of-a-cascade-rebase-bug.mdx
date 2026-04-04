@@ -9,6 +9,8 @@ published: true
 
 There's a class of bug that only appears when you squint at commit graphs long enough. The tool runs, prints green checkmarks, pushes branches &mdash; and three syncs later you'd notice that `git log main..your-branch` shows five commits where there should be four. One of them is a ghost: a commit from a parent branch that has no business being there.
 
+For weeks, nothing seemed wrong. The tests passed. The optimization was doing what I'd asked for. Then one day I was reviewing a PR diff and saw a commit I'd never written sitting in a branch where it didn't belong. Then I checked another branch. Same thing. The bug hadn't spread through the code &mdash; it had spread through _history_.
+
 This post is about finding and fixing that exact bug in SDF's `sdf sync` cascade rebase. It's a story about `git rebase --onto`, the difference between two SHAs that _look_ like they should be the same, and why a fast-path optimization needs to be very careful about which question it asks.
 
 The bug was introduced in PR #189 as part of an “update-tip” optimization, remained for one release, and was fixed in PR #214 &mdash; 25 days in the wild. It emerged during an agentic coding loop, made it through review, and was ultimately caught once the symptoms became too visible to overlook.
@@ -112,6 +114,8 @@ git rebase --onto branchA <corrupted-BaseTip> branchB
 
 The `<corrupted-BaseTip>` doesn't properly identify the boundary between branchA's commits and branchB's commits. The result: commits from branchA's old rebase get included in branchB's history. Ghost commits.
 
+This is the mechanism that makes cascade rebase bugs systemic. The corruption doesn't stay local &mdash; it encodes itself into the metadata that drives the _next_ rebase. Each sync propagates the lie one branch further down the stack. The invariant that was broken: **`BaseTip` must always be an ancestor of the branch it describes.** Once that invariant fails, every downstream rebase computes the wrong commit boundary.
+
 ## The fix: ask the right question
 
 The fix is one line per call site:
@@ -201,9 +205,11 @@ I didn't ask why five cascade tests all flipped from "rebase expected" to "no re
 
 This is the same failure mode that happens on any team. When a colleague sends a PR that changes tests alongside implementation, the reviewer needs to ask: _"are these test changes correct, or are they papering over a problem?"_ When five tests all weaken their assertions in the same direction, that's a signal worth pausing on.
 
-The agentic loop makes this failure mode _more_ likely, not less. The agent produces coherent, well-commented code. It rewrites tests with explanations that sound like the right reasoning. The volume of changes is high, and the reviewer's trust calibration drifts. The agent won't push back. It won't say "I'm not sure about this" or "these test changes seem suspicious." It will confidently rewrite the assertions with a comment explaining why the new behavior is correct.
+But the system made it hard to catch. The agentic loop produces coherent, well-commented code. It rewrites tests with explanations that sound like the right reasoning. The volume of changes is high, and the reviewer's trust calibration drifts. The agent won't push back. It won't say "I'm not sure about this" or "these test changes seem suspicious." It will confidently rewrite the assertions with a comment explaining why the new behavior is correct. There's no friction, no hesitation &mdash; and those are exactly the signals a reviewer unconsciously relies on.
 
 The human is the last line of defense. And in this case, I didn't hold it.
+
+The contributing factors weren't any single decision &mdash; they were the combination: a fast-path optimization that split a check from its store, an agent that rewrote tests to match, test setups that happened to hide the divergence, and a reviewer who trusted the green signal. No single factor would have been enough. Together, they created a 25-day window.
 
 The practices that catch bugs in team settings &mdash; skeptical PR review, questioning test changes that weaken assertions, requiring a second opinion on subtle invariants &mdash; are exactly the practices that catch bugs in agentic settings. There's nothing new here. The tools changed, but the discipline didn't.
 
@@ -218,5 +224,7 @@ The practices that catch bugs in team settings &mdash; skeptical PR review, ques
 **When tests fail against new code, interrogate the code first.** Five tests going from "expect rebase" to "expect no rebase" after adding an optimization is a signal. Those tests were written when the behavior was correct. Changing them should require the same burden of proof as changing the implementation.
 
 **Agentic workflows need the same review rigor as team workflows.** An AI agent writing code is a colleague who never pushes back, never says "I'm not sure about this," and always produces plausible explanations. The practices that catch bugs in team settings &mdash; skeptical PR review, questioning test changes, requiring a second pair of eyes &mdash; are exactly the practices that catch bugs in agentic settings. The tools changed. The discipline didn't.
+
+**Any system that rewrites history and generates code needs stronger invariants than human review alone.** This is the deeper lesson. The bug wasn't exotic &mdash; it was a mismatch between two variables in a conditional. What made it dangerous was the context: history-rewriting operations where correctness is invisible, combined with a workflow that produces confident explanations for incorrect behavior. When your system rewrites commit graphs, "the tests pass" isn't enough. You need invariants that can't be rewritten along with the tests.
 
 The fix is in [PR #214](https://github.com/pavelpascari/sdf/pull/214). Two files changed, three call sites fixed, one map added. The kind of bug that takes longer to understand than to fix.
