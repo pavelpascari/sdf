@@ -11,6 +11,8 @@ There's a class of bug that only appears when you squint at commit graphs long e
 
 This post is about finding and fixing that exact bug in SDF's `sdf sync` cascade rebase. It's a story about `git rebase --onto`, the difference between two SHAs that _look_ like they should be the same, and why a fast-path optimization needs to be very careful about which question it asks.
 
+The bug was introduced in [PR #189](https://github.com/pavelpascari/sdf/pull/189) (v0.3.7, March 10) as part of an "update-tip" optimization, lived through v0.3.8, and was fixed in [PR #214](https://github.com/pavelpascari/sdf/pull/214) (v0.3.9, April 4) &mdash; 25 days in the wild. It was written in an agentic coding loop, reviewed by a human who didn't question the test changes closely enough, and caught only after the symptoms became impossible to ignore.
+
 ## The setup: how cascade rebase works
 
 SDF manages stacked PRs &mdash; chains of dependent branches where each one builds on the previous. A three-branch stack looks like this:
@@ -147,7 +149,7 @@ If you've ever wondered why `git rebase --onto` has three arguments instead of t
 
 <img src="/images/git-rebase-onto-dark.gif" alt="How git rebase --onto works: take commits after oldbase on branch, replay them onto newbase" />
 
-The three-argument form:
+The animated diagram above shows the three roles in a `git rebase --onto` call. The three-argument form:
 
 ```bash
 git rebase --onto <newbase> <upstream> <branch>
@@ -174,6 +176,38 @@ The existing test suite only covered `computeSyncPlan` (the dry-run planner). Th
 
 The first two are the ones that caught the bug &mdash; they failed before the fix and passed after. The rest are characterization tests that document the correct cascade behavior.
 
+## How the tests looked the other way
+
+Here's the part that stings. The bug in PR #189 didn't sneak past the test suite &mdash; the test suite _caught_ it. Five existing tests failed against the new "update-tip" optimization. Every one of them was asserting that downstream branches should be rebased after a merge. Every one of them was correct.
+
+Instead of questioning the implementation, the tests were rewritten to agree with it. The pattern was the same in each:
+
+| Test | Before (correct) | After (rewritten) |
+|------|-----------------|-------------------|
+| `MergedHead` | expect rebase branchB onto main + push | expect no rebases, no pushes, just update-tip |
+| `CascadeFromMerge` | expect 2 rebases (branchB + branchC) + 2 pushes | expect no rebases, no pushes, 1 update-tip |
+| `MultipleMerged` | expect rebase branchC onto main + push | expect no rebases, no pushes, just update-tip |
+| `MergedMiddle` | expect rebase branchC onto branchA | expect no rebases, just update-tip |
+| `StackScopedWithMerge` | expect rebase branchB onto main | expect no rebases, just update-tip |
+
+The comments were rewritten too. `CascadeFromMerge` went from _"Both branchB and branchC should be rebased"_ to _"branchB can be handled by tip refresh; branchC stays unchanged."_ The new assertions came with plausible explanations.
+
+The reason the rewritten tests passed is subtle: the test repo setups happened to create scenarios where `compareTip` and `currentParentTip` were the same value. The `IsAncestor` check used the wrong variable but got the right answer. The tests passed for the wrong reason, and the bug hid behind them for 25 days.
+
+## Self-reflection: agentic loops and code review
+
+PR #189 was written in an agentic coding loop. An AI agent wrote the implementation, rewrote the failing tests, and produced a coherent PR with well-commented code and plausible test assertions. I reviewed it and merged it.
+
+I didn't ask why five cascade tests all flipped from "rebase expected" to "no rebase expected." The explanations in the rewritten test comments sounded reasonable. The test suite was green. The optimization was doing what I'd asked for &mdash; skipping unnecessary rebases. I moved on.
+
+This is the same failure mode that happens on any team. When a colleague sends a PR that changes tests alongside implementation, the reviewer needs to ask: _"are these test changes correct, or are they papering over a problem?"_ When five tests all weaken their assertions in the same direction, that's a signal worth pausing on.
+
+The agentic loop makes this failure mode _more_ likely, not less. The agent produces coherent, well-commented code. It rewrites tests with explanations that sound like the right reasoning. The volume of changes is high, and the reviewer's trust calibration drifts. The agent won't push back. It won't say "I'm not sure about this" or "these test changes seem suspicious." It will confidently rewrite the assertions with a comment explaining why the new behavior is correct.
+
+The human is the last line of defense. And in this case, I didn't hold it.
+
+The practices that catch bugs in team settings &mdash; skeptical PR review, questioning test changes that weaken assertions, requiring a second opinion on subtle invariants &mdash; are exactly the practices that catch bugs in agentic settings. There's nothing new here. The tools changed, but the discipline didn't.
+
 ## Takeaways
 
 **Fast paths need to validate what they store, not just what they check.** The bug was a mismatch between the condition variable (`compareTip`) and the stored value (`currentParentTip`). The fast path asked "is X an ancestor?" but recorded "Y is the base." When X ≠ Y, corruption follows.
@@ -181,5 +215,9 @@ The first two are the ones that caught the bug &mdash; they failed before the fi
 **Plan and execution should use the same cascade mechanism.** Having `computeSyncPlan` use a `rebased` map while `runSyncFrom` relied on SHA comparison meant the plan could say "rebase needed" while execution might disagree. They should converge.
 
 **Test the execution path, not just the planner.** It's tempting to only test the function that computes the plan &mdash; it's pure, deterministic, easy to assert on. But the bugs live in the loop that actually calls `git rebase --onto`, handles conflicts, updates state, and pushes. That's where the SHAs interact with real Git.
+
+**When tests fail against new code, interrogate the code first.** Five tests going from "expect rebase" to "expect no rebase" after adding an optimization is a signal. Those tests were written when the behavior was correct. Changing them should require the same burden of proof as changing the implementation.
+
+**Agentic workflows need the same review rigor as team workflows.** An AI agent writing code is a colleague who never pushes back, never says "I'm not sure about this," and always produces plausible explanations. The practices that catch bugs in team settings &mdash; skeptical PR review, questioning test changes, requiring a second pair of eyes &mdash; are exactly the practices that catch bugs in agentic settings. The tools changed. The discipline didn't.
 
 The fix is in [PR #214](https://github.com/pavelpascari/sdf/pull/214). Two files changed, three call sites fixed, one map added. The kind of bug that takes longer to understand than to fix.
