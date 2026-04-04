@@ -112,6 +112,106 @@ func syncTestRepo(t *testing.T) (repoDir string) {
 	return dir
 }
 
+// syncTestRepoWithRemote creates a test repo for execution-path tests.
+// Like syncTestRepo but: (1) .sdf is gitignored (matching real usage) so
+// rebases don't conflict with on-disk stack files, and (2) a bare remote
+// is added so git push works.
+// Returns the repo dir (cwd is already set to it).
+func syncTestRepoWithRemote(t *testing.T) string {
+	t.Helper()
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) })
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	writeFile := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Initialize repo with .sdf gitignored (matching real usage).
+	git("init", "-b", "main")
+	git("config", "user.email", "test@test.com")
+	git("config", "user.name", "Test")
+	git("config", "commit.gpgsign", "false")
+
+	writeFile(".gitignore", ".sdf/\n")
+	writeFile("README.md", "# test\n")
+	git("add", ".")
+	git("commit", "-m", "initial")
+	mainTip := git("rev-parse", "HEAD")
+
+	// branchA
+	git("checkout", "-b", "branchA")
+	writeFile("a1.txt", "a1\n")
+	git("add", "a1.txt")
+	git("commit", "-m", "a1")
+	branchATip := git("rev-parse", "HEAD")
+
+	// branchB
+	git("checkout", "-b", "branchB")
+	writeFile("b1.txt", "b1\n")
+	git("add", "b1.txt")
+	git("commit", "-m", "b1")
+	branchBTip := git("rev-parse", "HEAD")
+
+	// branchC
+	git("checkout", "-b", "branchC")
+	writeFile("c1.txt", "c1\n")
+	git("add", "c1.txt")
+	git("commit", "-m", "c1")
+
+	// Write SDF stack (untracked, gitignored)
+	s := &stack.Stack{
+		StackID: "test-stack",
+		Base:    "main",
+		Nodes: []stack.Node{
+			{Branch: "branchA", Status: "open", BaseTip: mainTip},
+			{Branch: "branchB", Status: "open", BaseTip: branchATip},
+			{Branch: "branchC", Status: "open", BaseTip: branchBTip},
+		},
+	}
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create bare remote and push all branches
+	remoteDir := filepath.Join(t.TempDir(), "remote.git")
+	git("clone", "--bare", dir, remoteDir)
+	git("remote", "add", "origin", remoteDir)
+	git("push", "origin", "--all")
+
+	return dir
+}
+
+// testBus creates a Bus that writes to a buffer for test output capture.
+func testBus(t *testing.T) (*render.Bus, *bytes.Buffer) {
+	t.Helper()
+	var buf bytes.Buffer
+	bus := render.NewBus(&buf, io.Discard, render.Options{})
+	return bus, &buf
+}
+
 // filterActions returns only actions of the given kind from the plan.
 func filterActions(plan []syncAction, kind string) []syncAction {
 	var result []syncAction
@@ -706,13 +806,23 @@ func TestComputeSyncPlan_StackScopedWithMerge(t *testing.T) {
 		t.Errorf("expected 1 skip-merged for branchA, got %v", skips)
 	}
 
-	// branchB's parent changed to main, but ancestry is already valid, so
-	// sync should refresh BaseTip instead of rewriting history.
-	if len(rebases) != 0 {
-		t.Fatalf("expected no rebase for ancestry-correct branchB, got %d", len(rebases))
+	// branchB's parent changed from branchA to main (merged node skipped).
+	// The current main tip (M2, with merged.txt) is NOT an ancestor of branchB,
+	// so branchB must be rebased, not just update-tip.
+	if len(rebases) < 1 || rebases[0].branch != "branchB" {
+		t.Fatalf("expected rebase for branchB (new main tip not ancestor), got rebases=%v updateTips=%v",
+			actionBranches(rebases), actionBranches(updateTips))
 	}
-	if len(updateTips) != 1 || updateTips[0].branch != "branchB" || updateTips[0].onto != "main" {
-		t.Errorf("expected update-tip branchB onto main, got %+v", updateTips)
+
+	// branchC should cascade from branchB's rebase.
+	if len(rebases) < 2 || rebases[1].branch != "branchC" {
+		t.Fatalf("expected cascade rebase for branchC, got rebases=%v",
+			actionBranches(rebases))
+	}
+
+	// No update-tip actions — both branches need real rebases.
+	if len(updateTips) != 0 {
+		t.Errorf("expected no update-tip actions, got %v", actionBranches(updateTips))
 	}
 }
 
@@ -958,6 +1068,447 @@ func TestDetectBaseDrift(t *testing.T) {
 	noHint := detectBaseDrift(s, preFFBaseTip, preFFBaseTip)
 	if noHint != "" {
 		t.Errorf("expected no hint when tips match, got %q", noHint)
+	}
+}
+
+// --- Fix 1: update-tip ancestor check uses wrong SHA ---
+
+// TestComputeSyncPlan_UpdateTipAncestorCheck verifies that computeSyncPlan
+// correctly produces a "rebase" action (not "update-tip") when preFFBaseTip is
+// an ancestor of the branch but currentParentTip (after fast-forward) is NOT.
+//
+// Scenario:
+//  1. main@M1 → branchA[a1]. BaseTip = M1.
+//  2. main advances to M2. branchA is manually rebased onto M2 (outside sdf).
+//  3. main advances further to M3.
+//  4. sdf sync with preFFBaseTip=M2, currentParentTip=M3.
+//     - compareTip = M2 ≠ M1 (BaseTip) → enters check
+//     - M2 IS ancestor of branchA (rebased onto it in step 2)
+//     - M3 is NOT ancestor of branchA
+//     - Bug: old code checks IsAncestor(M2, A) → true → update-tip → stores M3
+//     - Fix: check IsAncestor(M3, A) → false → rebase
+func TestComputeSyncPlan_UpdateTipAncestorCheck(t *testing.T) {
+	dir := syncTestRepo(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 2: advance main to M2 and rebase branchA onto it
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "m2.txt"), []byte("m2\n"), 0644)
+	git("add", "m2.txt")
+	git("commit", "-m", "advance main to M2")
+	m2 := git("rev-parse", "HEAD")
+
+	git("checkout", "branchA")
+	git("rebase", "main")
+
+	// Step 3: advance main further to M3
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "m3.txt"), []byte("m3\n"), 0644)
+	git("add", "m3.txt")
+	git("commit", "-m", "advance main to M3")
+	git("checkout", "branchC")
+
+	// branchA.BaseTip is still M1 (from syncTestRepo), not updated after manual rebase.
+	// preFFBaseTip = M2 (local main before ff to M3).
+	opts := &syncOptions{
+		fromHead:     false,
+		preFFBaseTip: m2,
+	}
+
+	plan := computeSyncPlan(s, opts)
+
+	rebases := filterActions(plan, "rebase")
+	updateTips := filterActions(plan, "update-tip")
+
+	// branchA should NOT get update-tip — the current main (M3) is not its ancestor.
+	for _, a := range updateTips {
+		if a.branch == "branchA" {
+			t.Errorf("branchA should NOT get update-tip when currentParentTip (M3) is not its ancestor")
+		}
+	}
+
+	// branchA needs a real rebase onto the current main (M3).
+	if len(rebases) < 1 || rebases[0].branch != "branchA" {
+		t.Errorf("expected rebase for branchA (M3 not ancestor), got rebases=%v updateTips=%v",
+			actionBranches(rebases), actionBranches(updateTips))
+	}
+}
+
+// TestRunSyncFrom_UpdateTipNoFalseCorruption verifies that runSyncFrom does
+// not corrupt BaseTip by storing a SHA that is not an ancestor of the branch.
+// Same scenario as TestComputeSyncPlan_UpdateTipAncestorCheck but exercises
+// the execution path.
+func TestRunSyncFrom_UpdateTipNoFalseCorruption(t *testing.T) {
+	dir := syncTestRepoWithRemote(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Advance main to M2 and rebase branchA onto it (outside sdf).
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "m2.txt"), []byte("m2\n"), 0644)
+	git("add", "m2.txt")
+	git("commit", "-m", "advance main to M2")
+	m2 := git("rev-parse", "HEAD")
+
+	git("checkout", "branchA")
+	git("rebase", "main")
+
+	// Advance main further to M3.
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "m3.txt"), []byte("m3\n"), 0644)
+	git("add", "m3.txt")
+	git("commit", "-m", "advance main to M3")
+	git("checkout", "branchC")
+
+	bus, _ := testBus(t)
+	defer bus.Finish()
+
+	opts := syncOptions{
+		fromHead:     false,
+		preFFBaseTip: m2,
+	}
+
+	err = runSyncFrom(dir, s, 0, &opts, nil, bus)
+	if err != nil {
+		t.Fatalf("runSyncFrom failed: %v", err)
+	}
+
+	// After sync, every node's BaseTip must be an ancestor of its branch.
+	// The bug: update-tip stored M3 (currentParentTip) which is NOT an ancestor.
+	for _, node := range s.Nodes {
+		if node.Status == "merged" {
+			continue
+		}
+		if node.BaseTip == "" {
+			continue
+		}
+		cmd := exec.Command("git", "merge-base", "--is-ancestor", node.BaseTip, node.Branch)
+		cmd.Dir = dir
+		if err := cmd.Run(); err != nil {
+			t.Errorf("node %s: BaseTip %s is NOT an ancestor of branch — corrupted",
+				node.Branch, node.BaseTip[:8])
+		}
+	}
+}
+
+// --- Fix 2: rebased map cascade tracking in runSyncFrom ---
+
+// TestRunSyncFrom_CascadePropagation verifies that when the base branch
+// advances, ALL downstream branches are rebased (not just the first).
+// After sync, each node's BaseTip must be an ancestor of its branch,
+// and commit counts must be correct.
+func TestRunSyncFrom_CascadePropagation(t *testing.T) {
+	dir := syncTestRepoWithRemote(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// Advance main so all branches need rebasing.
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new\n"), 0644)
+	git("add", "new.txt")
+	git("commit", "-m", "advance main")
+	git("checkout", "branchC")
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bus, _ := testBus(t)
+	defer bus.Finish()
+
+	opts := syncOptions{fromHead: true}
+	err = runSyncFrom(dir, s, 0, &opts, nil, bus)
+	if err != nil {
+		t.Fatalf("runSyncFrom failed: %v", err)
+	}
+
+	// Verify all three branches were rebased: BaseTip is ancestor of branch.
+	for _, node := range s.Nodes {
+		cmd := exec.Command("git", "merge-base", "--is-ancestor", node.BaseTip, node.Branch)
+		cmd.Dir = dir
+		if err := cmd.Run(); err != nil {
+			t.Errorf("node %s: BaseTip %s is not ancestor of branch after sync",
+				node.Branch, node.BaseTip[:8])
+		}
+	}
+
+	// Verify no stale commits leaked: the total commit count from main to
+	// the last branch should not increase after sync. Each branch adds 1 commit
+	// (a1, b1, c1) = 3 commits in main..branchC.
+	totalCount := git("rev-list", "--count", "main..branchC")
+	if totalCount != "3" {
+		t.Errorf("expected 3 commits in main..branchC after sync (a1+b1+c1), got %s", totalCount)
+	}
+}
+
+// TestRunSyncFrom_ForceCascadeFromRebasedParent verifies that the rebased map
+// forces cascade even when SHA comparison alone might not detect the need.
+// Scenario: branchA is rebased by runSyncFrom. branchB's BaseTip already
+// matches the OLD branchA tip (before rebase). Without the rebased map,
+// the comparison `currentParentTip != BaseTip` catches it. But this test
+// validates the cascade occurs and results are correct.
+func TestRunSyncFrom_ForceCascadeFromRebasedParent(t *testing.T) {
+	dir := syncTestRepoWithRemote(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// Advance main to trigger cascade.
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "trigger.txt"), []byte("trigger\n"), 0644)
+	git("add", "trigger.txt")
+	git("commit", "-m", "trigger cascade")
+	git("checkout", "branchC")
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record pre-sync branch tips to verify they actually changed.
+	preTips := make(map[string]string)
+	for _, node := range s.Nodes {
+		preTips[node.Branch] = git("rev-parse", node.Branch)
+	}
+
+	bus, _ := testBus(t)
+	defer bus.Finish()
+
+	opts := syncOptions{fromHead: true}
+	result := &SyncResult{}
+	err = runSyncFrom(dir, s, 0, &opts, result, bus)
+	if err != nil {
+		t.Fatalf("runSyncFrom failed: %v", err)
+	}
+
+	// ALL three branches should have been rebased (tips changed).
+	for _, node := range s.Nodes {
+		postTip := git("rev-parse", node.Branch)
+		if postTip == preTips[node.Branch] {
+			t.Errorf("node %s: tip did not change — branch was NOT rebased", node.Branch)
+		}
+	}
+
+	// Verify via SyncResult that all branches show "rebased" action.
+	rebasedCount := 0
+	for _, br := range result.Branches {
+		if br.Action == "rebased" {
+			rebasedCount++
+		}
+	}
+	if rebasedCount != 3 {
+		t.Errorf("expected 3 rebased branches in result, got %d", rebasedCount)
+		for _, br := range result.Branches {
+			t.Logf("  %s: %s", br.Branch, br.Action)
+		}
+	}
+}
+
+// --- Fix 3: --continue passes cascade info ---
+
+// TestRunSyncContinue_CascadesDownstream verifies that after manual conflict
+// resolution, sdf sync --continue correctly cascades rebases to downstream
+// branches. Simulates: sync paused on branchB after branchA was rebased, user
+// resolves branchB manually, then --continue cascades to branchC.
+func TestRunSyncContinue_CascadesDownstream(t *testing.T) {
+	dir := syncTestRepoWithRemote(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// Load the stack while still on branchC (where .sdf/ was committed).
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 1: advance main so the stack needs rebasing.
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "advance.txt"), []byte("advance\n"), 0644)
+	git("add", "advance.txt")
+	git("commit", "-m", "advance main")
+
+	// Step 2: manually rebase branchA onto new main (simulating what sdf sync
+	// would have done before hitting a conflict on branchB).
+	git("checkout", "branchA")
+	git("rebase", "main")
+	newAParentTip := git("rev-parse", "main")
+
+	// Step 3: manually rebase branchB onto branchA (simulating user resolving
+	// the conflict that caused the pause).
+	git("checkout", "branchB")
+	git("rebase", "branchA")
+	newBParentTip := git("rev-parse", "branchA")
+
+	// Step 4: set up stack state as it would be after sync paused on branchB.
+	// branchA's BaseTip was updated during sync (before branchB paused).
+	s.Nodes[0].BaseTip = newAParentTip
+	// branchB's BaseTip is NOT yet updated (sync paused before updating it).
+	// branchC's BaseTip is still the old branchB tip.
+	if err := stack.Save(dir, s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Record branchC's pre-continue tip to verify it changes.
+	preCTip := git("rev-parse", "branchC")
+
+	// Step 5: set up SyncProgress as if sync paused on branchB.
+	local := &stack.LocalState{
+		SyncProgress: &stack.SyncProgress{
+			PausedAt:       "branchB",
+			ResumeIndex:    1, // branchB's index
+			OriginalBranch: "branchC",
+			ParentTip:      newBParentTip,
+		},
+	}
+	if err := stack.SaveLocal(dir, local); err != nil {
+		t.Fatal(err)
+	}
+
+	git("checkout", "branchB") // runSyncContinue expects we're on the paused branch
+
+	bus, buf := testBus(t)
+
+	result := &SyncResult{}
+	err = runSyncContinue(dir, result, bus)
+	_ = bus.Finish()
+	if err != nil {
+		t.Fatalf("runSyncContinue failed: %v\noutput:\n%s", err, buf.String())
+	}
+
+	// branchC must have been cascade-rebased (tip changed).
+	postCTip := git("rev-parse", "branchC")
+	if postCTip == preCTip {
+		t.Error("branchC was NOT cascade-rebased after --continue — tip unchanged")
+	}
+
+	// Reload stack and verify branchC's BaseTip is an ancestor.
+	s, err = stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range s.Nodes {
+		if node.Status == "merged" || node.BaseTip == "" {
+			continue
+		}
+		cmd := exec.Command("git", "merge-base", "--is-ancestor", node.BaseTip, node.Branch)
+		cmd.Dir = dir
+		if err := cmd.Run(); err != nil {
+			t.Errorf("after --continue: node %s BaseTip %s not ancestor of branch",
+				node.Branch, node.BaseTip[:8])
+		}
+	}
+}
+
+// --- Fix 4: warn on merge-base fallback ---
+
+// TestRunSyncFrom_WarnOnMergeBaseFallback verifies that when a node's BaseTip
+// is not an ancestor of its branch (corrupted state), sync emits a warning
+// about using the merge-base fallback.
+func TestRunSyncFrom_WarnOnMergeBaseFallback(t *testing.T) {
+	dir := syncTestRepoWithRemote(t)
+
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %s", strings.Join(args, " "), string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	s, err := stack.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Advance main twice so we can corrupt BaseTip with a non-ancestor SHA
+	// that differs from the current parent tip.
+	git("checkout", "main")
+	os.WriteFile(filepath.Join(dir, "m2.txt"), []byte("m2\n"), 0644)
+	git("add", "m2.txt")
+	git("commit", "-m", "advance main to M2")
+	m2 := git("rev-parse", "HEAD")
+
+	os.WriteFile(filepath.Join(dir, "m3.txt"), []byte("m3\n"), 0644)
+	git("add", "m3.txt")
+	git("commit", "-m", "advance main to M3")
+	git("checkout", "branchC")
+
+	// Corrupt branchA's BaseTip to M2, which is NOT an ancestor of branchA
+	// but differs from currentParentTip (M3). This forces the rebase path
+	// and triggers the merge-base fallback.
+	s.Nodes[0].BaseTip = m2
+
+	var outBuf, errBuf bytes.Buffer
+	bus := render.NewBus(&outBuf, &errBuf, render.Options{})
+
+	opts := syncOptions{fromHead: true}
+	_ = runSyncFrom(dir, s, 0, &opts, nil, bus)
+	_ = bus.Finish()
+
+	// Warnings go to errw in the TTY renderer.
+	allOutput := stripANSI(outBuf.String()) + stripANSI(errBuf.String())
+	if !strings.Contains(allOutput, "not in its ancestry") {
+		t.Errorf("expected warning about stale base tip fallback, got:\nstdout:\n%s\nstderr:\n%s",
+			outBuf.String(), errBuf.String())
 	}
 }
 

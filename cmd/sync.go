@@ -251,7 +251,7 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	gitpkg.Checkout(progress.OriginalBranch)
 
 	bus.Print("\nResuming sync for remaining branches...")
-	return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus)
+	return runSyncFrom(root, s, progress.ResumeIndex+1, nil, result, bus, map[string]bool{progress.PausedAt: true})
 }
 
 // runSyncFull runs a complete sync from scratch.
@@ -378,7 +378,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 
 // runSyncFrom runs sync starting at a given node index. Index 0 means full sync.
 // opts controls PR content updates (titles/descriptions); nil disables updates.
-func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions, result *SyncResult, bus *render.Bus) error {
+func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions, result *SyncResult, bus *render.Bus, initialRebased ...map[string]bool) error {
 	originalBranch, err := gitpkg.CurrentBranch()
 	if err != nil {
 		return fmt.Errorf("cannot determine current branch: %w", err)
@@ -386,6 +386,12 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 
 	modified := false
 	failed := make(map[string]error)
+	rebased := make(map[string]bool)
+	if len(initialRebased) > 0 && initialRebased[0] != nil {
+		for k, v := range initialRebased[0] {
+			rebased[k] = v
+		}
+	}
 	var prBasesUpdated int
 
 	// Check if there's any real work (rebases) beyond merged PRs and
@@ -401,7 +407,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 					compareTip = opts.preFFBaseTip
 				}
 				if compareTip != s.Nodes[i].BaseTip {
-					if !gitpkg.IsAncestor(compareTip, s.Nodes[i].Branch) {
+					if !gitpkg.IsAncestor(tip, s.Nodes[i].Branch) {
 						hasRealWork = true
 						break
 					}
@@ -457,8 +463,9 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			compareTip = opts.preFFBaseTip
 		}
 
-		if node.BaseTip != "" && compareTip != node.BaseTip {
-			if gitpkg.IsAncestor(compareTip, node.Branch) {
+		forceCascade := rebased[parent]
+		if forceCascade || (node.BaseTip != "" && compareTip != node.BaseTip) {
+			if !forceCascade && gitpkg.IsAncestor(currentParentTip, node.Branch) {
 				node.BaseTip = currentParentTip
 				modified = true
 
@@ -491,6 +498,8 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 
 			rebaseOldBase := node.BaseTip
 			if !gitpkg.IsAncestor(rebaseOldBase, node.Branch) {
+				bus.Warnf("  %s stored base tip for %s is not in its ancestry; computing merge-base",
+					ui.SymWarn, ui.Branch(node.Branch))
 				if fallbackBase, err := gitpkg.MergeBase(parent, node.Branch); err == nil && fallbackBase != "" {
 					rebaseOldBase = fallbackBase
 				}
@@ -526,6 +535,7 @@ func runSyncFrom(root string, s *stack.Stack, startIndex int, opts *syncOptions,
 			}
 
 			node.BaseTip = currentParentTip
+			rebased[node.Branch] = true
 			modified = true
 
 			pushOK := true
@@ -1144,7 +1154,7 @@ func computeSyncPlan(s *stack.Stack, opts *syncOptions) []syncAction {
 					compareTip = opts.preFFBaseTip
 				}
 				if compareTip != node.BaseTip {
-					if gitpkg.IsAncestor(compareTip, node.Branch) {
+					if gitpkg.IsAncestor(currentParentTip, node.Branch) {
 						actions = append(actions, syncAction{kind: "update-tip", branch: node.Branch, onto: parent})
 
 						if node.PR > 0 && ghpkg.Available() {
