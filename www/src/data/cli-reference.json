@@ -298,8 +298,8 @@
       "category": "stack",
       "use": "restack [branch]",
       "short": "Move a branch to a new position in the stack",
-      "long": "Moves a branch to a new position (after the --after target), rebases all\naffected branches, pushes, and updates PR bases on GitHub.\n\nUse --continue to resume after resolving conflicts.\nUse --abort to restore all branches to their pre-restack state.",
-      "example": "  sdf restack feature/job --after feature/index\n  sdf restack feature/auth --after main\n  sdf restack --continue\n  sdf restack --abort",
+      "long": "Moves a branch to a new position (after the --after target), rebases all\naffected branches, pushes, and updates PR bases on GitHub.\n\nUse --continue to resume after resolving conflicts.\nUse --abort to restore all branches to their pre-restack state.\nUse --quit to drop restack state without restoring branches.",
+      "example": "  sdf restack feature/job --after feature/index\n  sdf restack feature/auth --after main\n  sdf restack --continue\n  sdf restack --abort\n  sdf restack --quit",
       "flags": [
         {
           "name": "abort",
@@ -318,6 +318,25 @@
           "type": "bool",
           "default": "false",
           "description": "resume after conflict resolution"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool",
+          "default": "false",
+          "description": "show plan without executing"
+        },
+        {
+          "name": "quit",
+          "type": "bool",
+          "default": "false",
+          "description": "drop restack state without restoring branches"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "description": "show exact git commands in plan"
         }
       ]
     },
@@ -511,5 +530,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "94db1a61b31c4d620c5ac383e6aa095fb045e0fde86eb3b945eacaf888c627c5"
+  "hash": "bdb0f838e02fcee8c2f73824dd6c495dc9979d17438a1c2ebed4e3a9fd927e67"
 }

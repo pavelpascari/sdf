@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/ops"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
@@ -330,7 +331,7 @@ func restackTestRepo(t *testing.T) string {
 func TestRunRestack_MoveCAfterA(t *testing.T) {
 	restackTestRepo(t)
 
-	err := runRestackLogic("branchC", "branchA")
+	err := runRestackLogic("branchC", "branchA", false, false)
 	if err != nil {
 		t.Fatalf("restack failed: %v", err)
 	}
@@ -396,28 +397,28 @@ func TestRunRestackContinue_NoRestackInProgress(t *testing.T) {
 func TestRunRestack_SnapshotSavedAndCleared(t *testing.T) {
 	dir := restackTestRepo(t)
 
-	// Before restack — no progress
-	ls, _ := stack.LoadLocal(dir)
-	if ls.RestackProgress != nil {
-		t.Fatal("expected no restack progress before restack")
+	// Before restack — no operation
+	op, _ := ops.Load(dir)
+	if op != nil {
+		t.Fatal("expected no operation before restack")
 	}
 
-	err := runRestackLogic("branchC", "branchA")
+	err := runRestackLogic("branchC", "branchA", false, false)
 	if err != nil {
 		t.Fatalf("restack failed: %v", err)
 	}
 
-	// After successful restack — progress should be cleared
-	ls, _ = stack.LoadLocal(dir)
-	if ls.RestackProgress != nil {
-		t.Error("expected restack progress to be cleared after success")
+	// After successful restack — operation should be cleared
+	op, _ = ops.Load(dir)
+	if op != nil {
+		t.Error("expected operation to be cleared after success")
 	}
 }
 
 func TestRunRestack_MoveToBase(t *testing.T) {
 	restackTestRepo(t)
 
-	err := runRestackLogic("branchC", "main")
+	err := runRestackLogic("branchC", "main", false, false)
 	if err != nil {
 		t.Fatalf("restack failed: %v", err)
 	}

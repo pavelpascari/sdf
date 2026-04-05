@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
+	"github.com/pavelpascari/sdf/internal/ops"
 	"github.com/pavelpascari/sdf/internal/render"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
@@ -20,11 +23,13 @@ var restackCmd = &cobra.Command{
 affected branches, pushes, and updates PR bases on GitHub.
 
 Use --continue to resume after resolving conflicts.
-Use --abort to restore all branches to their pre-restack state.`,
+Use --abort to restore all branches to their pre-restack state.
+Use --quit to drop restack state without restoring branches.`,
 	Example: `  sdf restack feature/job --after feature/index
   sdf restack feature/auth --after main
   sdf restack --continue
-  sdf restack --abort`,
+  sdf restack --abort
+  sdf restack --quit`,
 	Annotations: map[string]string{"category": "stack"},
 	Args:        cobra.MaximumNArgs(1),
 	RunE:        runRestackCmd,
@@ -35,14 +40,34 @@ func init() {
 	restackCmd.Flags().String("after", "", "branch to insert after")
 	restackCmd.Flags().Bool("continue", false, "resume after conflict resolution")
 	restackCmd.Flags().Bool("abort", false, "restore branches to pre-restack state")
+	restackCmd.Flags().Bool("quit", false, "drop restack state without restoring branches")
+	restackCmd.Flags().BoolP("verbose", "v", false, "show exact git commands in plan")
+	restackCmd.Flags().Bool("dry-run", false, "show plan without executing")
 }
 
 func runRestackCmd(cmd *cobra.Command, args []string) error {
 	contFlag, _ := cmd.Flags().GetBool("continue")
 	abortFlag, _ := cmd.Flags().GetBool("abort")
+	quitFlag, _ := cmd.Flags().GetBool("quit")
+	verboseFlag, _ := cmd.Flags().GetBool("verbose")
+	dryRunFlag, _ := cmd.Flags().GetBool("dry-run")
 
-	if contFlag && abortFlag {
-		return fmt.Errorf("cannot use --continue and --abort together")
+	exclusive := 0
+	if contFlag {
+		exclusive++
+	}
+	if abortFlag {
+		exclusive++
+	}
+	if quitFlag {
+		exclusive++
+	}
+	if exclusive > 1 {
+		return fmt.Errorf("cannot combine --continue, --abort, and --quit")
+	}
+
+	if quitFlag {
+		return runRestackQuit()
 	}
 	if contFlag {
 		return runRestackContinue()
@@ -58,7 +83,7 @@ func runRestackCmd(cmd *cobra.Command, args []string) error {
 	if after == "" {
 		return fmt.Errorf("--after flag is required")
 	}
-	return runRestackLogic(args[0], after)
+	return runRestackLogic(args[0], after, verboseFlag, dryRunFlag)
 }
 
 func validateRestack(s *stack.Stack, sourceBranch, afterBranch string) error {
@@ -94,7 +119,7 @@ func validateRestack(s *stack.Stack, sourceBranch, afterBranch string) error {
 	return nil
 }
 
-func runRestackLogic(sourceBranch, afterBranch string) error {
+func runRestackLogic(sourceBranch, afterBranch string, verbose, dryRun bool) error {
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
@@ -177,6 +202,73 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	bus.Printf("Restacking %s after %s in stack %s...",
 		ui.Branch(sourceBranch), ui.Branch(afterBranch), ui.Bold.Render(s.StackID))
 
+	// --- Build ops.Operation ---
+	operation := &Operation{
+		Command:        "restack",
+		StackID:        s.StackID,
+		StartedAt:      time.Now(),
+		OriginalBranch: originalBranch,
+		Snapshot:       make(map[string]string),
+		Steps:          make([]*ops.Step, 0),
+	}
+
+	// Snapshot: save current SHAs for all branches in the plan
+	for _, a := range plan {
+		sha, err := gitpkg.RevParse(a.Branch)
+		if err == nil {
+			operation.Snapshot[a.Branch] = sha
+		}
+	}
+
+	// Save original nodes as CommandData (for abort/quit restore)
+	originalNodes := make([]stack.Node, len(s.Nodes))
+	copy(originalNodes, s.Nodes)
+	origData, _ := json.Marshal(originalNodes)
+	operation.CommandData = origData
+
+	// Build a map: branch -> rebase step ID, for ref chaining
+	rebaseStepIDs := make(map[string]string)
+	for _, a := range plan {
+		rebaseStepIDs[a.Branch] = "rebase-" + a.Branch
+	}
+
+	// Mutation: rebase steps (pushes and PR updates are done post-executor
+	// because they are non-fatal — matching the original behavior where push
+	// failures are warnings, not errors)
+	for _, a := range plan {
+		node := s.FindNode(a.Branch)
+		oldBase := node.BaseTip
+		if oldBase == "" {
+			oldBase = a.OldParent
+		}
+
+		// Determine the "onto" input: if the new parent was rebased in an
+		// earlier step, use a Ref to its new_sha output. Otherwise, resolve
+		// the parent's current tip as a literal.
+		var ontoVal ops.Value
+		if parentStepID, ok := rebaseStepIDs[a.NewParent]; ok {
+			ontoVal = ops.Ref(parentStepID + ".new_sha")
+		} else {
+			parentTip, err := gitpkg.RevParse(a.NewParent)
+			if err != nil {
+				return fmt.Errorf("cannot resolve %s: %w", a.NewParent, err)
+			}
+			ontoVal = ops.Lit(parentTip)
+		}
+
+		operation.Steps = append(operation.Steps, &ops.Step{
+			ID:    "rebase-" + a.Branch,
+			Kind:  ops.KindGitRebase,
+			Phase: ops.PhaseMutation,
+			Inputs: map[string]ops.Value{
+				"onto":     ontoVal,
+				"old_base": ops.Lit(oldBase),
+				"branch":   ops.Lit(a.Branch),
+			},
+			Status: ops.StatusPending,
+		})
+	}
+
 	// Print plan
 	bus.Print("\nRestack plan:")
 	for _, a := range plan {
@@ -184,93 +276,59 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	}
 	bus.Print("")
 
-	// Save snapshot for --abort / --continue
-	branchSHAs := make(map[string]string)
-	for _, a := range plan {
-		sha, err := gitpkg.RevParse(a.Branch)
-		if err == nil {
-			branchSHAs[a.Branch] = sha
-		}
+	if verbose {
+		bus.Print("Verbose plan:")
+		bus.Print(ops.FormatPlan(operation, true))
+		bus.Print("")
 	}
 
-	serialPlan := make([]stack.RestackAction, len(plan))
-	for i, a := range plan {
-		serialPlan[i] = stack.RestackAction{
-			Branch:    a.Branch,
-			NewParent: a.NewParent,
-			OldParent: a.OldParent,
-		}
+	if dryRun {
+		bus.Print("Dry run — no changes made.")
+		return nil
 	}
 
-	originalNodes := make([]stack.Node, len(s.Nodes))
-	copy(originalNodes, s.Nodes)
-
-	ls, _ := stack.LoadLocal(root)
-	ls.RestackProgress = &stack.RestackProgress{
-		StackID:        s.StackID,
-		OriginalBranch: originalBranch,
-		OriginalNodes:  originalNodes,
-		BranchSHAs:     branchSHAs,
-		Plan:           serialPlan,
-		ResumeIndex:    0,
-	}
-	if err := stack.SaveLocal(root, ls); err != nil {
-		return fmt.Errorf("cannot save restack progress: %w", err)
-	}
-
-	// Apply new node order
+	// Apply new node order to stack before executing (so abort can restore)
 	s.Nodes = newNodes
 
-	// Rebase each affected branch (no pushes yet — defer until all succeed)
-	var rebased []string
-	for i, a := range plan {
-		bus.Printf("  rebasing %s onto %s...", ui.Branch(a.Branch), ui.Branch(a.NewParent))
+	// Save operation
+	if err := ops.Save(root, operation); err != nil {
+		return fmt.Errorf("cannot save operation: %w", err)
+	}
 
-		parentTip, err := gitpkg.RevParse(a.NewParent)
-		if err != nil {
-			return fmt.Errorf("cannot resolve %s: %w", a.NewParent, err)
-		}
+	// Execute rebases via ops executor
+	exec := ops.NewExecutor(operation,
+		ops.WithHandler(ops.DefaultHandler),
+		ops.WithPersistence(root),
+	)
+	if err := exec.Run(); err != nil {
+		// Save stack with new node order (abort will restore original)
+		stack.Save(root, s)
+		gitpkg.Checkout(originalBranch)
+		return fmt.Errorf("%w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`", err)
+	}
 
+	// All rebases succeeded — update BaseTips from the actual git state
+	for _, a := range plan {
 		node := s.FindNode(a.Branch)
-		oldBase := node.BaseTip
-		if oldBase == "" {
-			oldBase = a.OldParent
+		if node == nil {
+			continue
 		}
-
-		if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
-			if conflictErr := handleMoveConflict(s, a.Branch, err, bus); conflictErr != nil {
-				// Save progress with resume index
-				ls, _ := stack.LoadLocal(root)
-				if ls.RestackProgress != nil {
-					ls.RestackProgress.ResumeIndex = i
-				}
-				stack.SaveLocal(root, ls)
-				stack.Save(root, s)
-				gitpkg.Checkout(originalBranch)
-				return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
-					a.Branch, conflictErr)
-			}
-		}
-
-		// Update BaseTip
-		newTip, _ := gitpkg.RevParse(a.NewParent)
-		node.BaseTip = newTip
-		rebased = append(rebased, a.Branch)
-
+		parentTip, _ := gitpkg.RevParse(a.NewParent)
+		node.BaseTip = parentTip
 		bus.Printf("  %s %s rebased", ui.SymOK, ui.Branch(a.Branch))
 	}
 
-	// All rebases succeeded — now push all affected branches
+	// Push all affected branches (non-fatal — warnings only)
 	bus.Print("")
-	for _, branch := range rebased {
-		if err := gitpkg.Push(branch); err != nil {
-			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+	for _, a := range plan {
+		if err := gitpkg.Push(a.Branch); err != nil {
+			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(a.Branch), err)
 		} else {
-			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(a.Branch))
 		}
 	}
 
-	// Update PR bases on GitHub
+	// Update PR bases on GitHub (non-fatal)
 	if ghpkg.Available() {
 		for _, a := range plan {
 			node := s.FindNode(a.Branch)
@@ -297,10 +355,8 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	// Clear restack progress
-	ls, _ = stack.LoadLocal(root)
-	ls.RestackProgress = nil
-	stack.SaveLocal(root, ls)
+	// Clear operation
+	_ = ops.Clear(root)
 
 	bus.Printf("\n%s Restack complete.", ui.SymOK)
 	return nil
@@ -315,6 +371,39 @@ func runRestackAbort() error {
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
 
+	// Try ops-based abort first
+	operation, _ := ops.Load(root)
+	if operation != nil && operation.Command == "restack" {
+		bus.Printf("Aborting restack in stack %s...", ui.Bold.Render(operation.StackID))
+
+		// Abort any in-progress rebase
+		gitpkg.RebaseAbort()
+
+		// Use ops.Abort to restore snapshot branches
+		if err := ops.Abort(root, ops.DefaultHandler); err != nil {
+			bus.Warnf("  %s ops abort: %v", ui.SymWarn, err)
+		}
+
+		// Restore original nodes from CommandData
+		if operation.CommandData != nil {
+			s, loadErr := stack.LoadStack(root, operation.StackID)
+			if loadErr == nil {
+				var origNodes []stack.Node
+				if json.Unmarshal(operation.CommandData, &origNodes) == nil {
+					s.Nodes = origNodes
+					stack.Save(root, s)
+				}
+			}
+		}
+
+		// Restore original branch
+		gitpkg.Checkout(operation.OriginalBranch)
+
+		bus.Printf("\n%s Restack aborted. All branches restored.", ui.SymOK)
+		return nil
+	}
+
+	// Fall back to old RestackProgress for upgrades mid-operation
 	ls, err := stack.LoadLocal(root)
 	if err != nil {
 		return fmt.Errorf("cannot read local state: %w", err)
@@ -380,18 +469,98 @@ func runRestackContinue() error {
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
 
-	ls, err := stack.LoadLocal(root)
-	if err != nil {
-		return fmt.Errorf("cannot read local state: %w", err)
+	// Try ops-based continue first
+	operation, err := ops.Continue(root)
+	if err == nil && operation != nil && operation.Command == "restack" {
+		s, loadErr := stack.LoadStack(root, operation.StackID)
+		if loadErr != nil {
+			return fmt.Errorf("cannot load stack: %w", loadErr)
+		}
+
+		bus.Printf("Continuing restack in stack %s...", ui.Bold.Render(operation.StackID))
+
+		exec := ops.NewExecutor(operation,
+			ops.WithHandler(ops.DefaultHandler),
+			ops.WithPersistence(root),
+		)
+		if err := exec.Run(); err != nil {
+			stack.Save(root, s)
+			gitpkg.Checkout(operation.OriginalBranch)
+			return fmt.Errorf("%w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`", err)
+		}
+
+		// Update BaseTips and collect rebased branches
+		var rebased []string
+		for _, step := range operation.Steps {
+			if step.Kind != ops.KindGitRebase || step.Status != ops.StatusDone {
+				continue
+			}
+			branch := step.Inputs["branch"].Literal
+			rebased = append(rebased, branch)
+			node := s.FindNode(branch)
+			if node == nil {
+				continue
+			}
+			parentTip, _ := gitpkg.RevParse(s.ParentBranch(branch))
+			node.BaseTip = parentTip
+		}
+
+		// Push all rebased branches (non-fatal)
+		bus.Print("")
+		for _, branch := range rebased {
+			if err := gitpkg.Push(branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			} else {
+				bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			}
+		}
+
+		// Update PR bases (non-fatal)
+		if ghpkg.Available() {
+			for _, branch := range rebased {
+				node := s.FindNode(branch)
+				if node != nil && node.PR > 0 {
+					newParent := s.ParentBranch(branch)
+					if err := ghpkg.PREditBase(node.PR, newParent); err != nil {
+						bus.Warnf("  %s could not update PR #%d base: %v", ui.SymWarn, node.PR, err)
+					} else {
+						bus.Printf("  PR %s base updated -> %s", ui.PR(node.PR), ui.Branch(newParent))
+					}
+				}
+			}
+		}
+
+		// Update PR navigation
+		if err := updateStackNavForAllPRs(root, s, nil, bus); err != nil {
+			bus.Warnf("warning: could not update PR navigation: %v", err)
+		}
+
+		// Restore original branch
+		gitpkg.Checkout(operation.OriginalBranch)
+
+		// Save stack and clear operation
+		if err := stack.Save(root, s); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
+		_ = ops.Clear(root)
+
+		bus.Printf("\n%s Restack complete.", ui.SymOK)
+		return nil
+	}
+
+	// Fall back to old RestackProgress for upgrades mid-operation
+	ls, loadErr := stack.LoadLocal(root)
+	if loadErr != nil {
+		return fmt.Errorf("cannot read local state: %w", loadErr)
 	}
 	if ls.RestackProgress == nil {
 		return fmt.Errorf("no restack in progress")
 	}
 
 	progress := ls.RestackProgress
-	s, err := stack.LoadStack(root, progress.StackID)
-	if err != nil {
-		return fmt.Errorf("cannot load stack: %w", err)
+	s, loadErr := stack.LoadStack(root, progress.StackID)
+	if loadErr != nil {
+		return fmt.Errorf("cannot load stack: %w", loadErr)
 	}
 
 	bus.Printf("Continuing restack in stack %s...", ui.Bold.Render(progress.StackID))
@@ -480,6 +649,68 @@ func runRestackContinue() error {
 	return nil
 }
 
+func runRestackQuit() error {
+	root, err := stack.FindRoot()
+	if err != nil {
+		return err
+	}
+
+	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = bus.Finish() }()
+
+	// Try ops-based quit first
+	operation, _ := ops.Load(root)
+	if operation != nil && operation.Command == "restack" {
+		// Restore original nodes from CommandData
+		if operation.CommandData != nil {
+			s, loadErr := stack.LoadStack(root, operation.StackID)
+			if loadErr == nil {
+				var origNodes []stack.Node
+				if json.Unmarshal(operation.CommandData, &origNodes) == nil {
+					s.Nodes = origNodes
+					stack.Save(root, s)
+				}
+			}
+		}
+
+		if err := ops.Quit(root); err != nil {
+			return err
+		}
+
+		gitpkg.Checkout(operation.OriginalBranch)
+		bus.Printf("%s Restack state cleared (branches not restored).", ui.SymOK)
+		return nil
+	}
+
+	// Fall back to old RestackProgress
+	ls, err := stack.LoadLocal(root)
+	if err != nil {
+		return fmt.Errorf("cannot read local state: %w", err)
+	}
+	if ls.RestackProgress == nil {
+		return fmt.Errorf("no restack in progress")
+	}
+
+	progress := ls.RestackProgress
+
+	// Restore original nodes
+	s, loadErr := stack.LoadStack(root, progress.StackID)
+	if loadErr == nil {
+		s.Nodes = progress.OriginalNodes
+		stack.Save(root, s)
+	}
+
+	gitpkg.Checkout(progress.OriginalBranch)
+
+	ls.RestackProgress = nil
+	if err := stack.SaveLocal(root, ls); err != nil {
+		return fmt.Errorf("cannot clear restack progress: %w", err)
+	}
+
+	bus.Printf("%s Restack state cleared (branches not restored).", ui.SymOK)
+	return nil
+}
+
 // reorderNodes returns a new slice with sourceBranch moved to immediately after
 // afterBranch. If afterBranch is "", source becomes first. The original slice
 // is not modified.
@@ -543,3 +774,6 @@ func computeRestackPlan(s *stack.Stack, newNodes []stack.Node) []restackAction {
 	}
 	return actions
 }
+
+// Operation is a type alias for ops.Operation used in this file.
+type Operation = ops.Operation
