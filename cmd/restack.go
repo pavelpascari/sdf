@@ -1,6 +1,70 @@
 package cmd
 
-import "github.com/pavelpascari/sdf/internal/stack"
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	"github.com/pavelpascari/sdf/internal/stack"
+)
+
+var restackCmd = &cobra.Command{
+	Use:   "restack <branch>",
+	Short: "Move a branch to a new position in the stack",
+	Long: `Moves a branch to a new position (after the --after target), rebases all
+affected branches, pushes, and updates PR bases on GitHub.`,
+	Example: `  sdf restack feature/job --after feature/index
+  sdf restack feature/auth --after main       # make it first in the stack`,
+	Annotations: map[string]string{"category": "stack"},
+	Args:        cobra.ExactArgs(1),
+	RunE:        runRestackCmd,
+}
+
+func init() {
+	rootCmd.AddCommand(restackCmd)
+	restackCmd.Flags().String("after", "", "branch to insert after (required)")
+	_ = restackCmd.MarkFlagRequired("after")
+}
+
+func runRestackCmd(cmd *cobra.Command, args []string) error {
+	after, _ := cmd.Flags().GetString("after")
+	return runRestackLogic(args[0], after)
+}
+
+func validateRestack(s *stack.Stack, sourceBranch, afterBranch string) error {
+	if sourceBranch == afterBranch {
+		return fmt.Errorf("cannot move %s after itself", sourceBranch)
+	}
+
+	sourceIdx := s.NodeIndex(sourceBranch)
+	if sourceIdx < 0 {
+		return fmt.Errorf("branch %q is not part of stack %q", sourceBranch, s.StackID)
+	}
+
+	isBase := afterBranch == s.Base
+	afterIdx := s.NodeIndex(afterBranch)
+	if !isBase && afterIdx < 0 {
+		return fmt.Errorf("branch %q is not part of stack %q", afterBranch, s.StackID)
+	}
+
+	// Normalize: if afterBranch is the base, treat as "" for reorderNodes
+	reorderAfter := afterBranch
+	if isBase {
+		reorderAfter = ""
+	}
+
+	newNodes := reorderNodes(s.Nodes, sourceBranch, reorderAfter)
+	plan := computeRestackPlan(s, newNodes)
+	if len(plan) == 0 {
+		return fmt.Errorf("%s is already in that position", sourceBranch)
+	}
+
+	return nil
+}
+
+func runRestackLogic(sourceBranch, afterBranch string) error {
+	return fmt.Errorf("not yet implemented")
+}
 
 // reorderNodes returns a new slice with sourceBranch moved to immediately after
 // afterBranch. If afterBranch is "", source becomes first. The original slice

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -143,5 +144,100 @@ func TestComputeRestackPlan_SkipsMergedNodes(t *testing.T) {
 		if a.Branch == "b" {
 			t.Error("merged branch b should not be in affected list")
 		}
+	}
+}
+
+func TestRestackValidation_BranchNotInStack(t *testing.T) {
+	err := validateRestack(
+		&stack.Stack{
+			StackID: "test", Base: "main",
+			Nodes: []stack.Node{{Branch: "a", Status: "open"}},
+		},
+		"nonexistent", "a",
+	)
+	if err == nil || !strings.Contains(err.Error(), "not part of stack") {
+		t.Errorf("expected 'not part of stack' error, got: %v", err)
+	}
+}
+
+func TestRestackValidation_AfterNotInStack(t *testing.T) {
+	err := validateRestack(
+		&stack.Stack{
+			StackID: "test", Base: "main",
+			Nodes: []stack.Node{
+				{Branch: "a", Status: "open"},
+				{Branch: "b", Status: "open"},
+			},
+		},
+		"b", "nonexistent",
+	)
+	if err == nil || !strings.Contains(err.Error(), "not part of stack") {
+		t.Errorf("expected 'not part of stack' error, got: %v", err)
+	}
+}
+
+func TestRestackValidation_AfterSelf(t *testing.T) {
+	err := validateRestack(
+		&stack.Stack{
+			StackID: "test", Base: "main",
+			Nodes: []stack.Node{
+				{Branch: "a", Status: "open"},
+				{Branch: "b", Status: "open"},
+			},
+		},
+		"b", "b",
+	)
+	if err == nil || !strings.Contains(err.Error(), "cannot move") {
+		t.Errorf("expected 'cannot move' error, got: %v", err)
+	}
+}
+
+func TestRestackValidation_AlreadyInPosition(t *testing.T) {
+	err := validateRestack(
+		&stack.Stack{
+			StackID: "test", Base: "main",
+			Nodes: []stack.Node{
+				{Branch: "a", Status: "open"},
+				{Branch: "b", Status: "open"},
+				{Branch: "c", Status: "open"},
+			},
+		},
+		"b", "a",
+	)
+	if err == nil || !strings.Contains(err.Error(), "already") {
+		t.Errorf("expected 'already in position' error, got: %v", err)
+	}
+}
+
+func TestRestackValidation_AfterBase(t *testing.T) {
+	err := validateRestack(
+		&stack.Stack{
+			StackID: "test", Base: "main",
+			Nodes: []stack.Node{
+				{Branch: "a", Status: "open"},
+				{Branch: "b", Status: "open"},
+			},
+		},
+		"b", "main",
+	)
+	if err != nil {
+		t.Errorf("expected no error for --after base, got: %v", err)
+	}
+}
+
+func TestRestackValidation_ValidMove(t *testing.T) {
+	err := validateRestack(
+		&stack.Stack{
+			StackID: "test", Base: "main",
+			Nodes: []stack.Node{
+				{Branch: "a", Status: "open"},
+				{Branch: "b", Status: "open"},
+				{Branch: "c", Status: "open"},
+			},
+		},
+		"c", "a",
+	)
+	if err != nil {
+		t.Errorf("expected no error for valid move, got: %v", err)
 	}
 }

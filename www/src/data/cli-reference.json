@@ -294,6 +294,22 @@
       "deprecated": "use `sdf fetch` instead"
     },
     {
+      "name": "restack",
+      "category": "stack",
+      "use": "restack <branch>",
+      "short": "Move a branch to a new position in the stack",
+      "long": "Moves a branch to a new position (after the --after target), rebases all\naffected branches, pushes, and updates PR bases on GitHub.",
+      "example": "  sdf restack feature/job --after feature/index\n  sdf restack feature/auth --after main       # make it first in the stack",
+      "flags": [
+        {
+          "name": "after",
+          "type": "string",
+          "default": "",
+          "description": "branch to insert after (required)"
+        }
+      ]
+    },
+    {
       "name": "split",
       "category": "stack",
       "use": "split",
@@ -483,5 +499,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "323924a9369ebfb1352d8466867ae09b23c402d5630d1bea4bede364ba8af8f6"
+  "hash": "6b2ebf2be939d2197bfcd00080bbdf418020ef81f4d49e5ea04d7bc62b214f84"
 }
