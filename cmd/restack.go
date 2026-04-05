@@ -77,7 +77,9 @@ func validateRestack(s *stack.Stack, sourceBranch, afterBranch string) error {
 		return fmt.Errorf("branch %q is not part of stack %q", afterBranch, s.StackID)
 	}
 
-	// Normalize: if afterBranch is the base, treat as "" for reorderNodes
+	// The base branch (e.g. "main") is not a node in the Nodes array, so
+	// reorderNodes can't match on it. Empty string means "insert at front",
+	// which is correct — "after main" means first in the stack.
 	reorderAfter := afterBranch
 	if isBase {
 		reorderAfter = ""
