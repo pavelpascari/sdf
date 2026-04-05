@@ -41,8 +41,27 @@ const LocalFile = "local.json"
 // LocalState is the root structure of .sdf/local.json.
 // Each subsystem owns its own field — they don't clobber each other.
 type LocalState struct {
-	SyncProgress  *SyncProgress     `json:"sync_progress,omitempty"`
-	SplitSessions map[string]string `json:"split_sessions,omitempty"` // stack_name → session_id
+	SyncProgress    *SyncProgress     `json:"sync_progress,omitempty"`
+	SplitSessions   map[string]string `json:"split_sessions,omitempty"` // stack_name → session_id
+	RestackProgress *RestackProgress  `json:"restack_progress,omitempty"`
+}
+
+// RestackProgress tracks a restack operation so --continue can resume
+// and --abort can restore branches to their pre-restack state.
+type RestackProgress struct {
+	StackID        string            `json:"stack_id"`
+	OriginalBranch string            `json:"original_branch"` // branch user was on
+	OriginalNodes  []Node            `json:"original_nodes"`  // node order + BaseTips before restack
+	BranchSHAs     map[string]string `json:"branch_shas"`     // branch → SHA before restack
+	Plan           []RestackAction   `json:"plan"`            // planned rebases
+	ResumeIndex    int               `json:"resume_index"`    // index in Plan to resume from
+}
+
+// RestackAction is the JSON-serializable version of a planned rebase.
+type RestackAction struct {
+	Branch    string `json:"branch"`
+	NewParent string `json:"new_parent"`
+	OldParent string `json:"old_parent"`
 }
 
 // SyncProgress tracks a paused sync so `sdf sync --continue` can resume.

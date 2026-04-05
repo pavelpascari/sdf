@@ -121,6 +121,12 @@ func RebaseOnto(newBase, oldBase, branch string) error {
 	return err
 }
 
+// ResetHard resets the current branch to the given ref, discarding all changes.
+func ResetHard(ref string) error {
+	_, err := run("reset", "--hard", ref)
+	return err
+}
+
 // RebaseAbort aborts an in-progress rebase.
 func RebaseAbort() error {
 	_, err := run("rebase", "--abort")
