@@ -38,7 +38,8 @@ changelog:
   disable: true
 
 brews:
-  - repository:
+  - skip_upload: auto
+    repository:
       owner: pavelpascari
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
