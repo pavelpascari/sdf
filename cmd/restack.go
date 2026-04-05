@@ -221,7 +221,8 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	// Apply new node order
 	s.Nodes = newNodes
 
-	// Rebase each affected branch
+	// Rebase each affected branch (no pushes yet — defer until all succeed)
+	var rebased []string
 	for i, a := range plan {
 		bus.Printf("  rebasing %s onto %s...", ui.Branch(a.Branch), ui.Branch(a.NewParent))
 
@@ -254,14 +255,18 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		// Update BaseTip
 		newTip, _ := gitpkg.RevParse(a.NewParent)
 		node.BaseTip = newTip
+		rebased = append(rebased, a.Branch)
 
 		bus.Printf("  %s %s rebased", ui.SymOK, ui.Branch(a.Branch))
+	}
 
-		// Push (will fail in tests without remote — that's OK, non-fatal)
-		if err := gitpkg.Push(a.Branch); err != nil {
-			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(a.Branch), err)
+	// All rebases succeeded — now push all affected branches
+	bus.Print("")
+	for _, branch := range rebased {
+		if err := gitpkg.Push(branch); err != nil {
+			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
 		} else {
-			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(a.Branch))
+			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
 		}
 	}
 
@@ -391,7 +396,8 @@ func runRestackContinue() error {
 
 	bus.Printf("Continuing restack in stack %s...", ui.Bold.Render(progress.StackID))
 
-	// Resume from where we left off
+	// Resume rebasing from where we left off (no pushes yet)
+	var rebased []string
 	for i := progress.ResumeIndex; i < len(progress.Plan); i++ {
 		a := progress.Plan[i]
 		bus.Printf("  rebasing %s onto %s...", ui.Branch(a.Branch), ui.Branch(a.NewParent))
@@ -420,13 +426,22 @@ func runRestackContinue() error {
 
 		newTip, _ := gitpkg.RevParse(a.NewParent)
 		node.BaseTip = newTip
+		rebased = append(rebased, a.Branch)
 
 		bus.Printf("  %s %s rebased", ui.SymOK, ui.Branch(a.Branch))
+	}
 
-		if err := gitpkg.Push(a.Branch); err != nil {
-			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(a.Branch), err)
+	// All rebases succeeded — push all affected branches
+	// Include branches rebased before the pause (from the full plan)
+	for i := 0; i < progress.ResumeIndex; i++ {
+		rebased = append(rebased, progress.Plan[i].Branch)
+	}
+	bus.Print("")
+	for _, branch := range rebased {
+		if err := gitpkg.Push(branch); err != nil {
+			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
 		} else {
-			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(a.Branch))
+			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
 		}
 	}
 
