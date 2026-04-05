@@ -81,6 +81,46 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		return err
 	}
 
+	// Fetch and check if stack is in sync
+	bus.Print("Fetching from origin...")
+	if err := gitpkg.FetchAll(); err != nil {
+		bus.Warnf("warning: fetch failed: %v", err)
+	}
+
+	// Fast-forward base
+	if err := gitpkg.FastForward(s.Base); err != nil {
+		bus.Warnf("warning: could not fast-forward %s: %v", s.Base, err)
+	}
+
+	// Check if sync is needed
+	syncPlan := computeSyncPlan(s, nil)
+	hasWork := false
+	for _, a := range syncPlan {
+		if a.kind != "skip-merged" && a.kind != "skip-closed" {
+			hasWork = true
+			break
+		}
+	}
+
+	if hasWork {
+		bus.Pause()
+		ok := ui.Confirm("Stack is not in sync. Run sdf sync first?")
+		bus.Resume()
+		if !ok {
+			return fmt.Errorf("stack must be in sync before restacking — run `sdf sync` first")
+		}
+		bus.Print("")
+		if err := runSyncFrom(root, s, 0, &syncOptions{}, nil, bus, nil); err != nil {
+			return fmt.Errorf("sync failed: %w", err)
+		}
+		// Reload stack after sync (BaseTips may have changed)
+		s, err = resolveStack(root, s.StackID)
+		if err != nil {
+			return fmt.Errorf("cannot reload stack after sync: %w", err)
+		}
+		bus.Print("")
+	}
+
 	// Working tree must be clean
 	clean, err := gitpkg.IsClean()
 	if err != nil {
