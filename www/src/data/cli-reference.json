@@ -296,16 +296,28 @@
     {
       "name": "restack",
       "category": "stack",
-      "use": "restack <branch>",
+      "use": "restack [branch]",
       "short": "Move a branch to a new position in the stack",
-      "long": "Moves a branch to a new position (after the --after target), rebases all\naffected branches, pushes, and updates PR bases on GitHub.",
-      "example": "  sdf restack feature/job --after feature/index\n  sdf restack feature/auth --after main       # make it first in the stack",
+      "long": "Moves a branch to a new position (after the --after target), rebases all\naffected branches, pushes, and updates PR bases on GitHub.\n\nUse --continue to resume after resolving conflicts.\nUse --abort to restore all branches to their pre-restack state.",
+      "example": "  sdf restack feature/job --after feature/index\n  sdf restack feature/auth --after main\n  sdf restack --continue\n  sdf restack --abort",
       "flags": [
+        {
+          "name": "abort",
+          "type": "bool",
+          "default": "false",
+          "description": "restore branches to pre-restack state"
+        },
         {
           "name": "after",
           "type": "string",
           "default": "",
-          "description": "branch to insert after (required)"
+          "description": "branch to insert after"
+        },
+        {
+          "name": "continue",
+          "type": "bool",
+          "default": "false",
+          "description": "resume after conflict resolution"
         }
       ]
     },
@@ -499,5 +511,5 @@
       "description": "Auto-update PR titles and descriptions during sync"
     }
   ],
-  "hash": "6b2ebf2be939d2197bfcd00080bbdf418020ef81f4d49e5ea04d7bc62b214f84"
+  "hash": "94db1a61b31c4d620c5ac383e6aa095fb045e0fde86eb3b945eacaf888c627c5"
 }

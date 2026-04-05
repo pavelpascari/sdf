@@ -377,6 +377,43 @@ func TestRunRestack_MoveCAfterA(t *testing.T) {
 	}
 }
 
+func TestRunRestackAbort_NoRestackInProgress(t *testing.T) {
+	restackTestRepo(t)
+	err := runRestackAbort()
+	if err == nil || !strings.Contains(err.Error(), "no restack in progress") {
+		t.Errorf("expected 'no restack in progress' error, got: %v", err)
+	}
+}
+
+func TestRunRestackContinue_NoRestackInProgress(t *testing.T) {
+	restackTestRepo(t)
+	err := runRestackContinue()
+	if err == nil || !strings.Contains(err.Error(), "no restack in progress") {
+		t.Errorf("expected 'no restack in progress' error, got: %v", err)
+	}
+}
+
+func TestRunRestack_SnapshotSavedAndCleared(t *testing.T) {
+	dir := restackTestRepo(t)
+
+	// Before restack — no progress
+	ls, _ := stack.LoadLocal(dir)
+	if ls.RestackProgress != nil {
+		t.Fatal("expected no restack progress before restack")
+	}
+
+	err := runRestackLogic("branchC", "branchA")
+	if err != nil {
+		t.Fatalf("restack failed: %v", err)
+	}
+
+	// After successful restack — progress should be cleared
+	ls, _ = stack.LoadLocal(dir)
+	if ls.RestackProgress != nil {
+		t.Error("expected restack progress to be cleared after success")
+	}
+}
+
 func TestRunRestack_MoveToBase(t *testing.T) {
 	restackTestRepo(t)
 
