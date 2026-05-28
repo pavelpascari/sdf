@@ -34,6 +34,10 @@ For any branch that is part of an SDF stack:
 | `sdf switch [branch]` | Switch to a branch and report its stack |
 | `sdf sync [stack-name]` | Detect merged PRs and cascade-rebase downstream branches |
 
+## PR Descriptions
+
+`sdf pr` adds `<!-- sdf:stack-nav -->` markers to PR bodies. `sdf sync` uses them to update navigation. Replacing the body via `gh pr edit --body` strips the markers — `sdf sync` then silently skips that PR. Always preserve the `<!-- sdf:stack-nav -->` block when editing descriptions.
+
 ## When to Run What
 
 - **Starting a session:** `sdf ls` to see all tracked stacks, then `sdf status` on the relevant stack for details.
