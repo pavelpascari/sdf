@@ -477,6 +477,27 @@
       "category": "utility",
       "use": "version",
       "short": "Print version"
+    },
+    {
+      "name": "worktree",
+      "category": "stack",
+      "use": "worktree",
+      "short": "Manage worktree mode for a stack",
+      "subcommands": [
+        {
+          "name": "enable",
+          "use": "enable",
+          "short": "Enable worktree mode and materialize worktrees for open branches",
+          "flags": [
+            {
+              "name": "stack",
+              "type": "string",
+              "default": "",
+              "description": "stack to enable (default: auto-detect)"
+            }
+          ]
+        }
+      ]
     }
   ],
   "config_keys": [
@@ -523,5 +544,5 @@
       "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "085b31fa44bf70aef95d6a4c4735fe7c4b598ae261795cbbf47f176758c0fd61"
+  "hash": "7354837ea5c6785a80d681b1194b765313bb069e021841ae2ccaab5dbcae829a"
 }

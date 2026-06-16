@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	cfgpkg "github.com/pavelpascari/sdf/internal/config"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
 )
+
+// stackLockTimeout bounds how long an sdf process waits for the stack lock.
+const stackLockTimeout = 10 * time.Second
 
 // addWorktreeForNode creates the worktree for a node and records its path.
 // createFrom is the ref to branch from for a new branch; pass "" to check out
