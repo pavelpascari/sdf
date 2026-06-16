@@ -12,18 +12,20 @@ import (
 
 // Node represents a single branch in the stack.
 type Node struct {
-	Branch  string `json:"branch"`
-	PR      int    `json:"pr,omitempty"`
-	Status  string `json:"status"` // "open", "merged", "closed"
-	BaseTip string `json:"base_tip,omitempty"`
-	NavHash string `json:"nav_hash,omitempty"`
+	Branch       string `json:"branch"`
+	PR           int    `json:"pr,omitempty"`
+	Status       string `json:"status"` // "open", "merged", "closed"
+	BaseTip      string `json:"base_tip,omitempty"`
+	NavHash      string `json:"nav_hash,omitempty"`
+	WorktreePath string `json:"worktree_path,omitempty"` // absolute path; worktree mode only
 }
 
 // Stack represents the full stack topology persisted in a stack JSON file.
 type Stack struct {
-	StackID string `json:"stack_id"`
-	Base    string `json:"base"`
-	Nodes   []Node `json:"nodes"`
+	StackID  string `json:"stack_id"`
+	Base     string `json:"base"`
+	Nodes    []Node `json:"nodes"`
+	Worktree bool   `json:"worktree,omitempty"` // per-stack worktree mode opt-in
 }
 
 // SDFDir is the name of the sdf metadata directory.
@@ -66,10 +68,11 @@ type RestackAction struct {
 
 // SyncProgress tracks a paused sync so `sdf sync --continue` can resume.
 type SyncProgress struct {
-	PausedAt       string `json:"paused_at"`       // branch that had conflicts
-	ResumeIndex    int    `json:"resume_index"`    // index in Nodes to resume from
-	OriginalBranch string `json:"original_branch"` // branch to restore when done
-	ParentTip      string `json:"parent_tip"`      // the parent tip we were rebasing onto
+	PausedAt       string `json:"paused_at"`               // branch that had conflicts
+	ResumeIndex    int    `json:"resume_index"`            // index in Nodes to resume from
+	OriginalBranch string `json:"original_branch"`         // branch to restore when done
+	ParentTip      string `json:"parent_tip"`              // the parent tip we were rebasing onto
+	WorktreePath   string `json:"worktree_path,omitempty"` // set when the paused rebase ran in a worktree
 }
 
 // LoadLocal reads .sdf/local.json, returning an empty state if it doesn't exist.
