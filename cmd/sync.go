@@ -274,6 +274,16 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 		return err
 	}
 
+	// Worktree-mode stacks bypass the monolithic fetch/reconcile/plan flow.
+	// Instead they run a per-branch pull step (or a dashboard overview).
+	if s.Worktree {
+		cur, _ := gitpkg.CurrentBranch()
+		if node := currentWorktreeNode(s, cur); node != nil {
+			return runWorktreeSyncStep(root, s, node, bus)
+		}
+		return runWorktreeDashboard(root, s, bus)
+	}
+
 	if result != nil {
 		result.Stack = s.StackID
 		result.Base = s.Base
