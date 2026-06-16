@@ -37,9 +37,10 @@ type SyncConfig struct {
 
 // Config represents the sdf configuration.
 type Config struct {
-	BranchPrefix BranchPrefix `json:"branch_prefix"`
-	PRTitle      PRTitle      `json:"pr_title,omitempty"`
-	Sync         SyncConfig   `json:"sync,omitempty"`
+	BranchPrefix BranchPrefix   `json:"branch_prefix"`
+	PRTitle      PRTitle        `json:"pr_title,omitempty"`
+	Sync         SyncConfig     `json:"sync,omitempty"`
+	Worktree     WorktreeConfig `json:"worktree,omitempty"`
 }
 
 // ConfigFile is the filename for the configuration within .sdf/.
@@ -173,6 +174,7 @@ func ConfigKeys() []ConfigKeyMeta {
 		{"pr_title.conventional_commits", "bool", "true", "Enable conventional commit prefixes in PR titles"},
 		{"pr_title.ticket_pattern", "string", "", "Regex to extract ticket ID from branch name for PR titles"},
 		{"sync.with_content", "bool", "false", "Auto-update PR titles and descriptions during sync"},
+		{"worktree.base_path", "string", "../{repo}.worktrees", "Base directory for per-branch worktrees ({repo} = repo dir name)"},
 	}
 }
 
@@ -218,6 +220,10 @@ func merge(global, repo Config) Config {
 
 	if repo.Sync.WithContent != nil {
 		result.Sync.WithContent = repo.Sync.WithContent
+	}
+
+	if repo.Worktree.BasePath != "" {
+		result.Worktree.BasePath = repo.Worktree.BasePath
 	}
 	return result
 }

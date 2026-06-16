@@ -509,7 +509,13 @@
       "type": "bool",
       "default": "false",
       "description": "Auto-update PR titles and descriptions during sync"
+    },
+    {
+      "key": "worktree.base_path",
+      "type": "string",
+      "default": "../{repo}.worktrees",
+      "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "94db1a61b31c4d620c5ac383e6aa095fb045e0fde86eb3b945eacaf888c627c5"
+  "hash": "b071ff9f6cf027bbc93176345be2eab4eb4eb390203f7bc7a77edf3eac81a36b"
 }
