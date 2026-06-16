@@ -207,7 +207,7 @@ func TestNew_PreservesExistingConfig(t *testing.T) {
 
 	// Run new via runNewCore directly (avoids cobra flag state leaking
 	// between tests via the global rootCmd).
-	if _, err := runNewCore("my-feature", "main", "", false); err != nil {
+	if _, err := runNewCore("my-feature", "main", "", false, false); err != nil {
 		t.Fatal(err)
 	}
 

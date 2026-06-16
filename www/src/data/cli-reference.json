@@ -243,6 +243,12 @@
           "type": "string",
           "default": "",
           "description": "name for the stack (alternative to positional arg)"
+        },
+        {
+          "name": "worktrees",
+          "type": "bool",
+          "default": "false",
+          "description": "create each branch as a git worktree (worktree mode)"
         }
       ]
     },
@@ -517,5 +523,5 @@
       "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "b071ff9f6cf027bbc93176345be2eab4eb4eb390203f7bc7a77edf3eac81a36b"
+  "hash": "085b31fa44bf70aef95d6a4c4735fe7c4b598ae261795cbbf47f176758c0fd61"
 }
