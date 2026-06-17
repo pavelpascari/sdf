@@ -761,7 +761,7 @@ func promptCreateMissingPRs(root string, s *stack.Stack, opts *syncOptions, resu
 			}
 		}
 
-		url, err := ghpkg.PRCreate(prTitle, body, base, node.Branch)
+		url, err := ghpkg.PRCreate(prTitle, body, base, node.Branch, false)
 		if err != nil {
 			bus.Warnf("  %s could not create PR: %v", ui.SymFail, err)
 			continue

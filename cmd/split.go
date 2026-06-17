@@ -491,7 +491,7 @@ func createSplitPRs(root string, s *stack.Stack, cfg cfgpkg.Config, originalBran
 
 		fmt.Printf("  %s %s (base: %s)...\n", ui.SymPlan, title, ui.Branch(base))
 
-		url, err := ghpkg.PRCreate(title, body, base, node.Branch)
+		url, err := ghpkg.PRCreate(title, body, base, node.Branch, false)
 		if err != nil {
 			return fmt.Errorf("PR for %s: %w", node.Branch, err)
 		}

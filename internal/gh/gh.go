@@ -199,17 +199,31 @@ func MergePRResults(primary, child []PRInfo) []PRInfo {
 	return merged
 }
 
-// PRCreate creates a PR with the given parameters.
-func PRCreate(title, body, base, head string) (string, error) {
-	args := []string{"pr", "create",
-		"--title", title,
-		"--body", body,
-		"--head", head,
-	}
+func prCreateArgs(title, body, base, head string, draft bool) []string {
+	args := []string{"pr", "create", "--title", title, "--body", body, "--head", head}
 	if base != "" {
 		args = append(args, "--base", base)
 	}
-	return run(args...)
+	if draft {
+		args = append(args, "--draft")
+	}
+	return args
+}
+
+// PRCreate opens a PR for head against base. When draft is true it is opened as a draft.
+func PRCreate(title, body, base, head string, draft bool) (string, error) {
+	return run(prCreateArgs(title, body, base, head, draft)...)
+}
+
+func prReadyArgs(prNumber int) []string {
+	return []string{"pr", "ready", fmt.Sprintf("%d", prNumber)}
+}
+
+// PRReady marks a draft PR as ready for review. Idempotent: marking an
+// already-ready PR is a no-op success on GitHub's side.
+func PRReady(prNumber int) error {
+	_, err := run(prReadyArgs(prNumber)...)
+	return err
 }
 
 // PREditBase updates the base branch of a PR.

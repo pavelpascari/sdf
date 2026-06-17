@@ -129,7 +129,7 @@ func runPR(cmd *cobra.Command, args []string) error {
 	if !jsonFlag {
 		fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, ui.Branch(base))
 	}
-	url, err := ghpkg.PRCreate(prTitle, body, base, branch)
+	url, err := ghpkg.PRCreate(prTitle, body, base, branch, false)
 	if err != nil {
 		return fmt.Errorf("cannot create PR: %w", err)
 	}
