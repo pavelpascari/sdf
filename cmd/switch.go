@@ -14,10 +14,11 @@ import (
 
 // SwitchResult is the structured output of sdf switch when --json is used.
 type SwitchResult struct {
-	Branch string `json:"branch"`
-	Stack  string `json:"stack,omitempty"`
-	Layer  int    `json:"layer,omitempty"`
-	Total  int    `json:"total,omitempty"`
+	Branch       string `json:"branch"`
+	Stack        string `json:"stack,omitempty"`
+	Layer        int    `json:"layer,omitempty"`
+	Total        int    `json:"total,omitempty"`
+	WorktreePath string `json:"worktree_path,omitempty"`
 }
 
 var switchCmd = &cobra.Command{
@@ -35,29 +36,56 @@ With a branch name, checks it out and shows its stack position.`,
 func init() {
 	rootCmd.AddCommand(switchCmd)
 	switchCmd.Flags().Bool("json", false, "output result as JSON")
+	switchCmd.Flags().Bool("path-only", false, "print only the worktree path (worktree mode)")
 }
 
 func runSwitchCmd(cmd *cobra.Command, args []string) error {
 	jsonFlag, _ := cmd.Flags().GetBool("json")
+	pathOnly, _ := cmd.Flags().GetBool("path-only")
 	if len(args) == 0 {
 		return listStackBranches()
 	}
-	return runSwitchToTarget(args[0], jsonFlag)
+	return runSwitchToTarget(args[0], jsonFlag, pathOnly)
 }
 
 // runSwitchToTarget checks out a branch and reports which stack it belongs to.
-func runSwitchToTarget(target string, jsonMode bool) error {
+// In worktree mode, it prints the worktree path instead of checking out.
+func runSwitchToTarget(target string, jsonMode, pathOnly bool) error {
 	root, err := stack.FindRoot()
 	if err != nil {
-		// Not in an sdf repo — plain git checkout
-		return gitpkg.Checkout(target)
+		return gitpkg.Checkout(target) // not an sdf repo — plain checkout
 	}
-
 	stack.MigrateIfNeeded(root)
 
-	// Find which stack this branch belongs to
 	s, lookupErr := stack.LoadByBranch(root, target)
 
+	// Worktree mode: do not checkout; report the worktree path.
+	if lookupErr == nil && s.Worktree {
+		node := s.FindNode(target)
+		if node == nil || node.WorktreePath == "" {
+			return fmt.Errorf("branch %q has no worktree — run `sdf worktree enable`", target)
+		}
+		if pathOnly {
+			fmt.Println(node.WorktreePath)
+			return nil
+		}
+		if jsonMode {
+			data, _ := json.MarshalIndent(SwitchResult{
+				Branch: target, Stack: s.StackID,
+				Layer: s.NodeIndex(target) + 1, Total: len(s.Nodes),
+				WorktreePath: node.WorktreePath,
+			}, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
+		bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+		defer func() { _ = bus.Finish() }()
+		bus.Printf("Worktree for %s:", target)
+		bus.Printf("  cd %s", node.WorktreePath)
+		return nil
+	}
+
+	// Non-worktree: existing checkout behavior.
 	if err := gitpkg.Checkout(target); err != nil {
 		if lookupErr != nil {
 			return fmt.Errorf("branch %q is not in any stack and git checkout failed: %w", target, err)
@@ -80,15 +108,12 @@ func runSwitchToTarget(target string, jsonMode bool) error {
 
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
-
 	if lookupErr != nil {
 		bus.Printf("Switched to %s (not part of any sdf stack)", target)
 		return nil
 	}
-
 	idx := s.NodeIndex(target)
 	bus.Printf("Switched to %s [stack: %s, layer %d/%d]", target, s.StackID, idx+1, len(s.Nodes))
-
 	return nil
 }
 
@@ -113,6 +138,19 @@ func TrySwitch(name string) error {
 	s, err := stack.LoadByBranch(root, name)
 	if err != nil {
 		return err
+	}
+
+	// Worktree mode: print the worktree path instead of checking out.
+	if s.Worktree {
+		node := s.FindNode(name)
+		if node == nil || node.WorktreePath == "" {
+			return fmt.Errorf("branch %q has no worktree — run `sdf worktree enable`", name)
+		}
+		bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+		defer func() { _ = bus.Finish() }()
+		bus.Printf("Worktree for %s:", name)
+		bus.Printf("  cd %s", node.WorktreePath)
+		return nil
 	}
 
 	if err := gitpkg.Checkout(name); err != nil {
