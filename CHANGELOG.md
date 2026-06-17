@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.4.0](https://github.com/pavelpascari/sdf/compare/v0.3.10...v0.4.0) (2026-06-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* add sdf restack to reorder branches within a stack ([#223](https://github.com/pavelpascari/sdf/issues/223))
+
+### Features
+
+* add sdf restack to reorder branches within a stack ([#223](https://github.com/pavelpascari/sdf/issues/223)) ([f778e25](https://github.com/pavelpascari/sdf/commit/f778e2519017d1fd64f6e75a5b9da60990b40eee))
+* worktree mode — one worktree per stacked branch for parallel agents ([#229](https://github.com/pavelpascari/sdf/issues/229)) ([1dbb8da](https://github.com/pavelpascari/sdf/commit/1dbb8da1f1d2ef168b4baea1886d46846a6d081c))
+
+
+### Bug Fixes
+
+* harden worktree mode concurrency + correctness (v0.4.0) ([#230](https://github.com/pavelpascari/sdf/issues/230)) ([06e226d](https://github.com/pavelpascari/sdf/commit/06e226d9af0aa16b61780d46ed9afa28b76aa37f))
+
+
+### Documentation
+
+* **skill:** warn about nav marker loss on PR body replacement ([#226](https://github.com/pavelpascari/sdf/issues/226)) ([551ae50](https://github.com/pavelpascari/sdf/commit/551ae50a60d6531c21778425145d02ae5bfd43b3))
+
+
+### CI/CD
+
+* bump dependabot/fetch-metadata from 2 to 3 ([#225](https://github.com/pavelpascari/sdf/issues/225)) ([419d61f](https://github.com/pavelpascari/sdf/commit/419d61f4b803aec523edf56ed67e278ead557bb9))
+* bump googleapis/release-please-action from 4 to 5 ([#227](https://github.com/pavelpascari/sdf/issues/227)) ([7dc463c](https://github.com/pavelpascari/sdf/commit/7dc463c8b0bdd2ec9f1f6a70cc7f06d85e5dce92))
+* pin govulncheck to v1.1.4 (latest panics on generics under Go 1.26) ([#231](https://github.com/pavelpascari/sdf/issues/231)) ([ec8a617](https://github.com/pavelpascari/sdf/commit/ec8a617fadf06d6d9408bfd096c849673f2aaa1d))
+
 ## [0.3.10](https://github.com/pavelpascari/sdf/compare/v0.3.9...v0.3.10) (2026-04-04)
 
 
