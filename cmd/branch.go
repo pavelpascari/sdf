@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -13,6 +14,11 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/spf13/cobra"
 )
+
+// errBranchExists is a sentinel returned by the in-lock re-check when a
+// concurrent invocation has already inserted the node. It is never surfaced
+// to the user — the caller treats it as the idempotent-return path.
+var errBranchExists = errors.New("branch already exists")
 
 // NewBranchResult is the structured output of sdf branch when --json is used.
 type NewBranchResult struct {
@@ -148,12 +154,18 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	// Insert node into the stack JSON under the advisory lock so concurrent
 	// "sdf branch" calls cannot lose each other's writes.
 	// newNode (incl. WorktreePath) was built above, outside the lock.
-	// Inside the fn we re-find the insertion point in the FRESH stack loaded
-	// by WithLock (positions may have shifted under concurrency).
+	// Inside the fn we re-check existence (closes the TOCTOU race from the
+	// outer FindNode fast-path) and re-find the insertion point in the FRESH
+	// stack loaded by WithLock (positions may have shifted under concurrency).
 	var insertAt int
 	var downstreamPR int
 	var downstreamBranch string
 	err = stack.WithLock(root, s.StackID, func(ls *stack.Stack) error {
+		// In-lock existence re-check: a concurrent invocation may have already
+		// inserted this node between our outer FindNode check and now.
+		if ls.FindNode(branchName) != nil {
+			return errBranchExists
+		}
 		// Re-find parent in the freshly-loaded stack.
 		freshIdx := ls.NodeIndex(parent)
 		if freshIdx < 0 {
@@ -170,6 +182,37 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		}
 		return nil
 	})
+	if errors.Is(err, errBranchExists) {
+		// Lost the race — a concurrent invocation already created the node.
+		// Reload the stack to get the winner's node (worktree_path etc. may
+		// differ from what we would have set), then return idempotently.
+		fresh, loadErr := stack.LoadStack(root, s.StackID)
+		if loadErr != nil {
+			return loadErr
+		}
+		existingNode := fresh.FindNode(branchName)
+		var wtp string
+		if existingNode != nil {
+			wtp = existingNode.WorktreePath
+		}
+		result := NewBranchResult{
+			Branch:       branchName,
+			Stack:        s.StackID,
+			Parent:       fresh.ParentBranch(branchName),
+			WorktreePath: wtp,
+			Created:      false,
+		}
+		if jsonFlag {
+			data, marshalErr := json.MarshalIndent(result, "", "  ")
+			if marshalErr != nil {
+				return fmt.Errorf("cannot marshal result: %w", marshalErr)
+			}
+			fmt.Println(string(data))
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "branch %q already exists in stack %q — returning current state\n", branchName, s.StackID)
+		return nil
+	}
 	if err != nil {
 		return err
 	}

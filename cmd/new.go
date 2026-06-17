@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -107,18 +109,60 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 	// Migrate legacy layout if needed
 	stack.MigrateIfNeeded(root)
 
-	// Check if a stack with this name already exists — idempotent re-run returns
-	// current state instead of erroring, so flow can safely re-issue the command
-	// on crash-resume.
-	if existing, loadErr := stack.LoadStack(root, stackName); loadErr == nil {
+	// Resolve the base branch before acquiring the lock (no I/O risk here).
+	baseBranch := base
+	if baseBranch == "" {
+		detected, err := gitpkg.DefaultBranch()
+		if err != nil {
+			return "", fmt.Errorf("cannot auto-detect default branch: %w\nSpecify one explicitly with --base <branch>", err)
+		}
+		baseBranch = detected
+	}
+
+	// Validate the base branch exists
+	if !gitpkg.BranchExists(baseBranch) && !gitpkg.BranchExists("origin/"+baseBranch) {
+		return "", fmt.Errorf("base branch %q does not exist — check the name or use --base <branch>", baseBranch)
+	}
+
+	// Ensure .sdf/ exists so AcquireLock can create its lock file.
+	// This is idempotent — MkdirAll succeeds if the directory already exists.
+	if err := os.MkdirAll(filepath.Join(root, stack.SDFDir), 0755); err != nil {
+		return "", fmt.Errorf("cannot create .sdf directory: %w", err)
+	}
+
+	// Existence check + Init are performed atomically under the stack advisory
+	// lock so two concurrent "sdf new <same-stack>" invocations cannot both see
+	// "not found" and double-create. AcquireLock is used directly because
+	// WithLock calls LoadStack, which fails for stacks that don't exist yet.
+	//
+	// errStackExists is a local sentinel: the winner returns false/created,
+	// the loser (or a sequential re-run) returns the idempotent state.
+	errStackExists := errors.New("stack already exists")
+	var existingStack *stack.Stack
+	lockErr := func() error {
+		lock, err := stack.AcquireLock(root, stackName, stack.LockTimeout)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = lock.Release() }()
+
+		// In-lock existence re-check.
+		if s, loadErr := stack.LoadStack(root, stackName); loadErr == nil {
+			existingStack = s
+			return errStackExists
+		}
+		return stack.Init(root, stackName, baseBranch)
+	}()
+	if errors.Is(lockErr, errStackExists) {
+		// Stack already exists (race winner or sequential re-run) — return idempotently.
 		var firstNode stack.Node
-		if len(existing.Nodes) > 0 {
-			firstNode = existing.Nodes[0]
+		if len(existingStack.Nodes) > 0 {
+			firstNode = existingStack.Nodes[0]
 		}
 		if jsonFlag {
 			result := NewResult{
 				Stack:        stackName,
-				Base:         existing.Base,
+				Base:         existingStack.Base,
 				Branch:       firstNode.Branch,
 				WorktreePath: firstNode.WorktreePath,
 				Pushed:       false,
@@ -135,24 +179,8 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 		fmt.Fprintf(os.Stderr, "note: stack %q already exists — returning current state\n", stackName)
 		return "", nil
 	}
-
-	// Resolve the base branch
-	baseBranch := base
-	if baseBranch == "" {
-		detected, err := gitpkg.DefaultBranch()
-		if err != nil {
-			return "", fmt.Errorf("cannot auto-detect default branch: %w\nSpecify one explicitly with --base <branch>", err)
-		}
-		baseBranch = detected
-	}
-
-	// Validate the base branch exists
-	if !gitpkg.BranchExists(baseBranch) && !gitpkg.BranchExists("origin/"+baseBranch) {
-		return "", fmt.Errorf("base branch %q does not exist — check the name or use --base <branch>", baseBranch)
-	}
-
-	if err := stack.Init(root, stackName, baseBranch); err != nil {
-		return "", err
+	if lockErr != nil {
+		return "", lockErr
 	}
 
 	// Mark worktree mode on the freshly-created stack under the advisory lock
