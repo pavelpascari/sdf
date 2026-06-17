@@ -169,6 +169,34 @@ func RunSync(args []string) error {
 
 // runSyncContinue resumes a sync that was paused for manual conflict resolution.
 func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
+	// Worktree-mode check: look for a WorktreeProgress entry whose WorktreePath
+	// matches the current working directory. This is more reliable than
+	// CurrentBranch() because git returns "HEAD" when a rebase is paused.
+	if local0, _ := stack.LoadLocal(root); local0 != nil && len(local0.WorktreeProgress) > 0 {
+		cwd, cwdErr := os.Getwd()
+		if cwdErr == nil {
+			for branch, prog := range local0.WorktreeProgress {
+				if prog != nil && prog.WorktreePath != "" && prog.WorktreePath == cwd {
+					s, err := stack.LoadByBranch(root, branch)
+					if err == nil && s.Worktree {
+						return continueWorktreeSync(root, s.StackID, branch, bus)
+					}
+				}
+			}
+		}
+	}
+
+	// Also check via current branch name (works when not in detached HEAD state).
+	if cur, _ := gitpkg.CurrentBranch(); cur != "" && cur != "HEAD" {
+		if s, e := stack.LoadByBranch(root, cur); e == nil && s.Worktree {
+			local, _ := stack.LoadLocal(root)
+			if local != nil && local.WorktreeProgress != nil && local.WorktreeProgress[cur] != nil {
+				return continueWorktreeSync(root, s.StackID, cur, bus)
+			}
+			return fmt.Errorf("no paused worktree sync for %s — run `sdf sync` in this worktree", cur)
+		}
+	}
+
 	local, err := stack.LoadLocal(root)
 	if err != nil {
 		return err
@@ -180,7 +208,12 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	progress := local.SyncProgress
 
 	if progress.WorktreePath != "" {
-		return continueWorktreeSync(root, local, progress, bus)
+		// Legacy path: monolithic SyncProgress with WorktreePath set.
+		// This can happen if a worktree conflict was recorded before the per-branch
+		// map was introduced. Route to continueWorktreeSync using the stored stackID.
+		if s, e := stack.LoadByBranch(root, progress.PausedAt); e == nil {
+			return continueWorktreeSync(root, s.StackID, progress.PausedAt, bus)
+		}
 	}
 
 	switch {

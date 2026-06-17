@@ -248,5 +248,15 @@ func pruneLocalState(local *stack.LocalState, keepStacks map[string]bool) bool {
 		changed = true
 	}
 
+	for b := range local.WorktreeProgress {
+		if !gitpkg.BranchExists(b) {
+			delete(local.WorktreeProgress, b)
+			changed = true
+		}
+	}
+	if len(local.WorktreeProgress) == 0 && local.WorktreeProgress != nil {
+		local.WorktreeProgress = nil
+	}
+
 	return changed
 }

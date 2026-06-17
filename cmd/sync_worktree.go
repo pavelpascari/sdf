@@ -10,9 +10,17 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
-// continueWorktreeSync finishes a paused in-worktree rebase started by
-// runWorktreeSyncStep.
-func continueWorktreeSync(root string, local *stack.LocalState, progress *stack.SyncProgress, bus *render.Bus) error {
+// continueWorktreeSync finishes a paused in-worktree rebase for the given
+// branch. It reads progress from WorktreeProgress[branch] under the lock,
+// does the rebase-state detection in the worktree, then acquires the stack
+// lock for the BaseTip update, push, save, and WorktreeProgress cleanup.
+func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
+	// Read progress outside the lock first (read-only; detect rebase state).
+	local0, _ := stack.LoadLocal(root)
+	if local0 == nil || local0.WorktreeProgress == nil || local0.WorktreeProgress[branch] == nil {
+		return fmt.Errorf("no paused worktree sync for %s — run `sdf sync` in this worktree", branch)
+	}
+	progress := local0.WorktreeProgress[branch]
 	wt := progress.WorktreePath
 
 	switch inProg, _ := gitpkg.IsRebaseInProgressAt(wt); {
@@ -25,38 +33,58 @@ func continueWorktreeSync(root string, local *stack.LocalState, progress *stack.
 		bus.Printf("  %s %s rebased (completed outside sdf)", ui.SymOK, ui.Branch(progress.PausedAt))
 	default:
 		bus.Printf("Rebase of %s was aborted. Clearing paused state.", ui.Branch(progress.PausedAt))
-		local.SyncProgress = nil
-		_ = stack.SaveLocal(root, local)
-		return nil
+		// Clear only this branch's entry under the lock.
+		lockErr := stack.WithLock(root, stackID, func(_ *stack.Stack) error {
+			local, _ := stack.LoadLocal(root)
+			if local == nil {
+				local = &stack.LocalState{}
+			}
+			delete(local.WorktreeProgress, branch)
+			if len(local.WorktreeProgress) == 0 {
+				local.WorktreeProgress = nil
+			}
+			return stack.SaveLocal(root, local)
+		})
+		return lockErr
 	}
 
-	s, err := stack.LoadByBranch(root, progress.PausedAt)
-	if err != nil {
-		return err
-	}
-	lock, err := stack.AcquireLock(root, s.StackID, stackLockTimeout)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-	node := s.FindNode(progress.PausedAt)
-	if node != nil {
-		node.BaseTip = progress.ParentTip
-		if err := gitpkg.PushAt(wt, node.Branch); err != nil {
-			bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
-		} else {
-			bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
+	var childBranch string
+	lockErr := stack.WithLock(root, stackID, func(s *stack.Stack) error {
+		node := s.FindNode(progress.PausedAt)
+		if node != nil {
+			node.BaseTip = progress.ParentTip
+			if err := gitpkg.PushAt(wt, node.Branch); err != nil {
+				bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
+			} else {
+				bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
+			}
+			if err := stack.Save(root, s); err != nil {
+				return err
+			}
 		}
-		if err := stack.Save(root, s); err != nil {
+		// Clear this branch's entry from WorktreeProgress under the lock.
+		local, _ := stack.LoadLocal(root)
+		if local == nil {
+			local = &stack.LocalState{}
+		}
+		delete(local.WorktreeProgress, branch)
+		if len(local.WorktreeProgress) == 0 {
+			local.WorktreeProgress = nil
+		}
+		if err := stack.SaveLocal(root, local); err != nil {
 			return err
 		}
+		if child := findNextOpenNode(s, progress.PausedAt); child != nil {
+			childBranch = child.Branch
+		}
+		return nil
+	})
+	if lockErr != nil {
+		return lockErr
 	}
 
-	local.SyncProgress = nil
-	_ = stack.SaveLocal(root, local)
-
-	if child := findNextOpenNode(s, progress.PausedAt); child != nil {
-		bus.Printf("\nDownstream %s now needs to sync.", ui.Branch(child.Branch))
+	if childBranch != "" {
+		bus.Printf("\nDownstream %s now needs to sync.", ui.Branch(childBranch))
 	}
 	return nil
 }
@@ -126,14 +154,17 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 		bus.Printf("  rebasing %s onto %s...", ui.Branch(branch), ui.Branch(parent))
 		if err := gitpkg.RebaseOntoAt(wt, parent, rebaseOldBase, branch); err != nil {
 			// Pause for in-worktree manual resolution.
-			// Read-modify-write local.json INSIDE the lock so SyncProgress is
-			// never clobbered by a concurrent sdf process.
+			// Read-modify-write local.json INSIDE the lock so WorktreeProgress is
+			// never clobbered by a concurrent sdf process in another worktree.
 			conflicts, _ := gitpkg.ConflictedFilesAt(wt)
 			local, _ := stack.LoadLocal(root)
 			if local == nil {
 				local = &stack.LocalState{}
 			}
-			local.SyncProgress = &stack.SyncProgress{
+			if local.WorktreeProgress == nil {
+				local.WorktreeProgress = make(map[string]*stack.SyncProgress)
+			}
+			local.WorktreeProgress[branch] = &stack.SyncProgress{
 				PausedAt:     branch,
 				ResumeIndex:  s.NodeIndex(branch),
 				ParentTip:    parentTip,
