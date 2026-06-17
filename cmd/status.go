@@ -198,6 +198,26 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		parent := s.ParentBranch(node.Branch)
 
 		if status != "merged" && status != "closed" {
+			// For worktree nodes, check if a rebase is paused (conflict) first.
+			// conflicted takes precedence over in_sync/needs_sync.
+			if s.Worktree && node.WorktreePath != "" {
+				if inProg, err := gitpkg.IsRebaseInProgressAt(node.WorktreePath); err == nil && inProg {
+					nr.SyncState = "conflicted"
+					needsSync = append(needsSync, node.Branch)
+					count, err := gitpkg.CommitCount(parent, node.Branch)
+					if err == nil && count != "0" {
+						fmt.Sscanf(count, "%d", &nr.CommitsAhead)
+					}
+					if verbose {
+						if logOut, err := gitpkg.Log(parent, node.Branch); err == nil && logOut != "" {
+							nr.CommitLog = strings.Split(logOut, "\n")
+						}
+					}
+					nodeResults = append(nodeResults, nr)
+					continue
+				}
+			}
+
 			if node.BaseTip != "" {
 				currentParentTip, err := gitpkg.RevParse(parent)
 				if err == nil && currentParentTip != node.BaseTip {
