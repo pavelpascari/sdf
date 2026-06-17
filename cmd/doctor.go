@@ -11,6 +11,7 @@ import (
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/render"
+	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -91,6 +92,18 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		deps = append(deps, dep)
 	}
 
+	// Worktree integrity checks (only when inside an sdf repo).
+	if root, err := stack.FindRoot(); err == nil {
+		if problems := checkWorktrees(root); len(problems) > 0 {
+			bus.Print("")
+			bus.Print("Worktree integrity:")
+			for _, p := range problems {
+				bus.Printf("  %s %s", ui.SymWarn, p)
+				allOk = false
+			}
+		}
+	}
+
 	if jsonFlag {
 		result := DoctorResult{Dependencies: deps, OK: allOk}
 		data, _ := json.MarshalIndent(result, "", "  ")
@@ -104,6 +117,44 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 	bus.Print("All required dependencies are available.")
 	return nil
+}
+
+// checkWorktrees verifies worktree-mode stacks against git's worktree list and
+// the filesystem. Returns a list of human-readable problems (empty = healthy).
+func checkWorktrees(root string) []string {
+	var problems []string
+	stacks, err := stack.LoadAll(root)
+	if err != nil {
+		return problems
+	}
+
+	known := map[string]bool{}
+	if list, err := gitpkg.WorktreeList(); err == nil {
+		for _, w := range list {
+			known[w.Path] = true
+		}
+	}
+
+	for _, s := range stacks {
+		if !s.Worktree {
+			continue
+		}
+		for _, n := range s.Nodes {
+			if n.Status == "merged" || n.Status == "closed" {
+				continue
+			}
+			if n.WorktreePath == "" {
+				problems = append(problems, fmt.Sprintf("stack %s: branch %s has no worktree (run `sdf worktree enable`)", s.StackID, n.Branch))
+				continue
+			}
+			if _, statErr := os.Stat(n.WorktreePath); os.IsNotExist(statErr) {
+				problems = append(problems, fmt.Sprintf("stack %s: worktree for %s is missing at %s", s.StackID, n.Branch, n.WorktreePath))
+			} else if !known[n.WorktreePath] {
+				problems = append(problems, fmt.Sprintf("stack %s: %s is not registered with git (run `git worktree prune` / re-create)", s.StackID, n.WorktreePath))
+			}
+		}
+	}
+	return problems
 }
 
 func getVersion(name string, arg string) string {
