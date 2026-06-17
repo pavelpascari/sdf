@@ -3,6 +3,7 @@ package stack
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,11 @@ const LockTimeout = 10 * time.Second
 
 // staleAfter is how old a lock may be before it is considered abandoned.
 const staleAfter = 5 * time.Minute
+
+// ErrLockTimeout is returned by AcquireLock when the lock cannot be acquired
+// within the timeout (another sdf process holds it). Callers map it to a
+// distinguishable error_code / exit code so orchestrators retry rather than escalate.
+var ErrLockTimeout = errors.New("stack lock acquire timed out")
 
 // Lock is a held advisory lock on a stack's metadata.
 type Lock struct {
@@ -61,7 +67,7 @@ func AcquireLock(root, stackID string, timeout time.Duration) (*Lock, error) {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timed out waiting for stack lock %s (another sdf process may be running)", path)
+			return nil, fmt.Errorf("%w: %s (another sdf process may be running)", ErrLockTimeout, path)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
