@@ -16,9 +16,10 @@ import (
 
 // NewBranchResult is the structured output of sdf branch when --json is used.
 type NewBranchResult struct {
-	Branch string `json:"branch"`
-	Stack  string `json:"stack"`
-	Parent string `json:"parent"`
+	Branch       string `json:"branch"`
+	Stack        string `json:"stack"`
+	Parent       string `json:"parent"`
+	WorktreePath string `json:"worktree_path,omitempty"`
 }
 
 var branchCmd = &cobra.Command{
@@ -100,31 +101,33 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		insertAfterIdx = -1
 	}
 
-	// Ensure we're on the parent before creating the branch
-	if currentBranch != parent {
-		if err := gitpkg.Checkout(parent); err != nil {
-			return fmt.Errorf("cannot checkout parent %s: %w", parent, err)
-		}
-	}
-
-	// Get the current tip of the parent for tracking
+	// Resolve parent tip for tracking (works without checking the parent out).
 	parentTip, err := gitpkg.RevParse(parent)
 	if err != nil {
 		return fmt.Errorf("cannot resolve parent branch %s: %w", parent, err)
 	}
 
-	// Create the git branch
-	if err := gitpkg.CreateBranch(branchName); err != nil {
-		return fmt.Errorf("cannot create branch: %w", err)
+	newNode := stack.Node{Branch: branchName, Status: "open", BaseTip: parentTip}
+
+	if s.Worktree {
+		// Create the branch in its own worktree, branched from the parent.
+		// The main repo's checkout is left untouched.
+		if err := addWorktreeForNode(cfg, root, &newNode, parent); err != nil {
+			return err
+		}
+	} else {
+		if currentBranch != parent {
+			if err := gitpkg.Checkout(parent); err != nil {
+				return fmt.Errorf("cannot checkout parent %s: %w", parent, err)
+			}
+		}
+		if err := gitpkg.CreateBranch(branchName); err != nil {
+			return fmt.Errorf("cannot create branch: %w", err)
+		}
 	}
 
 	// Insert node at the correct position
 	insertAt := insertAfterIdx + 1
-	newNode := stack.Node{
-		Branch:  branchName,
-		Status:  "open",
-		BaseTip: parentTip,
-	}
 	s.Nodes = slices.Insert(s.Nodes, insertAt, newNode)
 
 	if err := stack.Save(root, s); err != nil {
@@ -160,9 +163,10 @@ func runBranch(cmd *cobra.Command, args []string) error {
 
 	if jsonFlag {
 		result := NewBranchResult{
-			Branch: branchName,
-			Stack:  s.StackID,
-			Parent: parent,
+			Branch:       branchName,
+			Stack:        s.StackID,
+			Parent:       parent,
+			WorktreePath: newNode.WorktreePath,
 		}
 		_ = bus.Finish()
 		data, err := json.MarshalIndent(result, "", "  ")
@@ -174,6 +178,10 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	}
 
 	bus.Printf("Created branch %q in stack %q (based on %s)", branchName, s.StackID, parent)
+	if s.Worktree {
+		bus.Printf("Worktree: %s", newNode.WorktreePath)
+		bus.Printf("  cd %s", newNode.WorktreePath)
+	}
 	bus.Print("Next: implement your changes, then run `sdf pr`.")
 	return nil
 }

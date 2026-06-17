@@ -31,7 +31,7 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("stack name required: sdf new <stack-name>")
 		}
 
-		_, err := runNewCore(stackName, base, branchFlag, jsonFlag)
+		_, err := runNewCore(stackName, base, branchFlag, jsonFlag, false)
 		return err
 	},
 }

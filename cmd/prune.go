@@ -59,13 +59,19 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	for _, s := range stacks {
 		// Remove orphan nodes first, then check if the stack should be deleted.
 		// A stack that becomes empty after orphan removal is intentionally deleted.
-		removedNodes := pruneMissingNodes(s)
-		result.NodesPruned += removedNodes
-		if removedNodes > 0 {
-			result.Actions = append(result.Actions, fmt.Sprintf("remove %d orphan node(s) from stack %s", removedNodes, s.StackID))
+		removedCount, removedNodes := pruneMissingNodes(s)
+		result.NodesPruned += removedCount
+		if removedCount > 0 {
+			if s.Worktree && apply {
+				removeWorktreesForNodes(removedNodes)
+			}
+			result.Actions = append(result.Actions, fmt.Sprintf("remove %d orphan node(s) from stack %s", removedCount, s.StackID))
 		}
 
 		if shouldDeleteStack(s) {
+			if s.Worktree && apply {
+				removeWorktreesForNodes(s.Nodes)
+			}
 			result.StacksPruned++
 			result.Actions = append(result.Actions, fmt.Sprintf("delete stack file %s", s.StackID))
 			if apply {
@@ -75,7 +81,7 @@ func runPrune(cmd *cobra.Command, args []string) error {
 		}
 
 		keepStacks[s.StackID] = true
-		if apply && removedNodes > 0 {
+		if apply && removedCount > 0 {
 			if err := stack.Save(root, s); err != nil {
 				return fmt.Errorf("cannot save stack %s: %w", s.StackID, err)
 			}
@@ -136,20 +142,35 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func pruneMissingNodes(s *stack.Stack) int {
+func pruneMissingNodes(s *stack.Stack) (int, []stack.Node) {
 	if s == nil {
-		return 0
+		return 0, nil
 	}
 	kept := make([]stack.Node, 0, len(s.Nodes))
-	removed := 0
+	var removed []stack.Node
 	for _, n := range s.Nodes {
 		if gitpkg.BranchExists(n.Branch) {
 			kept = append(kept, n)
 			continue
 		}
-		removed++
+		removed = append(removed, n)
 	}
 	s.Nodes = kept
+	return len(removed), removed
+}
+
+// removeWorktreesForNodes removes the worktrees recorded on the given nodes,
+// returning how many were removed. Errors are ignored (best-effort cleanup).
+func removeWorktreesForNodes(nodes []stack.Node) int {
+	removed := 0
+	for i := range nodes {
+		if nodes[i].WorktreePath == "" {
+			continue
+		}
+		if err := gitpkg.WorktreeRemove(nodes[i].WorktreePath, true); err == nil {
+			removed++
+		}
+	}
 	return removed
 }
 

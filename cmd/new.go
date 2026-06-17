@@ -42,6 +42,7 @@ func init() {
 	newCmd.Flags().String("base", "", "base branch (default: auto-detected from origin HEAD)")
 	newCmd.Flags().String("branch", "", "name for the first branch (default: stack name)")
 	newCmd.Flags().Bool("json", false, "output machine-readable JSON")
+	newCmd.Flags().Bool("worktrees", false, "create each branch as a git worktree (worktree mode)")
 	_ = newCmd.RegisterFlagCompletionFunc("base", completeGitBranches)
 }
 
@@ -50,6 +51,7 @@ func runNewCmd(cmd *cobra.Command, args []string) error {
 	base, _ := cmd.Flags().GetString("base")
 	branchFlag, _ := cmd.Flags().GetString("branch")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
+	worktree, _ := cmd.Flags().GetBool("worktrees")
 
 	if stackName == "" && len(args) > 0 {
 		stackName = args[0]
@@ -58,7 +60,7 @@ func runNewCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("stack name required: sdf new <stack-name>")
 	}
 
-	_, err := runNewCore(stackName, base, branchFlag, jsonFlag)
+	_, err := runNewCore(stackName, base, branchFlag, jsonFlag, worktree)
 	return err
 }
 
@@ -78,6 +80,7 @@ func RunNewWithOutput(args []string) (string, error) {
 	base := fs.String("base", "", "")
 	branch := fs.String("branch", "", "")
 	jsonFlag := fs.Bool("json", false, "")
+	worktree := fs.Bool("worktrees", false, "")
 	if err := fs.Parse(args); err != nil {
 		return "", err
 	}
@@ -88,11 +91,11 @@ func RunNewWithOutput(args []string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("stack name required: sdf new <stack-name>")
 	}
-	return runNewCore(name, *base, *branch, *jsonFlag)
+	return runNewCore(name, *base, *branch, *jsonFlag, *worktree)
 }
 
 // runNewCore is the shared implementation used by both Cobra and compat wrappers.
-func runNewCore(stackName, base, branchFlag string, jsonFlag bool) (string, error) {
+func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (string, error) {
 	root, err := gitpkg.RepoRoot()
 	if err != nil {
 		return "", fmt.Errorf("not inside a git repository: %w", err)
@@ -125,6 +128,18 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag bool) (string, erro
 		return "", err
 	}
 
+	// Mark worktree mode on the freshly-created stack.
+	if worktree {
+		ws, err := stack.LoadStack(root, stackName)
+		if err != nil {
+			return "", fmt.Errorf("cannot load stack after init: %w", err)
+		}
+		ws.Worktree = true
+		if err := stack.Save(root, ws); err != nil {
+			return "", err
+		}
+	}
+
 	// Create default config file only if one doesn't already exist,
 	// so we never overwrite user-customized settings.
 	cfgPath := cfgpkg.RepoPath(root)
@@ -155,21 +170,24 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag bool) (string, erro
 		return "", fmt.Errorf("cannot resolve base branch %s: %w", baseBranch, err)
 	}
 
-	// Create the git branch
-	if err := gitpkg.CreateBranch(branchName); err != nil {
-		return "", fmt.Errorf("cannot create branch: %w", err)
-	}
-
 	// Load the stack and add the node
 	s, err := stack.LoadStack(root, stackName)
 	if err != nil {
 		return "", fmt.Errorf("cannot load stack after init: %w", err)
 	}
-	s.Nodes = append(s.Nodes, stack.Node{
-		Branch:  branchName,
-		Status:  "open",
-		BaseTip: baseTip,
-	})
+
+	node := stack.Node{Branch: branchName, Status: "open", BaseTip: baseTip}
+	if worktree {
+		// First branch lives in a worktree; the main repo stays on the base.
+		if err := addWorktreeForNode(cfg, root, &node, baseBranch); err != nil {
+			return "", err
+		}
+	} else {
+		if err := gitpkg.CreateBranch(branchName); err != nil {
+			return "", fmt.Errorf("cannot create branch: %w", err)
+		}
+	}
+	s.Nodes = append(s.Nodes, node)
 	if err := stack.Save(root, s); err != nil {
 		return "", err
 	}

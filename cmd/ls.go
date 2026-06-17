@@ -22,6 +22,7 @@ type LSStack struct {
 	Merged    int    `json:"merged"`
 	Status    string `json:"status"`
 	IsCurrent bool   `json:"is_current,omitempty"`
+	Worktree  bool   `json:"worktree,omitempty"`
 }
 
 var lsCmd = &cobra.Command{
@@ -76,6 +77,7 @@ func runLS(cmd *cobra.Command, args []string) error {
 			Merged:    merged,
 			Status:    status,
 			IsCurrent: s.StackID == currentStackID,
+			Worktree:  s.Worktree,
 		})
 	}
 
@@ -104,7 +106,11 @@ func runLS(cmd *cobra.Command, args []string) error {
 		if st.Status == "partial" {
 			status = fmt.Sprintf("partial (%d/%d merged)", st.Merged, st.Nodes)
 		}
-		bus.Printf("%s  %-20s %d PRs   %s", marker, st.Name, st.Nodes, status)
+		tag := ""
+		if st.Worktree {
+			tag = "  " + ui.Cyan.Render("[worktree]")
+		}
+		bus.Printf("%s  %-20s %d PRs   %s%s", marker, st.Name, st.Nodes, status, tag)
 	}
 	return nil
 }

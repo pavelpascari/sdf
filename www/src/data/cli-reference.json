@@ -243,6 +243,12 @@
           "type": "string",
           "default": "",
           "description": "name for the stack (alternative to positional arg)"
+        },
+        {
+          "name": "worktrees",
+          "type": "bool",
+          "default": "false",
+          "description": "create each branch as a git worktree (worktree mode)"
         }
       ]
     },
@@ -416,6 +422,12 @@
           "type": "bool",
           "default": "false",
           "description": "output result as JSON"
+        },
+        {
+          "name": "path-only",
+          "type": "bool",
+          "default": "false",
+          "description": "print only the worktree path (worktree mode)"
         }
       ]
     },
@@ -471,6 +483,27 @@
       "category": "utility",
       "use": "version",
       "short": "Print version"
+    },
+    {
+      "name": "worktree",
+      "category": "stack",
+      "use": "worktree",
+      "short": "Manage worktree mode for a stack",
+      "subcommands": [
+        {
+          "name": "enable",
+          "use": "enable",
+          "short": "Enable worktree mode and materialize worktrees for open branches",
+          "flags": [
+            {
+              "name": "stack",
+              "type": "string",
+              "default": "",
+              "description": "stack to enable (default: auto-detect)"
+            }
+          ]
+        }
+      ]
     }
   ],
   "config_keys": [
@@ -509,7 +542,13 @@
       "type": "bool",
       "default": "false",
       "description": "Auto-update PR titles and descriptions during sync"
+    },
+    {
+      "key": "worktree.base_path",
+      "type": "string",
+      "default": "../{repo}.worktrees",
+      "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "94db1a61b31c4d620c5ac383e6aa095fb045e0fde86eb3b945eacaf888c627c5"
+  "hash": "0ee688f4714055dff528dd9e7effd9026df97b6802ec97c567d373d05208c770"
 }

@@ -8,22 +8,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	gitpkg "github.com/pavelpascari/sdf/internal/git"
 )
 
 // Node represents a single branch in the stack.
 type Node struct {
-	Branch  string `json:"branch"`
-	PR      int    `json:"pr,omitempty"`
-	Status  string `json:"status"` // "open", "merged", "closed"
-	BaseTip string `json:"base_tip,omitempty"`
-	NavHash string `json:"nav_hash,omitempty"`
+	Branch       string `json:"branch"`
+	PR           int    `json:"pr,omitempty"`
+	Status       string `json:"status"` // "open", "merged", "closed"
+	BaseTip      string `json:"base_tip,omitempty"`
+	NavHash      string `json:"nav_hash,omitempty"`
+	WorktreePath string `json:"worktree_path,omitempty"` // absolute path; worktree mode only
 }
 
 // Stack represents the full stack topology persisted in a stack JSON file.
 type Stack struct {
-	StackID string `json:"stack_id"`
-	Base    string `json:"base"`
-	Nodes   []Node `json:"nodes"`
+	StackID  string `json:"stack_id"`
+	Base     string `json:"base"`
+	Nodes    []Node `json:"nodes"`
+	Worktree bool   `json:"worktree,omitempty"` // per-stack worktree mode opt-in
 }
 
 // SDFDir is the name of the sdf metadata directory.
@@ -66,10 +70,11 @@ type RestackAction struct {
 
 // SyncProgress tracks a paused sync so `sdf sync --continue` can resume.
 type SyncProgress struct {
-	PausedAt       string `json:"paused_at"`       // branch that had conflicts
-	ResumeIndex    int    `json:"resume_index"`    // index in Nodes to resume from
-	OriginalBranch string `json:"original_branch"` // branch to restore when done
-	ParentTip      string `json:"parent_tip"`      // the parent tip we were rebasing onto
+	PausedAt       string `json:"paused_at"`               // branch that had conflicts
+	ResumeIndex    int    `json:"resume_index"`            // index in Nodes to resume from
+	OriginalBranch string `json:"original_branch"`         // branch to restore when done
+	ParentTip      string `json:"parent_tip"`              // the parent tip we were rebasing onto
+	WorktreePath   string `json:"worktree_path,omitempty"` // set when the paused rebase ran in a worktree
 }
 
 // LoadLocal reads .sdf/local.json, returning an empty state if it doesn't exist.
@@ -103,6 +108,8 @@ func SaveLocal(root string, ls *LocalState) error {
 
 // FindRoot walks up from the current directory to find the repo root
 // containing a .sdf directory (with either stacks/ or legacy stack.json).
+// When running inside a linked worktree (where .sdf/ is absent because it is
+// gitignored), it falls back to the main worktree via git-common-dir.
 func FindRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -110,23 +117,41 @@ func FindRoot() (string, error) {
 	}
 
 	for {
-		sdfDir := filepath.Join(dir, SDFDir)
-		if info, err := os.Stat(sdfDir); err == nil && info.IsDir() {
-			// New multi-stack layout
-			if _, err := os.Stat(filepath.Join(sdfDir, StacksDir)); err == nil {
-				return dir, nil
-			}
-			// Legacy single-stack layout
-			if _, err := os.Stat(filepath.Join(sdfDir, StackFile)); err == nil {
-				return dir, nil
-			}
+		if root, ok := sdfRootAt(dir); ok {
+			return root, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", errors.New("not inside an sdf stack (no .sdf/ found)")
+			break
 		}
 		dir = parent
 	}
+
+	// Fallback: we may be inside a linked worktree whose checkout has no .sdf/
+	// (it is gitignored). The single .sdf/ lives in the main worktree.
+	if mainRoot, mErr := gitpkg.MainWorktreeRoot(); mErr == nil {
+		if root, ok := sdfRootAt(mainRoot); ok {
+			return root, nil
+		}
+	}
+
+	return "", errors.New("not inside an sdf stack (no .sdf/ found)")
+}
+
+// sdfRootAt reports whether dir holds an .sdf/ directory in either layout.
+func sdfRootAt(dir string) (string, bool) {
+	sdfDir := filepath.Join(dir, SDFDir)
+	info, err := os.Stat(sdfDir)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	if _, err := os.Stat(filepath.Join(sdfDir, StacksDir)); err == nil {
+		return dir, true
+	}
+	if _, err := os.Stat(filepath.Join(sdfDir, StackFile)); err == nil {
+		return dir, true
+	}
+	return "", false
 }
 
 // MigrateIfNeeded moves a legacy .sdf/stack.json to .sdf/stacks/<id>.json.

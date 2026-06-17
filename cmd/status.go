@@ -38,6 +38,7 @@ type StatusNodeResult struct {
 	ReviewStatus string   `json:"review_status,omitempty"`
 	Mergeable    string   `json:"mergeable,omitempty"`
 	IsDraft      bool     `json:"is_draft,omitempty"`
+	WorktreePath string   `json:"worktree_path,omitempty"`
 }
 
 var statusCmd = &cobra.Command{
@@ -179,10 +180,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	baseTipsUpdated := false
 	for i, node := range s.Nodes {
 		nr := StatusNodeResult{
-			Branch:    node.Branch,
-			PR:        node.PR,
-			Status:    node.Status,
-			IsCurrent: node.Branch == currentBranch,
+			Branch:       node.Branch,
+			PR:           node.PR,
+			Status:       node.Status,
+			IsCurrent:    node.Branch == currentBranch,
+			WorktreePath: node.WorktreePath,
 		}
 
 		if prInfo, ok := prInfoByBranch[node.Branch]; ok {
@@ -318,6 +320,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			for _, line := range nr.CommitLog {
 				bus.Printf("     %s", line)
 			}
+		}
+		if s.Worktree && nr.WorktreePath != "" {
+			clean, _ := gitpkg.IsCleanAt(nr.WorktreePath)
+			dirty := ""
+			if !clean {
+				dirty = " (uncommitted)"
+			}
+			bus.Printf("     worktree: %s%s", nr.WorktreePath, dirty)
 		}
 	}
 
