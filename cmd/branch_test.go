@@ -227,11 +227,27 @@ func TestRunBranch_AppendOnBase(t *testing.T) {
 	}
 }
 
-func TestRunBranch_DuplicateName(t *testing.T) {
-	_ = branchTestRepo(t, false) // [A, B]
+func TestRunBranch_DuplicateNameIsIdempotent(t *testing.T) {
+	dir := branchTestRepo(t, false) // [branchA, branchB]
 
-	err := RunBranch([]string{"--no-prefix", "branchA"})
-	if err == nil {
-		t.Fatal("expected error for duplicate branch name")
+	// Re-adding an existing branch is idempotent: no error, no duplicate node.
+	if err := RunBranch([]string{"--no-prefix", "branchA"}); err != nil {
+		t.Fatalf("re-adding an existing branch must be idempotent, got %v", err)
+	}
+
+	s, err := stack.LoadStack(dir, "test-stack")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify exactly one branchA node (no duplicate)
+	count := 0
+	for _, n := range s.Nodes {
+		if n.Branch == "branchA" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("branchA appears %d times, want 1 (no duplicate)", count)
 	}
 }
