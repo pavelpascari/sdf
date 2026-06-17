@@ -1,0 +1,98 @@
+---
+title: "SDF v0.4.0: Worktrees for Parallel Agents"
+description: "SDF v0.4.0 adds opt-in worktree mode — every branch in a stack becomes its own git worktree, so multiple agents (or humans) can work on different branches at once without stepping on each other. Sync goes pull-model and per-worktree, and the whole stack toolset (branch, sync, merge, move, restack, split, prune, doctor) is worktree-aware."
+datePublished: 2026-06-17
+tags: [release]
+version: "0.4.0"
+author: "Pavel Pascari"
+published: true
+---
+
+Stacked diffs assume one working tree: you check out a branch, work on it, move up or down the stack, repeat. That's fine for one person doing one thing at a time. It falls apart the moment you want two agents &mdash; or two terminals &mdash; making progress on different branches of the same stack simultaneously. They fight over the working tree.
+
+v0.4.0 adds an opt-in **worktree mode** where every branch in a stack is its own [git worktree](https://git-scm.com/docs/git-worktree): a separate checkout directory on disk. Branch `feat/a` lives in one directory, `feat/b` in another. Two agents can edit, commit, and sync their own branches in parallel, never touching each other's files.
+
+## Turning it on
+
+For a new stack:
+
+```bash
+sdf new my-feature --worktrees
+```
+
+For an existing stack:
+
+```bash
+sdf worktree enable
+```
+
+Either way, `.sdf/` stays in the main repo (it's gitignored &mdash; one shared source of truth), and each branch gets a checkout under a sibling directory:
+
+```
+./my-repo                       ← main repo, stays on `main`
+../my-repo.worktrees/feat/a     ← branch feat/a
+../my-repo.worktrees/feat/b     ← branch feat/b
+```
+
+`sdf branch <name>` now creates the new branch in its own worktree and leaves your main checkout untouched. The base path is configurable (`worktree.base_path`, default `../{repo}.worktrees`), and worktrees are laid out nested, mirroring the branch name.
+
+## Sync becomes a pull, one worktree at a time
+
+In a single working tree, `sdf sync` rebases the whole stack in one pass. That model doesn't fit parallel agents &mdash; you can't rewrite a branch's history out from under an agent that's actively working on it.
+
+So in worktree mode, sync is **worktree-driven**. Each agent, when it reaches a clean stopping point, runs `sdf sync` *inside its own worktree*. SDF rebases only that branch onto its (already-updated) parent, pushes, and records the new base tip. That makes the next branch down the stack "stale," and its agent picks up the rebase on its own schedule. Propagation flows down the stack as each agent takes its turn.
+
+```bash
+# in feat/b's worktree, after committing your work:
+sdf sync
+#   rebasing feat/b onto feat/a...
+#   ✓ feat/b rebased and pushed
+#   Downstream feat/c now needs to sync.
+```
+
+A few rules make this safe:
+
+- **Commit first.** A worktree with uncommitted changes is refused &mdash; SDF won't rebase over work in progress.
+- **Conflicts pause in place.** Resolve them right there in the worktree and run `sdf sync --continue`. Each worktree tracks its own paused state, so two simultaneous conflicts never get crossed.
+- **Run sync from the main repo** and instead of rebasing, you get a read-only **readiness dashboard** &mdash; which branches are up to date, which need a sync, which have a paused rebase.
+
+## Navigating worktrees
+
+A CLI can't change your shell's directory, so `sdf switch` prints the path:
+
+```bash
+cd "$(sdf switch feat/b --path-only)"
+```
+
+`sdf status` shows each branch's worktree path and whether it has uncommitted changes, and `sdf ls` tags worktree-mode stacks so you can tell them apart at a glance.
+
+## The whole toolset is worktree-aware
+
+This isn't bolted onto `sync` alone. Every stack operation understands worktrees:
+
+- **`sdf merge`** merges the head PR and removes that branch's worktree (keeping it if it has uncommitted or untracked files); the downstream branch syncs on its own turn.
+- **`sdf move`, `sdf restack`, `sdf split`** operate inside each branch's worktree instead of checking out in your main repo &mdash; so reordering, relocating commits, and splitting all work in worktree mode.
+- **`sdf prune`** removes worktrees for branches it cleans up.
+- **`sdf doctor`** checks worktree integrity &mdash; missing directories, worktrees git doesn't know about, branches with no worktree &mdash; and tells you how to fix them.
+
+## Built to survive concurrency
+
+The entire point of worktree mode is parallel access to one shared stack file, so the metadata layer was hardened for it. Every read-modify-write of a stack's `.sdf/stacks/*.json` now happens under a per-stack advisory lock that covers the **load** as well as the save &mdash; so two agents appending branches or syncing at the same moment can't lose each other's updates. Stack files are written atomically (write-temp-then-rename), so a reader never catches a half-written file. The locking is verified with a race-tested concurrency suite, not just hoped for.
+
+## Scope
+
+SDF provides the substrate &mdash; worktrees, per-worktree coordinated sync, and the lock. It does **not** spawn or manage the agents themselves; who runs in each worktree (Claude, a teammate, a script) is up to you. Worktree mode is entirely opt-in: stacks without it behave exactly as before.
+
+## Upgrade
+
+```bash
+brew upgrade sdf
+```
+
+Or install fresh:
+
+```bash
+brew install pavelpascari/tap/sdf
+```
+
+Full changelog: [v0.3.10...v0.4.0](https://github.com/pavelpascari/sdf/compare/v0.3.10...v0.4.0)
