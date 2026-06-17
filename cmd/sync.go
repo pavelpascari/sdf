@@ -39,6 +39,7 @@ type SyncResult struct {
 	PRUpdates []PRUpdate     `json:"pr_updates,omitempty"`
 	Warnings  []string       `json:"warnings,omitempty"`
 	Error     string         `json:"error,omitempty"`
+	ErrorCode string         `json:"error_code,omitempty"`
 }
 
 // BranchResult describes what happened to a single branch during sync.
@@ -148,6 +149,7 @@ func runSyncCmd(cmd *cobra.Command, args []string) error {
 		_ = bus.Finish()
 		if err != nil {
 			result.Error = err.Error()
+			result.ErrorCode = errorCodeFor(err)
 		}
 		if jsonRenderer != nil {
 			result.Warnings = append(result.Warnings, jsonRenderer.Warnings()...)

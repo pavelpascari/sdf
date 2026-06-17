@@ -53,11 +53,11 @@ func SetVersion(v string) {
 }
 
 // Execute runs the root command. On error it prints the message to stderr
-// and exits with code 1.
+// and exits with the appropriate code (75 for lock timeouts, 1 otherwise).
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(exitCodeFor(err))
 	}
 }
 
