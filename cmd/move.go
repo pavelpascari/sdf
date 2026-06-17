@@ -165,68 +165,131 @@ func runMoveLogic(commits []string, jsonMode bool) error {
 		bus.Printf("  %s", short(c))
 	}
 
-	// --- Phase 1: cherry-pick commits onto the parent ---
-	bus.Printf("\n→ cherry-picking onto %s...", parent)
-	if err := gitpkg.Checkout(parent); err != nil {
-		return fmt.Errorf("cannot checkout %s: %w", parent, err)
-	}
+	if s.Worktree {
+		// --- Worktree mode: each branch lives in its own worktree; never Checkout ---
+		parentDir := branchWorktreeDir(s, parent)
+		branchDir := branchWorktreeDir(s, branch)
 
-	if err := gitpkg.CherryPick(resolvedCommits...); err != nil {
-		// Cherry-pick conflict — abort and restore
-		gitpkg.CherryPickAbort()
-		gitpkg.Checkout(branch)
-		return fmt.Errorf("cherry-pick onto %s failed (conflict): %w", parent, err)
-	}
-
-	newParentTip, err := gitpkg.RevParse(parent)
-	if err != nil {
-		return fmt.Errorf("cannot resolve new tip of %s: %w", parent, err)
-	}
-	bus.Printf("  %s %s tip is now %s", ui.SymOK, ui.Branch(parent), short(newParentTip))
-
-	// --- Phase 2: strip moved commits from current branch ---
-	bus.Printf("→ rebasing %s onto updated %s...", branch, parent)
-	if err := gitpkg.RebaseOnto(newParentTip, lastMovedSHA, branch); err != nil {
-		if conflictErr := handleMoveConflict(s, branch, err, bus); conflictErr != nil {
-			gitpkg.Checkout(branch)
-			return fmt.Errorf("rebase of %s failed: %w", branch, conflictErr)
+		// Phase 1: cherry-pick onto parent's worktree
+		bus.Printf("\n→ cherry-picking onto %s...", parent)
+		if err := gitpkg.CherryPickAt(parentDir, resolvedCommits...); err != nil {
+			_ = gitpkg.CherryPickAbortAt(parentDir)
+			return fmt.Errorf("cherry-pick onto %s failed (conflict): %w", parent, err)
 		}
-	}
 
-	// Update the current node's BaseTip
-	s.Nodes[idx].BaseTip = newParentTip
-
-	// --- Phase 3: cascade rebase downstream branches ---
-	for i := idx + 1; i < len(s.Nodes); i++ {
-		downstream := &s.Nodes[i]
-		upstreamBranch := s.Nodes[i-1].Branch
-
-		upstreamTip, err := gitpkg.RevParse(upstreamBranch)
+		newParentTip, err := gitpkg.RevParse(parent)
 		if err != nil {
-			continue
+			return fmt.Errorf("cannot resolve new tip of %s: %w", parent, err)
+		}
+		bus.Printf("  %s %s tip is now %s", ui.SymOK, ui.Branch(parent), short(newParentTip))
+
+		// Phase 2: strip moved commits from source branch's worktree
+		bus.Printf("→ rebasing %s onto updated %s...", branch, parent)
+		if err := gitpkg.RebaseOntoAt(branchDir, newParentTip, lastMovedSHA, branch); err != nil {
+			if conflictErr := handleMoveConflict(s, branch, err, bus, branchDir); conflictErr != nil {
+				return fmt.Errorf("rebase of %s failed: %w", branch, conflictErr)
+			}
 		}
 
-		if downstream.BaseTip != "" && downstream.BaseTip != upstreamTip {
-			bus.Printf("→ rebasing %s onto updated %s...", downstream.Branch, upstreamBranch)
+		// Phase 3 + persist: operate under stack lock
+		lockErr := stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
+			freshIdx := fresh.NodeIndex(branch)
+			if freshIdx >= 0 {
+				fresh.Nodes[freshIdx].BaseTip = newParentTip
+			}
 
-			if err := gitpkg.RebaseOnto(upstreamTip, downstream.BaseTip, downstream.Branch); err != nil {
-				if conflictErr := handleMoveConflict(s, downstream.Branch, err, bus); conflictErr != nil {
-					// Save partial progress before failing
-					stack.Save(root, s)
-					gitpkg.Checkout(branch)
-					return fmt.Errorf("cascade rebase of %s failed: %w", downstream.Branch, conflictErr)
+			// Cascade rebase downstream branches in their own worktrees
+			for i := freshIdx + 1; i < len(fresh.Nodes); i++ {
+				downstream := &fresh.Nodes[i]
+				upstreamBranch := fresh.Nodes[i-1].Branch
+
+				upstreamTip, err := gitpkg.RevParse(upstreamBranch)
+				if err != nil {
+					continue
+				}
+
+				if downstream.BaseTip != "" && downstream.BaseTip != upstreamTip {
+					bus.Printf("→ rebasing %s onto updated %s...", downstream.Branch, upstreamBranch)
+					downstreamDir := branchWorktreeDir(fresh, downstream.Branch)
+					if err := gitpkg.RebaseOntoAt(downstreamDir, upstreamTip, downstream.BaseTip, downstream.Branch); err != nil {
+						if conflictErr := handleMoveConflict(fresh, downstream.Branch, err, bus, downstreamDir); conflictErr != nil {
+							return fmt.Errorf("cascade rebase of %s failed: %w", downstream.Branch, conflictErr)
+						}
+					}
+					downstream.BaseTip = upstreamTip
 				}
 			}
-			downstream.BaseTip = upstreamTip
+			return nil // WithLock saves on nil return
+		})
+		if lockErr != nil {
+			return lockErr
 		}
-	}
+	} else {
+		// --- Non-worktree mode: original Checkout-based flow (byte-for-byte unchanged) ---
 
-	// --- Phase 4: persist stack state ---
-	// Restore working branch before saving so the commit lands on the right branch
-	gitpkg.Checkout(branch)
+		// --- Phase 1: cherry-pick commits onto the parent ---
+		bus.Printf("\n→ cherry-picking onto %s...", parent)
+		if err := gitpkg.Checkout(parent); err != nil {
+			return fmt.Errorf("cannot checkout %s: %w", parent, err)
+		}
 
-	if err := stack.Save(root, s); err != nil {
-		return fmt.Errorf("cannot save stack: %w", err)
+		if err := gitpkg.CherryPick(resolvedCommits...); err != nil {
+			// Cherry-pick conflict — abort and restore
+			gitpkg.CherryPickAbort()
+			gitpkg.Checkout(branch)
+			return fmt.Errorf("cherry-pick onto %s failed (conflict): %w", parent, err)
+		}
+
+		newParentTip, err := gitpkg.RevParse(parent)
+		if err != nil {
+			return fmt.Errorf("cannot resolve new tip of %s: %w", parent, err)
+		}
+		bus.Printf("  %s %s tip is now %s", ui.SymOK, ui.Branch(parent), short(newParentTip))
+
+		// --- Phase 2: strip moved commits from current branch ---
+		bus.Printf("→ rebasing %s onto updated %s...", branch, parent)
+		if err := gitpkg.RebaseOnto(newParentTip, lastMovedSHA, branch); err != nil {
+			if conflictErr := handleMoveConflict(s, branch, err, bus, ""); conflictErr != nil {
+				gitpkg.Checkout(branch)
+				return fmt.Errorf("rebase of %s failed: %w", branch, conflictErr)
+			}
+		}
+
+		// Update the current node's BaseTip
+		s.Nodes[idx].BaseTip = newParentTip
+
+		// --- Phase 3: cascade rebase downstream branches ---
+		for i := idx + 1; i < len(s.Nodes); i++ {
+			downstream := &s.Nodes[i]
+			upstreamBranch := s.Nodes[i-1].Branch
+
+			upstreamTip, err := gitpkg.RevParse(upstreamBranch)
+			if err != nil {
+				continue
+			}
+
+			if downstream.BaseTip != "" && downstream.BaseTip != upstreamTip {
+				bus.Printf("→ rebasing %s onto updated %s...", downstream.Branch, upstreamBranch)
+
+				if err := gitpkg.RebaseOnto(upstreamTip, downstream.BaseTip, downstream.Branch); err != nil {
+					if conflictErr := handleMoveConflict(s, downstream.Branch, err, bus, ""); conflictErr != nil {
+						// Save partial progress before failing
+						stack.Save(root, s)
+						gitpkg.Checkout(branch)
+						return fmt.Errorf("cascade rebase of %s failed: %w", downstream.Branch, conflictErr)
+					}
+				}
+				downstream.BaseTip = upstreamTip
+			}
+		}
+
+		// --- Phase 4: persist stack state ---
+		// Restore working branch before saving so the commit lands on the right branch
+		gitpkg.Checkout(branch)
+
+		if err := stack.Save(root, s); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
 	}
 
 	bus.Printf("\n%s Moved %d commit(s) from %s to %s", ui.SymOK, len(resolvedCommits), ui.Branch(branch), ui.Branch(parent))
@@ -246,10 +309,22 @@ func runMoveLogic(commits []string, jsonMode bool) error {
 
 // handleMoveConflict tries Claude resolution for a rebase conflict during move.
 // Falls back to aborting the rebase and returning the error.
-func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error, bus *render.Bus) error {
-	conflicted, err := gitpkg.ConflictedFiles()
+// dir is the worktree directory to operate in; pass "" to use the process CWD
+// (non-worktree mode).
+func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error, bus *render.Bus, dir string) error {
+	var conflicted []string
+	var err error
+	if dir != "" {
+		conflicted, err = gitpkg.ConflictedFilesAt(dir)
+	} else {
+		conflicted, err = gitpkg.ConflictedFiles()
+	}
 	if err != nil || len(conflicted) == 0 {
-		gitpkg.RebaseAbort()
+		if dir != "" {
+			_ = gitpkg.RebaseAbortAt(dir)
+		} else {
+			gitpkg.RebaseAbort()
+		}
 		return rebaseErr
 	}
 
@@ -269,7 +344,13 @@ func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error, bus *ren
 
 		conflictContents := make(map[string]string)
 		for _, f := range conflicted {
-			data, err := os.ReadFile(f)
+			// For worktree mode, conflict file paths from ConflictedFilesAt are
+			// relative to the worktree; prefix them with dir for reading.
+			fpath := f
+			if dir != "" && !strings.HasPrefix(f, "/") {
+				fpath = strings.TrimRight(dir, "/") + "/" + f
+			}
+			data, err := os.ReadFile(fpath)
 			if err == nil {
 				conflictContents[f] = string(data)
 			}
@@ -281,18 +362,32 @@ func handleMoveConflict(s *stack.Stack, branch string, rebaseErr error, bus *ren
 		output, err := claudepkg.RunPrompt(sessionName, p)
 		if err == nil {
 			if err := applyResolutions(output, conflicted); err == nil {
-				if err := gitpkg.Add("."); err == nil {
-					if err := gitpkg.RebaseContinue(); err == nil {
-						bus.Printf("  %s Conflicts resolved by Claude", ui.SymOK)
-						return nil
+				var addErr, continueErr error
+				if dir != "" {
+					addErr = gitpkg.AddAt(dir, ".")
+					if addErr == nil {
+						continueErr = gitpkg.RebaseContinueAt(dir)
 					}
+				} else {
+					addErr = gitpkg.Add(".")
+					if addErr == nil {
+						continueErr = gitpkg.RebaseContinue()
+					}
+				}
+				if addErr == nil && continueErr == nil {
+					bus.Printf("  %s Conflicts resolved by Claude", ui.SymOK)
+					return nil
 				}
 			}
 		}
 		bus.Warnf("  Claude resolution failed, falling back to manual resolution")
 	}
 
-	gitpkg.RebaseAbort()
+	if dir != "" {
+		_ = gitpkg.RebaseAbortAt(dir)
+	} else {
+		gitpkg.RebaseAbort()
+	}
 	return fmt.Errorf("conflicts in %s — resolve manually and run `sdf move` again:\n  %s",
 		branch, strings.Join(conflicted, "\n  "))
 }

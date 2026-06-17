@@ -117,6 +117,123 @@ func Execute(plan *Plan, stackID, base, source, root string) ([]string, error) {
 	return createdBranches, nil
 }
 
+// ExecuteWorktreeFunc is a function that creates a worktree for a new node.
+// The caller (cmd layer) provides this to avoid the internal/split package
+// importing cmd-level helpers.
+type ExecuteWorktreeFunc func(node *stack.Node, createFrom string) error
+
+// ExecuteWorktree is the worktree-mode counterpart of Execute. Each layer
+// branch is materialized as a git worktree (via addFn) rather than a plain
+// checkout. All git operations (apply, add, commit) run inside the branch's
+// worktree directory so the main-repo checkout is never disturbed.
+func ExecuteWorktree(plan *Plan, stackID, base, source, root string, addFn ExecuteWorktreeFunc) ([]string, error) {
+	if err := stack.MigrateIfNeeded(root); err != nil {
+		return nil, fmt.Errorf("cannot migrate stack layout: %w", err)
+	}
+
+	if err := stack.Init(root, stackID, base); err != nil {
+		return nil, fmt.Errorf("cannot initialize stack: %w", err)
+	}
+
+	// Mark the stack as worktree-mode immediately.
+	if err := stack.WithLock(root, stackID, func(s *stack.Stack) error {
+		s.Worktree = true
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("cannot enable worktree mode: %w", err)
+	}
+
+	cfg, err := cfgpkg.Load(root)
+	if err != nil {
+		cfg = cfgpkg.Defaults()
+	}
+
+	s, err := stack.LoadStack(root, stackID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load stack: %w", err)
+	}
+
+	var createdBranches []string
+	parent := base
+
+	for i, layer := range plan.Layers {
+		shortName := fmt.Sprintf("%d-%s", i+1, layer.Name)
+		branchName := cfgpkg.ApplyPrefix(cfg, stackID, shortName)
+
+		parentTip, _ := gitpkg.RevParse(parent)
+
+		node := stack.Node{
+			Branch:  branchName,
+			Status:  "open",
+			BaseTip: parentTip,
+		}
+
+		// Materialize the branch as a worktree branching from parent.
+		if err := addFn(&node, parent); err != nil {
+			return createdBranches, fmt.Errorf("cannot create worktree for %s: %w", branchName, err)
+		}
+		createdBranches = append(createdBranches, branchName)
+
+		wtDir := node.WorktreePath
+
+		// Build the combined patch for this layer.
+		var patchParts []string
+
+		if len(layer.Files) > 0 {
+			wholePatch, err := gitpkg.DiffFiles(base, source, layer.Files)
+			if err != nil {
+				return createdBranches, fmt.Errorf("cannot extract diff for %s: %w", layer.Name, err)
+			}
+			if wholePatch != "" {
+				patchParts = append(patchParts, wholePatch)
+			}
+		}
+
+		for _, pf := range layer.PartialFiles {
+			fileDiff, err := gitpkg.DiffFiles(base, source, []string{pf.Path})
+			if err != nil {
+				return createdBranches, fmt.Errorf("cannot extract diff for %s in %s: %w", pf.Path, layer.Name, err)
+			}
+			parsed := ParseDiff(fileDiff)
+			if len(parsed) == 0 {
+				return createdBranches, fmt.Errorf("no diff found for partial file %s in layer %s", pf.Path, layer.Name)
+			}
+			filtered := FilterHunks(parsed[0], pf.Hunks)
+			if filtered != "" {
+				patchParts = append(patchParts, filtered)
+			}
+		}
+
+		if len(patchParts) == 0 {
+			return createdBranches, fmt.Errorf("empty diff for layer %s — no changes to apply", layer.Name)
+		}
+
+		patch := strings.Join(patchParts, "")
+
+		if err := gitpkg.ApplyPatchAt(wtDir, patch); err != nil {
+			return createdBranches, fmt.Errorf("apply failed for %s: %w", layer.Name, err)
+		}
+
+		allFiles := layer.AllFilePaths()
+		if err := gitpkg.AddAt(wtDir, allFiles...); err != nil {
+			return createdBranches, fmt.Errorf("cannot stage files for %s: %w", layer.Name, err)
+		}
+
+		if err := gitpkg.CommitAt(wtDir, layer.Description); err != nil {
+			return createdBranches, fmt.Errorf("cannot commit %s: %w", layer.Name, err)
+		}
+
+		s.Nodes = append(s.Nodes, node)
+		parent = branchName
+	}
+
+	if err := stack.Save(root, s); err != nil {
+		return createdBranches, fmt.Errorf("cannot save stack: %w", err)
+	}
+
+	return createdBranches, nil
+}
+
 // ValidateTree checks that two refs have identical trees.
 // Returns nil if they match, an error if they differ.
 func ValidateTree(source, lastBranch string) error {

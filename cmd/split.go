@@ -42,6 +42,7 @@ func init() {
 	splitCmd.Flags().Bool("dry-run", false, "show the split plan without executing")
 	splitCmd.Flags().BoolP("yes", "y", false, "skip confirmation prompt")
 	splitCmd.Flags().Bool("no-push", false, "create branches locally without pushing or creating PRs")
+	splitCmd.Flags().Bool("worktrees", false, "create each split branch as a git worktree (worktree mode)")
 	_ = splitCmd.MarkFlagRequired("from")
 	_ = splitCmd.MarkFlagRequired("stack")
 	_ = splitCmd.RegisterFlagCompletionFunc("from", completeGitBranches)
@@ -61,6 +62,7 @@ func runSplitCmd(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	yes, _ := cmd.Flags().GetBool("yes")
 	noPush, _ := cmd.Flags().GetBool("no-push")
+	worktreeMode, _ := cmd.Flags().GetBool("worktrees")
 
 	// --- Preconditions ---
 
@@ -263,9 +265,32 @@ execute:
 	originalBranch, _ := gitpkg.CurrentBranch()
 
 	fmt.Println("\nExecuting split...")
-	branches, err := splitpkg.Execute(plan, stackName, base, fromBranch, root)
+	var branches []string
+	if worktreeMode {
+		cfg, _ := cfgpkg.Load(root)
+		addFn := func(node *stack.Node, createFrom string) error {
+			return addWorktreeForNode(cfg, root, node, createFrom)
+		}
+		branches, err = splitpkg.ExecuteWorktree(plan, stackName, base, fromBranch, root, addFn)
+	} else {
+		branches, err = splitpkg.Execute(plan, stackName, base, fromBranch, root)
+	}
 	if err != nil {
-		splitpkg.Cleanup(branches, originalBranch, root, stackName)
+		if worktreeMode {
+			// Cleanup worktree-mode branches: remove worktrees and stack file.
+			s2, _ := stack.LoadStack(root, stackName)
+			if s2 != nil {
+				for i := range s2.Nodes {
+					_ = removeWorktreeForNode(root, &s2.Nodes[i], true)
+				}
+			}
+			for _, b := range branches {
+				_ = gitpkg.DeleteBranch(b)
+			}
+			_ = os.Remove(stack.StackPath(root, stackName))
+		} else {
+			splitpkg.Cleanup(branches, originalBranch, root, stackName)
+		}
 		return err
 	}
 
@@ -279,7 +304,20 @@ execute:
 	// --- Validate tree identity ---
 	lastBranch := branches[len(branches)-1]
 	if err := splitpkg.ValidateTree(fromBranch, lastBranch); err != nil {
-		splitpkg.Cleanup(branches, originalBranch, root, stackName)
+		if worktreeMode {
+			s2, _ := stack.LoadStack(root, stackName)
+			if s2 != nil {
+				for i := range s2.Nodes {
+					_ = removeWorktreeForNode(root, &s2.Nodes[i], true)
+				}
+			}
+			for _, b := range branches {
+				_ = gitpkg.DeleteBranch(b)
+			}
+			_ = os.Remove(stack.StackPath(root, stackName))
+		} else {
+			splitpkg.Cleanup(branches, originalBranch, root, stackName)
+		}
 		return err
 	}
 	fmt.Printf("  %s Tree identity verified — split is lossless\n", ui.SymOK)
@@ -291,16 +329,20 @@ execute:
 
 	// --- Save session ID ---
 	if result.SessionID != "" {
-		local, _ := stack.LoadLocal(root)
-		if local.SplitSessions == nil {
-			local.SplitSessions = make(map[string]string)
-		}
-		local.SplitSessions[stackName] = result.SessionID
-		stack.SaveLocal(root, local)
+		sessionID := result.SessionID
+		_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+			if ls.SplitSessions == nil {
+				ls.SplitSessions = make(map[string]string)
+			}
+			ls.SplitSessions[stackName] = sessionID
+			return nil
+		})
 	}
 
 	if noPush {
-		gitpkg.Checkout(originalBranch)
+		if !worktreeMode {
+			gitpkg.Checkout(originalBranch)
+		}
 		fmt.Printf("\n%s Split complete — %d branches created in stack %q (local only)\n",
 			ui.SymOK, len(branches), stackName)
 		fmt.Println("\nNext steps:")
@@ -345,7 +387,9 @@ execute:
 	}
 
 	// --- Restore + Report ---
-	gitpkg.Checkout(originalBranch)
+	if !worktreeMode {
+		gitpkg.Checkout(originalBranch)
+	}
 
 	fmt.Printf("\n%s Split complete — %d branches created in stack %q\n",
 		ui.SymOK, len(branches), stackName)

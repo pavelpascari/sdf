@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// LockTimeout bounds how long an sdf process waits to acquire a stack lock.
+const LockTimeout = 10 * time.Second
+
 // staleAfter is how old a lock may be before it is considered abandoned.
 const staleAfter = 5 * time.Minute
 
@@ -43,9 +46,11 @@ func AcquireLock(root, stackID string, timeout time.Duration) (*Lock, error) {
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if err == nil {
-			data, _ := json.Marshal(lockData{PID: os.Getpid(), Stamp: time.Now().Unix()})
-			_, _ = f.Write(data)
+			// Atomically claimed ownership via O_EXCL. Close the empty file and
+			// fill content through the shared writeLockFile path so there is only
+			// one place that serializes lockData.
 			_ = f.Close()
+			_ = writeLockFile(path, lockData{PID: os.Getpid(), Stamp: time.Now().Unix()})
 			return &Lock{path: path}, nil
 		}
 		if !os.IsExist(err) {
@@ -77,7 +82,15 @@ func isStaleLock(path string) bool {
 	}
 	var d lockData
 	if json.Unmarshal(data, &d) != nil {
-		return true // unparseable → treat as stale
+		// Unparseable: likely a lock being written right now (O_EXCL created,
+		// content not yet flushed). Treat a recent file as held to avoid a
+		// TOCTOU steal, but reclaim a stale one via mtime so a crash between
+		// create and write cannot leave a permanent lock.
+		info, statErr := os.Stat(path)
+		if statErr != nil || time.Since(info.ModTime()) > staleAfter {
+			return true
+		}
+		return false
 	}
 	if time.Since(time.Unix(d.Stamp, 0)) > staleAfter {
 		return true

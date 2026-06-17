@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	claudepkg "github.com/pavelpascari/sdf/internal/claude"
@@ -119,9 +120,30 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// normPath resolves symlinks in p, falling back to p on error.
+// This prevents false positives on macOS where /tmp is a symlink to /private/tmp.
+func normPath(p string) string {
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
+}
+
 // checkWorktrees verifies worktree-mode stacks against git's worktree list and
 // the filesystem. Returns a list of human-readable problems (empty = healthy).
 func checkWorktrees(root string) []string {
+	var gitPaths []string
+	if list, err := gitpkg.WorktreeList(); err == nil {
+		for _, w := range list {
+			gitPaths = append(gitPaths, w.Path)
+		}
+	}
+	return checkWorktreesWithPaths(root, gitPaths)
+}
+
+// checkWorktreesWithPaths is the testable core of checkWorktrees.
+// gitPaths is the list of paths from `git worktree list`.
+func checkWorktreesWithPaths(root string, gitPaths []string) []string {
 	var problems []string
 	stacks, err := stack.LoadAll(root)
 	if err != nil {
@@ -129,10 +151,8 @@ func checkWorktrees(root string) []string {
 	}
 
 	known := map[string]bool{}
-	if list, err := gitpkg.WorktreeList(); err == nil {
-		for _, w := range list {
-			known[w.Path] = true
-		}
+	for _, p := range gitPaths {
+		known[normPath(p)] = true
 	}
 
 	for _, s := range stacks {
@@ -149,7 +169,7 @@ func checkWorktrees(root string) []string {
 			}
 			if _, statErr := os.Stat(n.WorktreePath); os.IsNotExist(statErr) {
 				problems = append(problems, fmt.Sprintf("stack %s: worktree for %s is missing at %s", s.StackID, n.Branch, n.WorktreePath))
-			} else if !known[n.WorktreePath] {
+			} else if !known[normPath(n.WorktreePath)] {
 				problems = append(problems, fmt.Sprintf("stack %s: %s is not registered with git (run `git worktree prune` / re-create)", s.StackID, n.WorktreePath))
 			}
 		}

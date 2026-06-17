@@ -70,12 +70,16 @@ func TestPruneLocalState(t *testing.T) {
 	}
 	keep := map[string]bool{"keep": true}
 
-	changed := pruneLocalState(local, keep)
-	if !changed {
+	plan := planLocalPrune(local, keep)
+	if !plan.any() {
 		t.Fatal("expected local state to change")
 	}
+	plan.apply(local)
 	if _, ok := local.SplitSessions["remove"]; ok {
 		t.Fatal("expected stale split session to be removed")
+	}
+	if _, ok := local.SplitSessions["keep"]; !ok {
+		t.Fatal("expected kept split session to remain")
 	}
 	if local.SyncProgress != nil {
 		t.Fatal("expected stale sync progress to be removed")

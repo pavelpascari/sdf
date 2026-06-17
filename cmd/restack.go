@@ -205,8 +205,7 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	originalNodes := make([]stack.Node, len(s.Nodes))
 	copy(originalNodes, s.Nodes)
 
-	ls, _ := stack.LoadLocal(root)
-	ls.RestackProgress = &stack.RestackProgress{
+	restackProgress := &stack.RestackProgress{
 		StackID:        s.StackID,
 		OriginalBranch: originalBranch,
 		OriginalNodes:  originalNodes,
@@ -214,7 +213,10 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		Plan:           serialPlan,
 		ResumeIndex:    0,
 	}
-	if err := stack.SaveLocal(root, ls); err != nil {
+	if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = restackProgress
+		return nil
+	}); err != nil {
 		return fmt.Errorf("cannot save restack progress: %w", err)
 	}
 
@@ -237,24 +239,49 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 			oldBase = a.OldParent
 		}
 
-		if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
-			if conflictErr := handleMoveConflict(s, a.Branch, err, bus); conflictErr != nil {
-				// Save progress with resume index
-				ls, _ := stack.LoadLocal(root)
-				if ls.RestackProgress != nil {
-					ls.RestackProgress.ResumeIndex = i
-				}
-				stack.SaveLocal(root, ls)
-				stack.Save(root, s)
-				gitpkg.Checkout(originalBranch)
-				return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
-					a.Branch, conflictErr)
+		if s.Worktree {
+			dir, err := requireBranchWorktreeDir(s, a.Branch)
+			if err != nil {
+				return err
 			}
+			if rebaseErr := gitpkg.RebaseOntoAt(dir, parentTip, oldBase, a.Branch); rebaseErr != nil {
+				if conflictErr := handleMoveConflict(s, a.Branch, rebaseErr, bus, dir); conflictErr != nil {
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
+					_ = stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
+						fresh.Nodes = s.Nodes
+						return nil
+					})
+					return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
+						a.Branch, conflictErr)
+				}
+			}
+			newTip, _ := gitpkg.RevParseAt(dir, a.NewParent)
+			node.BaseTip = newTip
+		} else {
+			if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
+				if conflictErr := handleMoveConflict(s, a.Branch, err, bus, ""); conflictErr != nil {
+					// Save progress with resume index
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
+					stack.Save(root, s)
+					gitpkg.Checkout(originalBranch)
+					return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
+						a.Branch, conflictErr)
+				}
+			}
+			// Update BaseTip
+			newTip, _ := gitpkg.RevParse(a.NewParent)
+			node.BaseTip = newTip
 		}
-
-		// Update BaseTip
-		newTip, _ := gitpkg.RevParse(a.NewParent)
-		node.BaseTip = newTip
 		rebased = append(rebased, a.Branch)
 
 		bus.Printf("  %s %s rebased", ui.SymOK, ui.Branch(a.Branch))
@@ -263,10 +290,23 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	// All rebases succeeded — now push all affected branches
 	bus.Print("")
 	for _, branch := range rebased {
-		if err := gitpkg.Push(branch); err != nil {
-			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+		if s.Worktree {
+			dir, err := requireBranchWorktreeDir(s, branch)
+			if err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+				continue
+			}
+			if err := gitpkg.PushAt(dir, branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			} else {
+				bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			}
 		} else {
-			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			if err := gitpkg.Push(branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			} else {
+				bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			}
 		}
 	}
 
@@ -289,18 +329,30 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		bus.Warnf("warning: could not update PR navigation: %v", err)
 	}
 
-	// Restore original branch
-	gitpkg.Checkout(originalBranch)
+	if !s.Worktree {
+		// Restore original branch (no-op in worktree mode — branches live in their own worktrees)
+		gitpkg.Checkout(originalBranch)
+	}
 
 	// Save stack
-	if err := stack.Save(root, s); err != nil {
-		return fmt.Errorf("cannot save stack: %w", err)
+	if s.Worktree {
+		if err := stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
+			fresh.Nodes = s.Nodes
+			return nil
+		}); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
+	} else {
+		if err := stack.Save(root, s); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
 	}
 
 	// Clear restack progress
-	ls, _ = stack.LoadLocal(root)
-	ls.RestackProgress = nil
-	stack.SaveLocal(root, ls)
+	_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = nil
+		return nil
+	})
 
 	bus.Printf("\n%s Restack complete.", ui.SymOK)
 	return nil
@@ -326,44 +378,86 @@ func runRestackAbort() error {
 	progress := ls.RestackProgress
 	bus.Printf("Aborting restack in stack %s...", ui.Bold.Render(progress.StackID))
 
-	// Abort any in-progress rebase
-	gitpkg.RebaseAbort()
-
-	// Restore each branch to its pre-restack SHA
-	for branch, sha := range progress.BranchSHAs {
-		bus.Printf("  restoring %s to %s...", ui.Branch(branch), short(sha))
-		if err := gitpkg.Checkout(branch); err != nil {
-			bus.Warnf("  %s could not checkout %s: %v", ui.SymWarn, ui.Branch(branch), err)
-			continue
-		}
-		if err := gitpkg.ResetHard(sha); err != nil {
-			bus.Warnf("  %s could not reset %s: %v", ui.SymWarn, ui.Branch(branch), err)
-			continue
-		}
-		bus.Printf("  %s %s restored", ui.SymOK, ui.Branch(branch))
-
-		// Push restored branch
-		if err := gitpkg.Push(branch); err != nil {
-			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
-		}
-	}
-
-	// Restore original node order and BaseTips
+	// Load the stack to determine worktree mode and locate worktree paths.
 	s, err := stack.LoadStack(root, progress.StackID)
 	if err != nil {
 		return fmt.Errorf("cannot load stack: %w", err)
 	}
-	s.Nodes = progress.OriginalNodes
-	if err := stack.Save(root, s); err != nil {
-		return fmt.Errorf("cannot save stack: %w", err)
+
+	if s.Worktree {
+		// Abort any in-progress rebase in each branch's own worktree.
+		// We don't know which branch was mid-rebase, so try all branches.
+		for branch := range progress.BranchSHAs {
+			if dir, err := requireBranchWorktreeDir(s, branch); err == nil && dir != "" {
+				_ = gitpkg.RebaseAbortAt(dir)
+			}
+		}
+
+		// Restore each branch in its own worktree.
+		for branch, sha := range progress.BranchSHAs {
+			bus.Printf("  restoring %s to %s...", ui.Branch(branch), short(sha))
+			dir, err := requireBranchWorktreeDir(s, branch)
+			if err != nil {
+				bus.Warnf("  %s %v", ui.SymWarn, err)
+				continue
+			}
+			if err := gitpkg.ResetHardAt(dir, sha); err != nil {
+				bus.Warnf("  %s could not reset %s: %v", ui.SymWarn, ui.Branch(branch), err)
+				continue
+			}
+			bus.Printf("  %s %s restored", ui.SymOK, ui.Branch(branch))
+
+			// Push restored branch from its worktree.
+			if err := gitpkg.PushAt(dir, branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			}
+		}
+
+		// Restore original node order and BaseTips under the lock.
+		if err := stack.WithLock(root, progress.StackID, func(fresh *stack.Stack) error {
+			fresh.Nodes = progress.OriginalNodes
+			return nil
+		}); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
+		// No branch restore needed in worktree mode — each branch lives in its own worktree.
+	} else {
+		// Abort any in-progress rebase
+		gitpkg.RebaseAbort()
+
+		// Restore each branch to its pre-restack SHA
+		for branch, sha := range progress.BranchSHAs {
+			bus.Printf("  restoring %s to %s...", ui.Branch(branch), short(sha))
+			if err := gitpkg.Checkout(branch); err != nil {
+				bus.Warnf("  %s could not checkout %s: %v", ui.SymWarn, ui.Branch(branch), err)
+				continue
+			}
+			if err := gitpkg.ResetHard(sha); err != nil {
+				bus.Warnf("  %s could not reset %s: %v", ui.SymWarn, ui.Branch(branch), err)
+				continue
+			}
+			bus.Printf("  %s %s restored", ui.SymOK, ui.Branch(branch))
+
+			// Push restored branch
+			if err := gitpkg.Push(branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			}
+		}
+
+		s.Nodes = progress.OriginalNodes
+		if err := stack.Save(root, s); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
+
+		// Restore original branch
+		gitpkg.Checkout(progress.OriginalBranch)
 	}
 
-	// Restore original branch
-	gitpkg.Checkout(progress.OriginalBranch)
-
 	// Clear progress
-	ls.RestackProgress = nil
-	if err := stack.SaveLocal(root, ls); err != nil {
+	if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = nil
+		return nil
+	}); err != nil {
 		return fmt.Errorf("cannot clear restack progress: %w", err)
 	}
 
@@ -413,19 +507,47 @@ func runRestackContinue() error {
 			oldBase = a.OldParent
 		}
 
-		if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
-			if conflictErr := handleMoveConflict(s, a.Branch, err, bus); conflictErr != nil {
-				ls.RestackProgress.ResumeIndex = i
-				stack.SaveLocal(root, ls)
-				stack.Save(root, s)
-				gitpkg.Checkout(progress.OriginalBranch)
-				return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
-					a.Branch, conflictErr)
+		if s.Worktree {
+			dir, err := requireBranchWorktreeDir(s, a.Branch)
+			if err != nil {
+				return err
 			}
+			if rebaseErr := gitpkg.RebaseOntoAt(dir, parentTip, oldBase, a.Branch); rebaseErr != nil {
+				if conflictErr := handleMoveConflict(s, a.Branch, rebaseErr, bus, dir); conflictErr != nil {
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
+					_ = stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
+						fresh.Nodes = s.Nodes
+						return nil
+					})
+					return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
+						a.Branch, conflictErr)
+				}
+			}
+			newTip, _ := gitpkg.RevParseAt(dir, a.NewParent)
+			node.BaseTip = newTip
+		} else {
+			if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
+				if conflictErr := handleMoveConflict(s, a.Branch, err, bus, ""); conflictErr != nil {
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
+					stack.Save(root, s)
+					gitpkg.Checkout(progress.OriginalBranch)
+					return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
+						a.Branch, conflictErr)
+				}
+			}
+			newTip, _ := gitpkg.RevParse(a.NewParent)
+			node.BaseTip = newTip
 		}
-
-		newTip, _ := gitpkg.RevParse(a.NewParent)
-		node.BaseTip = newTip
 		rebased = append(rebased, a.Branch)
 
 		bus.Printf("  %s %s rebased", ui.SymOK, ui.Branch(a.Branch))
@@ -438,10 +560,23 @@ func runRestackContinue() error {
 	}
 	bus.Print("")
 	for _, branch := range rebased {
-		if err := gitpkg.Push(branch); err != nil {
-			bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+		if s.Worktree {
+			dir, err := requireBranchWorktreeDir(s, branch)
+			if err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+				continue
+			}
+			if err := gitpkg.PushAt(dir, branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			} else {
+				bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			}
 		} else {
-			bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			if err := gitpkg.Push(branch); err != nil {
+				bus.Warnf("  %s could not push %s: %v", ui.SymWarn, ui.Branch(branch), err)
+			} else {
+				bus.Printf("  %s %s pushed", ui.SymOK, ui.Branch(branch))
+			}
 		}
 	}
 
@@ -464,15 +599,28 @@ func runRestackContinue() error {
 		bus.Warnf("warning: could not update PR navigation: %v", err)
 	}
 
-	// Restore original branch
-	gitpkg.Checkout(progress.OriginalBranch)
+	if !s.Worktree {
+		// Restore original branch (no-op in worktree mode — branches live in their own worktrees)
+		gitpkg.Checkout(progress.OriginalBranch)
+	}
 
 	// Save stack and clear progress
-	if err := stack.Save(root, s); err != nil {
-		return fmt.Errorf("cannot save stack: %w", err)
+	if s.Worktree {
+		if err := stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
+			fresh.Nodes = s.Nodes
+			return nil
+		}); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
+	} else {
+		if err := stack.Save(root, s); err != nil {
+			return fmt.Errorf("cannot save stack: %w", err)
+		}
 	}
-	ls.RestackProgress = nil
-	if err := stack.SaveLocal(root, ls); err != nil {
+	if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = nil
+		return nil
+	}); err != nil {
 		return fmt.Errorf("cannot clear restack progress: %w", err)
 	}
 

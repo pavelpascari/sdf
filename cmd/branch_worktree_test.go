@@ -11,6 +11,12 @@ import (
 	"github.com/pavelpascari/sdf/internal/stack"
 )
 
+// The concurrent-append contract (WithLock serializes concurrent stack writes)
+// is tested directly at the stack layer in
+// internal/stack/TestWithLockSerializesConcurrentAppends. That test is
+// genuinely concurrent (20 goroutines, no serializing mutex) and is the
+// load-bearing guard for the race that branch.go relies on.
+
 func TestBranchWorktreeModeCreatesWorktree(t *testing.T) {
 	root := bareRepoWithClone(t) // from new_worktree_test.go (same package)
 	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {

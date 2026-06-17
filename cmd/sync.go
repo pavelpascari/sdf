@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -169,6 +170,44 @@ func RunSync(args []string) error {
 
 // runSyncContinue resumes a sync that was paused for manual conflict resolution.
 func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
+	// Worktree-mode check: identify the current worktree root via git (works in
+	// detached HEAD and from any subdirectory) and match it against stored
+	// WorktreeProgress entries. This is more reliable than os.Getwd() (which
+	// fails if the user cd'd into a subdirectory) and more reliable than
+	// CurrentBranch() (which returns "HEAD" during a paused rebase).
+	if local0, _ := stack.LoadLocal(root); local0 != nil && len(local0.WorktreeProgress) > 0 {
+		if wtRoot, err := gitpkg.RepoRoot(); err == nil {
+			normalizeSymlinks := func(p string) string {
+				if resolved, err := filepath.EvalSymlinks(p); err == nil {
+					return resolved
+				}
+				return p
+			}
+			normWtRoot := normalizeSymlinks(wtRoot)
+			for branch, prog := range local0.WorktreeProgress {
+				if prog != nil && prog.WorktreePath != "" {
+					if normalizeSymlinks(prog.WorktreePath) == normWtRoot {
+						s, err := stack.LoadByBranch(root, branch)
+						if err == nil && s.Worktree {
+							return continueWorktreeSync(root, s.StackID, branch, bus)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Also check via current branch name (works when not in detached HEAD state).
+	if cur, _ := gitpkg.CurrentBranch(); cur != "" && cur != "HEAD" {
+		if s, e := stack.LoadByBranch(root, cur); e == nil && s.Worktree {
+			local, _ := stack.LoadLocal(root)
+			if local != nil && local.WorktreeProgress != nil && local.WorktreeProgress[cur] != nil {
+				return continueWorktreeSync(root, s.StackID, cur, bus)
+			}
+			return fmt.Errorf("no paused worktree sync for %s — run `sdf sync` in this worktree", cur)
+		}
+	}
+
 	local, err := stack.LoadLocal(root)
 	if err != nil {
 		return err
@@ -180,7 +219,12 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	progress := local.SyncProgress
 
 	if progress.WorktreePath != "" {
-		return continueWorktreeSync(root, local, progress, bus)
+		// Legacy path: monolithic SyncProgress with WorktreePath set.
+		// This can happen if a worktree conflict was recorded before the per-branch
+		// map was introduced. Route to continueWorktreeSync using the stored stackID.
+		if s, e := stack.LoadByBranch(root, progress.PausedAt); e == nil {
+			return continueWorktreeSync(root, s.StackID, progress.PausedAt, bus)
+		}
 	}
 
 	switch {
@@ -196,8 +240,10 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	default:
 		// The parent tip is NOT an ancestor — the rebase was aborted.
 		bus.Printf("Rebase of %s was aborted. Starting a fresh sync.", ui.Branch(progress.PausedAt))
-		local.SyncProgress = nil
-		stack.SaveLocal(root, local)
+		_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+			ls.SyncProgress = nil
+			return nil
+		})
 		return runSyncFull(root, "", false, false, false, false, result, bus)
 	}
 
@@ -249,8 +295,10 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	local.SyncProgress = nil
-	stack.SaveLocal(root, local)
+	_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.SyncProgress = nil
+		return nil
+	})
 
 	gitpkg.Checkout(progress.OriginalBranch)
 
@@ -269,8 +317,10 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 				"  To abort:     run `git rebase --abort`, then `sdf sync`",
 				local.SyncProgress.PausedAt)
 		}
-		local.SyncProgress = nil
-		stack.SaveLocal(root, local)
+		_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+			ls.SyncProgress = nil
+			return nil
+		})
 	}
 
 	s, err := resolveStack(root, stackName)
@@ -280,10 +330,13 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 
 	// Worktree-mode stacks bypass the monolithic fetch/reconcile/plan flow.
 	// Instead they run a per-branch pull step (or a dashboard overview).
+	// Pass identifiers (stackID + branch name) rather than the pre-loaded *s
+	// so that runWorktreeSyncStep can reload a fresh copy inside the lock
+	// (#5 fix: lock guards load+mutate+save, not just mutate+save).
 	if s.Worktree {
 		cur, _ := gitpkg.CurrentBranch()
-		if node := currentWorktreeNode(s, cur); node != nil {
-			return runWorktreeSyncStep(root, s, node, bus)
+		if currentWorktreeNode(s, cur) != nil {
+			return runWorktreeSyncStep(root, s.StackID, cur, bus)
 		}
 		return runWorktreeDashboard(root, s, bus)
 	}
@@ -1437,14 +1490,16 @@ func pauseForManualResolution(root string, s *stack.Stack, branch, originalBranc
 
 	stack.Save(root, s)
 
-	local, _ := stack.LoadLocal(root)
-	local.SyncProgress = &stack.SyncProgress{
+	progress := &stack.SyncProgress{
 		PausedAt:       branch,
 		ResumeIndex:    nodeIndex,
 		OriginalBranch: originalBranch,
 		ParentTip:      parentTip,
 	}
-	stack.SaveLocal(root, local)
+	_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.SyncProgress = progress
+		return nil
+	})
 
 	bus.Printf("\n  Sync paused. Resolve conflicts in %s, then:", ui.Branch(branch))
 	bus.Print("")

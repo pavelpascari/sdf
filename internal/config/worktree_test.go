@@ -8,8 +8,8 @@ import (
 
 func TestSanitizeBranchForPath(t *testing.T) {
 	cases := map[string]string{
-		"feat/a":      "feat-a",
-		"stack/sub/x": "stack-sub-x",
+		"feat/a":      filepath.FromSlash("feat/a"),
+		"stack/sub/x": filepath.FromSlash("stack/sub/x"),
 		"plain":       "plain",
 	}
 	for in, want := range cases {
@@ -23,7 +23,7 @@ func TestWorktreePathForDefault(t *testing.T) {
 	cfg := Defaults()
 	root := "/home/u/proj/myrepo"
 	got := cfg.WorktreePathFor(root, "feat/a")
-	want := filepath.Clean("/home/u/proj/myrepo.worktrees/feat-a")
+	want := filepath.Clean("/home/u/proj/myrepo.worktrees/feat/a")
 	if got != want {
 		t.Errorf("WorktreePathFor default = %q, want %q", got, want)
 	}
@@ -33,8 +33,22 @@ func TestWorktreePathForCustomAbsolute(t *testing.T) {
 	cfg := Defaults()
 	cfg.Worktree.BasePath = "/scratch/wt"
 	got := cfg.WorktreePathFor("/home/u/proj/myrepo", "feat/a")
-	if got != filepath.Clean("/scratch/wt/feat-a") {
+	if got != filepath.Clean("/scratch/wt/feat/a") {
 		t.Errorf("WorktreePathFor custom = %q", got)
+	}
+}
+
+func TestWorktreePathForNested(t *testing.T) {
+	cfg := Defaults()
+	root := "/home/u/proj/myrepo"
+	if got := cfg.WorktreePathFor(root, "feat/login"); got != filepath.Clean("/home/u/proj/myrepo.worktrees/feat/login") {
+		t.Errorf("nested path = %q", got)
+	}
+	// distinct branches must map to distinct dirs
+	a := cfg.WorktreePathFor(root, "feat/login")
+	b := cfg.WorktreePathFor(root, "feat-login")
+	if a == b {
+		t.Errorf("feat/login and feat-login collided: %q", a)
 	}
 }
 

@@ -2,6 +2,7 @@
 package stack
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,17 +20,37 @@ func sdfRepo(t *testing.T) string {
 
 func TestAcquireAndReleaseLock(t *testing.T) {
 	root := sdfRepo(t)
+	before := time.Now().Unix()
 	l, err := AcquireLock(root, "feat", time.Second)
 	if err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, SDFDir, "feat.lock")); err != nil {
+	lockFile := filepath.Join(root, SDFDir, "feat.lock")
+	if _, err := os.Stat(lockFile); err != nil {
 		t.Fatalf("lock file missing: %v", err)
 	}
+
+	// Assert the lock file contains valid JSON with PID and Stamp fields.
+	raw, err := os.ReadFile(lockFile)
+	if err != nil {
+		t.Fatalf("read lock file: %v", err)
+	}
+	var d lockData
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatalf("lock file is not valid JSON: %v (content: %q)", err, raw)
+	}
+	if d.PID != os.Getpid() {
+		t.Errorf("lock PID: got %d, want %d", d.PID, os.Getpid())
+	}
+	after := time.Now().Unix()
+	if d.Stamp < before || d.Stamp > after {
+		t.Errorf("lock Stamp %d is outside expected range [%d, %d]", d.Stamp, before, after)
+	}
+
 	if err := l.Release(); err != nil {
 		t.Fatalf("release: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, SDFDir, "feat.lock")); !os.IsNotExist(err) {
+	if _, err := os.Stat(lockFile); !os.IsNotExist(err) {
 		t.Errorf("lock file should be removed after release")
 	}
 }
@@ -64,4 +85,26 @@ func TestStealsStaleLock(t *testing.T) {
 		t.Fatalf("should steal stale lock: %v", err)
 	}
 	l.Release()
+}
+
+func TestStaleLockReclaimsOldCorruptFile(t *testing.T) {
+	root := sdfRepo(t)
+	path := filepath.Join(root, SDFDir, "feat.lock")
+	// Fresh corrupt file: NOT stale (being written) -> AcquireLock should time out fast.
+	if err := os.WriteFile(path, []byte("not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AcquireLock(root, "feat", 150*time.Millisecond); err == nil {
+		t.Fatal("fresh corrupt lock should not be stolen")
+	}
+	// Make it old: now it IS stale and should be reclaimed.
+	old := time.Now().Add(-2 * staleAfter)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	l, err := AcquireLock(root, "feat", time.Second)
+	if err != nil {
+		t.Fatalf("old corrupt lock should be reclaimed: %v", err)
+	}
+	_ = l.Release()
 }

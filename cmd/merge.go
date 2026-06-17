@@ -119,8 +119,24 @@ func runMergeLogic(stackFlag string, yes bool, method string, autoMerge bool, js
 		mergeBus.Warnf("could not fast-forward %s: %v", s.Base, err)
 	}
 
-	reconcileSyncPRStates(s, mergeBus)
-	stack.Save(root, s)
+	// Worktree stacks: reconcile must be atomic with the save so a concurrent
+	// in-worktree sdf sync that updates a downstream BaseTip is not clobbered.
+	if s.Worktree {
+		if err := stack.WithLock(root, s.StackID, func(ls *stack.Stack) error {
+			reconcileSyncPRStates(ls, mergeBus)
+			return nil
+		}); err != nil {
+			return err
+		}
+		// Reload a fresh snapshot for the read-only planning that follows.
+		s, err = stack.LoadStack(root, s.StackID)
+		if err != nil {
+			return err
+		}
+	} else {
+		reconcileSyncPRStates(s, mergeBus)
+		stack.Save(root, s)
+	}
 
 	// Find head PR
 	node, err := findHeadPR(s)
@@ -202,12 +218,29 @@ func runMergeLogic(stackFlag string, yes bool, method string, autoMerge bool, js
 	// for the post-merge sync.
 	gitpkg.ResetHead()
 
+	// Worktree stacks: mark merged + cleanup under a single WithLock so a
+	// concurrent sdf sync updating a downstream BaseTip is not clobbered.
+	// The lock is held for a short section only — gh calls already happened.
 	if s.Worktree {
-		lock, lerr := stack.AcquireLock(root, s.StackID, stackLockTimeout)
-		if lerr != nil {
-			return lerr
+		mergedBranch := node.Branch
+		if err := stack.WithLock(root, s.StackID, func(ls *stack.Stack) error {
+			n := ls.FindNode(mergedBranch)
+			if n == nil {
+				return fmt.Errorf("branch %s vanished from stack", mergedBranch)
+			}
+			n.Status = "merged"
+			cleanupMergedWorktree(root, ls, n, false, mergeBus)
+			return nil
+		}); err != nil {
+			return err
 		}
-		defer func() { _ = lock.Release() }()
+		mergeBus.Printf("  %s PR %s merged", ui.SymOK, ui.PR(node.PR))
+		if jsonMode {
+			_ = mergeBus.Finish()
+			data, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(data))
+		}
+		return nil // pull model: downstream syncs on its own turn, no cascade
 	}
 
 	node.Status = "merged"
@@ -216,18 +249,6 @@ func runMergeLogic(stackFlag string, yes bool, method string, autoMerge bool, js
 	}
 
 	mergeBus.Printf("  %s PR %s merged", ui.SymOK, ui.PR(node.PR))
-
-	// Worktree stacks: remove merged worktree and skip cascade (pull model).
-	if s.Worktree {
-		cleanupMergedWorktree(root, s, node, false, mergeBus)
-		_ = stack.Save(root, s)
-		if jsonMode {
-			_ = mergeBus.Finish()
-			data, _ := json.MarshalIndent(result, "", "  ")
-			fmt.Println(string(data))
-		}
-		return nil // pull model: downstream syncs on its own turn, no cascade
-	}
 
 	// Post-merge: sync remaining branches
 	if remaining > 0 {

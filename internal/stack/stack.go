@@ -45,9 +45,10 @@ const LocalFile = "local.json"
 // LocalState is the root structure of .sdf/local.json.
 // Each subsystem owns its own field — they don't clobber each other.
 type LocalState struct {
-	SyncProgress    *SyncProgress     `json:"sync_progress,omitempty"`
-	SplitSessions   map[string]string `json:"split_sessions,omitempty"` // stack_name → session_id
-	RestackProgress *RestackProgress  `json:"restack_progress,omitempty"`
+	SyncProgress     *SyncProgress            `json:"sync_progress,omitempty"`
+	SplitSessions    map[string]string        `json:"split_sessions,omitempty"` // stack_name → session_id
+	RestackProgress  *RestackProgress         `json:"restack_progress,omitempty"`
+	WorktreeProgress map[string]*SyncProgress `json:"worktree_progress,omitempty"` // branch → progress
 }
 
 // RestackProgress tracks a restack operation so --continue can resume
@@ -95,15 +96,35 @@ func LoadLocal(root string) (*LocalState, error) {
 	return &ls, nil
 }
 
-// SaveLocal writes .sdf/local.json.
+// SaveLocal writes .sdf/local.json atomically using a temp file in the same
+// directory followed by os.Rename, so readers always see a complete file.
 func SaveLocal(root string, ls *LocalState) error {
-	path := filepath.Join(root, SDFDir, LocalFile)
+	sdfDir := filepath.Join(root, SDFDir)
 	data, err := json.MarshalIndent(ls, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot marshal local state: %w", err)
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	path := filepath.Join(sdfDir, LocalFile)
+	tmp, err := os.CreateTemp(sdfDir, ".local.*.tmp")
+	if err != nil {
+		return fmt.Errorf("cannot create temp local file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("cannot write temp local file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("cannot rename temp local file: %w", err)
+	}
+	return nil
 }
 
 // FindRoot walks up from the current directory to find the repo root
@@ -286,20 +307,39 @@ func ListStacks(root string) ([]string, error) {
 	return names, nil
 }
 
-// Save writes the stack to .sdf/stacks/<stack_id>.json.
+// Save writes the stack to .sdf/stacks/<stack_id>.json atomically using a
+// temp file in the same directory followed by os.Rename, so readers always
+// see a complete file.
 func Save(root string, s *Stack) error {
 	stacksDir := filepath.Join(root, SDFDir, StacksDir)
 	if err := os.MkdirAll(stacksDir, 0755); err != nil {
 		return fmt.Errorf("cannot create %s: %w", stacksDir, err)
 	}
-
-	path := StackPath(root, s.StackID)
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot marshal stack: %w", err)
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	path := StackPath(root, s.StackID)
+	tmp, err := os.CreateTemp(stacksDir, "."+s.StackID+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("cannot create temp stack file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("cannot write temp stack file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("cannot rename temp stack file: %w", err)
+	}
+	return nil
 }
 
 // FindNode returns the node for the given branch name, or nil.

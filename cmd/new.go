@@ -128,15 +128,14 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 		return "", err
 	}
 
-	// Mark worktree mode on the freshly-created stack.
+	// Mark worktree mode on the freshly-created stack under the advisory lock
+	// so the read-modify-write is safe against concurrent access.
 	if worktree {
-		ws, err := stack.LoadStack(root, stackName)
-		if err != nil {
-			return "", fmt.Errorf("cannot load stack after init: %w", err)
-		}
-		ws.Worktree = true
-		if err := stack.Save(root, ws); err != nil {
-			return "", err
+		if err := stack.WithLock(root, stackName, func(ws *stack.Stack) error {
+			ws.Worktree = true
+			return nil
+		}); err != nil {
+			return "", fmt.Errorf("cannot enable worktree mode: %w", err)
 		}
 	}
 
@@ -170,12 +169,8 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 		return "", fmt.Errorf("cannot resolve base branch %s: %w", baseBranch, err)
 	}
 
-	// Load the stack and add the node
-	s, err := stack.LoadStack(root, stackName)
-	if err != nil {
-		return "", fmt.Errorf("cannot load stack after init: %w", err)
-	}
-
+	// Build the node (and perform git-side effects) BEFORE acquiring the lock.
+	// Only the JSON read-modify-write goes inside WithLock.
 	node := stack.Node{Branch: branchName, Status: "open", BaseTip: baseTip}
 	if worktree {
 		// First branch lives in a worktree; the main repo stays on the base.
@@ -187,8 +182,12 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 			return "", fmt.Errorf("cannot create branch: %w", err)
 		}
 	}
-	s.Nodes = append(s.Nodes, node)
-	if err := stack.Save(root, s); err != nil {
+
+	// Append the node to the stack JSON under the advisory lock.
+	if err := stack.WithLock(root, stackName, func(s *stack.Stack) error {
+		s.Nodes = append(s.Nodes, node)
+		return nil
+	}); err != nil {
 		return "", err
 	}
 

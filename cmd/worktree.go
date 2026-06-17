@@ -56,41 +56,60 @@ func runWorktreeEnable(cmd *cobra.Command, args []string) error {
 	bus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
 	defer func() { _ = bus.Finish() }()
 
-	lock, err := stack.AcquireLock(root, s.StackID, stackLockTimeout)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Release() }()
-
 	// Free all stack branches from the main repo so they can be checked out
-	// in worktrees.
+	// in worktrees. Do this before acquiring the lock (it's a git op, not a
+	// stack mutation).
 	if cur, _ := gitpkg.CurrentBranch(); s.FindNode(cur) != nil {
 		if err := gitpkg.Checkout(s.Base); err != nil {
 			return fmt.Errorf("cannot switch main repo to base %s: %w", s.Base, err)
 		}
 	}
 
-	s.Worktree = true
-	existing := existingWorktreePaths()
-
-	for i := range s.Nodes {
-		node := &s.Nodes[i]
-		if node.Status == "merged" || node.Status == "closed" {
-			continue
-		}
-		wantPath := cfg.WorktreePathFor(root, node.Branch)
-		if existing[wantPath] {
-			node.WorktreePath = wantPath // already materialized
-			continue
-		}
-		// Existing branch → check out into a worktree (createFrom == "").
-		if err := addWorktreeForNode(cfg, root, node, ""); err != nil {
+	// All mutations run under the lock. We persist after each successful
+	// worktree add so that a mid-loop failure never leaves orphaned worktrees
+	// (worktrees on disk with no recorded WorktreePath).
+	var enableErr error
+	err = stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
+		fresh.Worktree = true
+		// Persist the Worktree=true flag immediately so it survives even if the
+		// first worktree add fails.
+		if err := stack.Save(root, fresh); err != nil {
 			return err
 		}
-		bus.Printf("  %s → %s", node.Branch, node.WorktreePath)
-	}
 
-	if err := stack.Save(root, s); err != nil {
+		existing := existingWorktreePaths()
+
+		for i := range fresh.Nodes {
+			node := &fresh.Nodes[i]
+			if node.Status == "merged" || node.Status == "closed" {
+				continue
+			}
+			wantPath := cfg.WorktreePathFor(root, node.Branch)
+			if existing[wantPath] || node.WorktreePath == wantPath {
+				node.WorktreePath = wantPath // already materialized — idempotent
+				continue
+			}
+			// Existing branch → check out into a worktree (createFrom == "").
+			if addErr := addWorktreeForNode(cfg, root, node, ""); addErr != nil {
+				// The worktrees created so far are already saved. Return an
+				// informative error naming the conflicting branch.
+				enableErr = fmt.Errorf(
+					"cannot add worktree for branch %q: %w\n"+
+						"(branch may be checked out elsewhere — run `sdf doctor` or free the branch)",
+					node.Branch, addErr,
+				)
+				return enableErr
+			}
+			bus.Printf("  %s → %s", node.Branch, node.WorktreePath)
+			// Persist this node's WorktreePath immediately so it's recorded even
+			// if a later node fails.
+			if err := stack.Save(root, fresh); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	bus.Printf("Worktree mode enabled for stack %q", s.StackID)

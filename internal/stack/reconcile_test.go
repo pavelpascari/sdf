@@ -563,3 +563,66 @@ func assertHasChange(t *testing.T, changes []ReconcileChange, kind, branch strin
 	}
 	t.Errorf("expected change kind=%q branch=%q notable=%v not found in %v", kind, branch, notable, changes)
 }
+
+// TestApplyChangesPreservesWorktreeMode verifies that ApplyChanges does not
+// clobber the Stack.Worktree flag or any Node.WorktreePath values that were
+// already stored locally. New nodes from discovery should have empty WorktreePath.
+func TestApplyChangesPreservesWorktreeMode(t *testing.T) {
+	local := &Stack{
+		StackID:  "feat",
+		Base:     "main",
+		Worktree: true,
+		Nodes: []Node{
+			{Branch: "feat/a", PR: 10, Status: "open", WorktreePath: "/tmp/worktrees/feat-a"},
+			{Branch: "feat/b", PR: 11, Status: "open", WorktreePath: "/tmp/worktrees/feat-b"},
+		},
+	}
+
+	// Discovered stack reflects a status update on feat/a and a brand-new branch feat/c.
+	discovered := DiscoveredStack{
+		Base: "main",
+		Chains: []PRRecord{
+			{Number: 10, HeadRefName: "feat/a", BaseRefName: "main", Status: "merged"},
+			{Number: 11, HeadRefName: "feat/b", BaseRefName: "feat/a", Status: "open"},
+			{Number: 12, HeadRefName: "feat/c", BaseRefName: "feat/b", Status: "open"},
+		},
+	}
+
+	changes := Reconcile(local, discovered)
+	ApplyChanges(local, discovered, changes)
+
+	// Stack-level Worktree flag must survive.
+	if !local.Worktree {
+		t.Errorf("Stack.Worktree flag was cleared by ApplyChanges")
+	}
+
+	// Helper: find a node by branch.
+	findNode := func(branch string) *Node {
+		for i := range local.Nodes {
+			if local.Nodes[i].Branch == branch {
+				return &local.Nodes[i]
+			}
+		}
+		return nil
+	}
+
+	// Existing nodes must keep their WorktreePath.
+	if n := findNode("feat/a"); n == nil {
+		t.Error("feat/a node missing after ApplyChanges")
+	} else if n.WorktreePath != "/tmp/worktrees/feat-a" {
+		t.Errorf("feat/a WorktreePath changed: got %q, want %q", n.WorktreePath, "/tmp/worktrees/feat-a")
+	}
+
+	if n := findNode("feat/b"); n == nil {
+		t.Error("feat/b node missing after ApplyChanges")
+	} else if n.WorktreePath != "/tmp/worktrees/feat-b" {
+		t.Errorf("feat/b WorktreePath changed: got %q, want %q", n.WorktreePath, "/tmp/worktrees/feat-b")
+	}
+
+	// New node from discovery must have an empty WorktreePath.
+	if n := findNode("feat/c"); n == nil {
+		t.Error("feat/c node not created by ApplyChanges")
+	} else if n.WorktreePath != "" {
+		t.Errorf("feat/c new node has unexpected WorktreePath %q, want empty", n.WorktreePath)
+	}
+}
