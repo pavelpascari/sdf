@@ -280,10 +280,13 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 
 	// Worktree-mode stacks bypass the monolithic fetch/reconcile/plan flow.
 	// Instead they run a per-branch pull step (or a dashboard overview).
+	// Pass identifiers (stackID + branch name) rather than the pre-loaded *s
+	// so that runWorktreeSyncStep can reload a fresh copy inside the lock
+	// (#5 fix: lock guards load+mutate+save, not just mutate+save).
 	if s.Worktree {
 		cur, _ := gitpkg.CurrentBranch()
-		if node := currentWorktreeNode(s, cur); node != nil {
-			return runWorktreeSyncStep(root, s, node, bus)
+		if currentWorktreeNode(s, cur) != nil {
+			return runWorktreeSyncStep(root, s.StackID, cur, bus)
 		}
 		return runWorktreeDashboard(root, s, bus)
 	}
