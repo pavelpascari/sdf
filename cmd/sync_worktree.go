@@ -237,8 +237,8 @@ func cleanupMergedWorktree(root string, s *stack.Stack, node *stack.Node, force 
 	if node.WorktreePath == "" {
 		return
 	}
-	if clean, _ := gitpkg.IsCleanAt(node.WorktreePath); !clean && !force {
-		bus.Warnf("  %s worktree for %s has uncommitted changes; leaving it in place (use `git worktree remove --force` to drop)", ui.SymWarn, ui.Branch(node.Branch))
+	if removable, _ := gitpkg.IsWorktreeRemovable(node.WorktreePath); !removable && !force {
+		bus.Warnf("  %s worktree for %s has uncommitted changes or untracked files; leaving it in place (use `git worktree remove --force` to drop)", ui.SymWarn, ui.Branch(node.Branch))
 		return
 	}
 	if err := removeWorktreeForNode(root, node, force); err != nil {

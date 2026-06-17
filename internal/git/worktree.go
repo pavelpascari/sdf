@@ -103,8 +103,21 @@ func WorktreeList() ([]WorktreeInfo, error) {
 }
 
 // IsCleanAt reports whether the worktree at dir has no uncommitted tracked changes.
+// It intentionally ignores untracked files (--untracked-files=no), which is the
+// right check for sync: a worktree with only untracked scratch files can still rebase.
 func IsCleanAt(dir string) (bool, error) {
 	out, err := runAt(dir, "status", "--porcelain", "--untracked-files=no")
+	if err != nil {
+		return false, err
+	}
+	return out == "", nil
+}
+
+// IsWorktreeRemovable reports whether the worktree at dir has no uncommitted
+// changes AND no untracked files — i.e. `git worktree remove` will succeed
+// without --force. Unlike IsCleanAt, this counts untracked files.
+func IsWorktreeRemovable(dir string) (bool, error) {
+	out, err := runAt(dir, "status", "--porcelain")
 	if err != nil {
 		return false, err
 	}

@@ -91,6 +91,54 @@ func TestIsCleanAtAndRevParseAt(t *testing.T) {
 	}
 }
 
+func TestIsCleanAtCountsUntracked(t *testing.T) {
+	repo := initTestRepo(t)
+	chdir(t, repo)
+	wt := filepath.Join(t.TempDir(), "w")
+	if err := WorktreeAdd(wt, "w", "main"); err != nil {
+		t.Fatal(err)
+	}
+	// Drop an untracked file into the worktree.
+	if err := os.WriteFile(filepath.Join(wt, "scratch.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// IsCleanAt ignores untracked files (documented behavior — needed for sync).
+	clean, err := IsCleanAt(wt)
+	if err != nil {
+		t.Fatalf("IsCleanAt: %v", err)
+	}
+	if !clean {
+		t.Errorf("IsCleanAt should ignore untracked files; got dirty")
+	}
+
+	// IsWorktreeRemovable must count untracked files — matches what git worktree remove checks.
+	removable, err := IsWorktreeRemovable(wt)
+	if err != nil {
+		t.Fatalf("IsWorktreeRemovable: %v", err)
+	}
+	if removable {
+		t.Errorf("IsWorktreeRemovable must report false when untracked files are present")
+	}
+}
+
+func TestIsWorktreeRemovableCleanWorktree(t *testing.T) {
+	repo := initTestRepo(t)
+	chdir(t, repo)
+	wt := filepath.Join(t.TempDir(), "w2")
+	if err := WorktreeAdd(wt, "w2", "main"); err != nil {
+		t.Fatal(err)
+	}
+
+	removable, err := IsWorktreeRemovable(wt)
+	if err != nil {
+		t.Fatalf("IsWorktreeRemovable: %v", err)
+	}
+	if !removable {
+		t.Errorf("IsWorktreeRemovable should report true for a clean worktree")
+	}
+}
+
 func TestMainWorktreeRootFromLinkedWorktree(t *testing.T) {
 	repo := initTestRepo(t)
 	chdir(t, repo)
