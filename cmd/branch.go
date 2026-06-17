@@ -85,7 +85,9 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	currentBranch, _ := gitpkg.CurrentBranch()
 	insertAfterIdx := s.NodeIndex(currentBranch)
 
-	// Determine parent based on insertion point
+	// Determine parent based on insertion point.
+	// insertAfterIdx is used only to pick the parent here; the actual insertion
+	// position is re-derived inside WithLock from the FRESH stack.
 	var parent string
 	switch {
 	case insertAfterIdx >= 0:
@@ -94,11 +96,9 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	case len(s.Nodes) > 0:
 		// User is on base or unrelated branch — append to end
 		parent = s.Nodes[len(s.Nodes)-1].Branch
-		insertAfterIdx = len(s.Nodes) - 1
 	default:
 		// Empty stack — first branch
 		parent = s.Base
-		insertAfterIdx = -1
 	}
 
 	// Resolve parent tip for tracking (works without checking the parent out).
@@ -126,11 +126,32 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Insert node at the correct position
-	insertAt := insertAfterIdx + 1
-	s.Nodes = slices.Insert(s.Nodes, insertAt, newNode)
-
-	if err := stack.Save(root, s); err != nil {
+	// Insert node into the stack JSON under the advisory lock so concurrent
+	// "sdf branch" calls cannot lose each other's writes.
+	// newNode (incl. WorktreePath) was built above, outside the lock.
+	// Inside the fn we re-find the insertion point in the FRESH stack loaded
+	// by WithLock (positions may have shifted under concurrency).
+	var insertAt int
+	var downstreamPR int
+	var downstreamBranch string
+	err = stack.WithLock(root, s.StackID, func(ls *stack.Stack) error {
+		// Re-find parent in the freshly-loaded stack.
+		freshIdx := ls.NodeIndex(parent)
+		if freshIdx < 0 {
+			insertAt = len(ls.Nodes)
+		} else {
+			insertAt = freshIdx + 1
+		}
+		ls.Nodes = slices.Insert(ls.Nodes, insertAt, newNode)
+		// Capture downstream PR info while we have the fresh stack.
+		if insertAt < len(ls.Nodes)-1 {
+			ds := &ls.Nodes[insertAt+1]
+			downstreamPR = ds.PR
+			downstreamBranch = branchName // new node is now upstream of ds
+		}
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 
@@ -150,14 +171,11 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	}
 
 	// If there's a downstream node, update its PR base on GitHub
-	if insertAt < len(s.Nodes)-1 {
-		downstream := &s.Nodes[insertAt+1]
-		if downstream.PR > 0 && ghpkg.Available() {
-			if err := ghpkg.PREditBase(downstream.PR, branchName); err != nil {
-				bus.Warnf("could not update PR #%d base: %v", downstream.PR, err)
-			} else {
-				bus.Printf("  Updated PR #%d base → %s", downstream.PR, branchName)
-			}
+	if downstreamPR > 0 && ghpkg.Available() {
+		if err := ghpkg.PREditBase(downstreamPR, downstreamBranch); err != nil {
+			bus.Warnf("could not update PR #%d base: %v", downstreamPR, err)
+		} else {
+			bus.Printf("  Updated PR #%d base → %s", downstreamPR, downstreamBranch)
 		}
 	}
 
