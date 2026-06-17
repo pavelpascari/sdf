@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// LockTimeout bounds how long an sdf process waits to acquire a stack lock.
+const LockTimeout = 10 * time.Second
+
 // staleAfter is how old a lock may be before it is considered abandoned.
 const staleAfter = 5 * time.Minute
 
@@ -77,7 +80,9 @@ func isStaleLock(path string) bool {
 	}
 	var d lockData
 	if json.Unmarshal(data, &d) != nil {
-		return true // unparseable → treat as stale
+		// Unparseable (e.g. file is still being written) — treat as held, not stale,
+		// so we don't accidentally steal a lock that is in the process of being acquired.
+		return false
 	}
 	if time.Since(time.Unix(d.Stamp, 0)) > staleAfter {
 		return true
