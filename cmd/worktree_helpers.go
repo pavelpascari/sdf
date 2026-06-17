@@ -57,3 +57,18 @@ func currentWorktreeNode(s *stack.Stack, currentBranch string) *stack.Node {
 	}
 	return node
 }
+
+// requireBranchWorktreeDir returns the branch's worktree directory, or an error
+// if the stack is in worktree mode but the branch has no recorded worktree
+// (which would otherwise cause a confusing `git -C ""` failure). For
+// non-worktree stacks it returns "" with no error (operate in CWD).
+func requireBranchWorktreeDir(s *stack.Stack, branch string) (string, error) {
+	if !s.Worktree {
+		return "", nil
+	}
+	n := s.FindNode(branch)
+	if n == nil || n.WorktreePath == "" {
+		return "", fmt.Errorf("branch %q has no worktree — run `sdf worktree enable` or `sdf doctor`", branch)
+	}
+	return n.WorktreePath, nil
+}
