@@ -20,6 +20,8 @@ type NewBranchResult struct {
 	Stack        string `json:"stack"`
 	Parent       string `json:"parent"`
 	WorktreePath string `json:"worktree_path,omitempty"`
+	Created      bool   `json:"created"`
+	ErrorCode    string `json:"error_code,omitempty"`
 }
 
 var branchCmd = &cobra.Command{
@@ -71,9 +73,26 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		branchName = cfgpkg.ApplyPrefix(cfg, s.StackID, branchName)
 	}
 
-	// Check if branch already exists in this stack
-	if s.FindNode(branchName) != nil {
-		return fmt.Errorf("branch %q already exists in stack %q", branchName, s.StackID)
+	// Check if branch already exists in this stack — idempotent re-run returns
+	// the existing node's state without recreating the branch or worktree.
+	if existing := s.FindNode(branchName); existing != nil {
+		result := NewBranchResult{
+			Branch:       branchName,
+			Stack:        s.StackID,
+			Parent:       s.ParentBranch(branchName),
+			WorktreePath: existing.WorktreePath,
+			Created:      false,
+		}
+		if jsonFlag {
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return fmt.Errorf("cannot marshal result: %w", err)
+			}
+			fmt.Println(string(data))
+			return nil
+		}
+		fmt.Fprintf(os.Stderr, "branch %q already exists in stack %q — returning current state\n", branchName, s.StackID)
+		return nil
 	}
 
 	// Check cross-stack uniqueness
@@ -185,6 +204,7 @@ func runBranch(cmd *cobra.Command, args []string) error {
 			Stack:        s.StackID,
 			Parent:       parent,
 			WorktreePath: newNode.WorktreePath,
+			Created:      true,
 		}
 		_ = bus.Finish()
 		data, err := json.MarshalIndent(result, "", "  ")

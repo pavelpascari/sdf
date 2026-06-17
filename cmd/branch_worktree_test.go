@@ -45,3 +45,27 @@ func TestBranchWorktreeModeCreatesWorktree(t *testing.T) {
 		t.Errorf("main repo HEAD changed to %q", out)
 	}
 }
+
+func TestBranchIsIdempotent(t *testing.T) {
+	root := bareRepoWithClone(t)
+	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunBranch([]string{"feat/b", "--no-prefix"}); err != nil {
+		t.Fatal(err)
+	}
+	// Re-running the same branch must not error and must not duplicate the node.
+	if err := RunBranch([]string{"feat/b", "--no-prefix"}); err != nil {
+		t.Fatalf("re-add must be idempotent, got %v", err)
+	}
+	s, _ := stack.LoadStack(root, "feat")
+	count := 0
+	for _, n := range s.Nodes {
+		if n.Branch == "feat/b" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("feat/b appears %d times, want 1", count)
+	}
+}
