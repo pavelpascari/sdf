@@ -200,6 +200,28 @@ func AddAt(dir string, paths ...string) error {
 	return err
 }
 
+// ApplyPatchAt applies a patch string inside the worktree at dir using git apply --3way.
+func ApplyPatchAt(dir, patch string) error {
+	f, err := os.CreateTemp("", "sdf-patch-*.patch")
+	if err != nil {
+		return fmt.Errorf("cannot create temp file: %w", err)
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	if _, err := f.WriteString(patch); err != nil {
+		f.Close()
+		return fmt.Errorf("cannot write patch: %w", err)
+	}
+	f.Close()
+	_, err = runAt(dir, "apply", "--3way", f.Name())
+	return err
+}
+
+// CommitAt creates a commit with the given message inside the worktree at dir.
+func CommitAt(dir, message string) error {
+	_, err := runAt(dir, "commit", "-m", message)
+	return err
+}
+
 // CheckoutAt runs `git checkout <branch>` inside the worktree at dir.
 func CheckoutAt(dir, branch string) error {
 	_, err := runAt(dir, "checkout", branch)

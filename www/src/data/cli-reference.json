@@ -366,6 +366,12 @@
           "description": "name for the new stack (required)"
         },
         {
+          "name": "worktrees",
+          "type": "bool",
+          "default": "false",
+          "description": "create each split branch as a git worktree (worktree mode)"
+        },
+        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool",
@@ -550,5 +556,5 @@
       "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "0ee688f4714055dff528dd9e7effd9026df97b6802ec97c567d373d05208c770"
+  "hash": "8208c90c9a7ae669606f1193a9ebf7ba664dd60a8029f93fe6f514596091e900"
 }
