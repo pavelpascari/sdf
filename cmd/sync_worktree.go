@@ -10,6 +10,52 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
+// continueWorktreeSync finishes a paused in-worktree rebase started by
+// runWorktreeSyncStep.
+func continueWorktreeSync(root string, local *stack.LocalState, progress *stack.SyncProgress, bus *render.Bus) error {
+	wt := progress.WorktreePath
+
+	switch inProg, _ := gitpkg.IsRebaseInProgressAt(wt); {
+	case inProg:
+		bus.Printf("  rebasing %s (continuing)...", ui.Branch(progress.PausedAt))
+		if err := gitpkg.RebaseContinueAt(wt); err != nil {
+			return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
+		}
+	case gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt):
+		bus.Printf("  %s %s rebased (completed outside sdf)", ui.SymOK, ui.Branch(progress.PausedAt))
+	default:
+		bus.Printf("Rebase of %s was aborted. Clearing paused state.", ui.Branch(progress.PausedAt))
+		local.SyncProgress = nil
+		_ = stack.SaveLocal(root, local)
+		return nil
+	}
+
+	s, err := stack.LoadByBranch(root, progress.PausedAt)
+	if err != nil {
+		return err
+	}
+	node := s.FindNode(progress.PausedAt)
+	if node != nil {
+		node.BaseTip = progress.ParentTip
+		if err := gitpkg.PushAt(wt, node.Branch); err != nil {
+			bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
+		} else {
+			bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
+		}
+		if err := stack.Save(root, s); err != nil {
+			return err
+		}
+	}
+
+	local.SyncProgress = nil
+	_ = stack.SaveLocal(root, local)
+
+	if child := findNextOpenNode(s, progress.PausedAt); child != nil {
+		bus.Printf("\nDownstream %s now needs to sync.", ui.Branch(child.Branch))
+	}
+	return nil
+}
+
 // runWorktreeSyncStep integrates the current worktree's branch onto its parent.
 // It rebases only this branch (pull model); downstream branches pick up their
 // turn when their own agents run sync.

@@ -179,6 +179,10 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	}
 	progress := local.SyncProgress
 
+	if progress.WorktreePath != "" {
+		return continueWorktreeSync(root, local, progress, bus)
+	}
+
 	switch {
 	case gitpkg.IsRebaseInProgress():
 		bus.Printf("  rebasing %s (continuing)...", ui.Branch(progress.PausedAt))
