@@ -13,10 +13,12 @@ type WorktreeConfig struct {
 	BasePath string `json:"base_path,omitempty"` // template; {repo} = repo dir name
 }
 
-// SanitizeBranchForPath converts a branch name into a flat, filesystem-safe
-// directory name by replacing path separators with dashes.
+// SanitizeBranchForPath maps a branch name to a relative worktree path. It keeps
+// '/' as a directory separator (nested layout), which is collision-free because
+// git's ref D/F rule forbids a branch and a sub-path of it coexisting
+// (e.g. you cannot have both `feat` and `feat/login`).
 func SanitizeBranchForPath(branch string) string {
-	return strings.ReplaceAll(branch, "/", "-")
+	return filepath.FromSlash(branch)
 }
 
 // EffectiveWorktreeBasePath resolves the configured base_path template to an
