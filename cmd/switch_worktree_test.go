@@ -2,8 +2,10 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/pavelpascari/sdf/internal/stack"
@@ -42,6 +44,20 @@ func TestSwitchWorktreePrintsPathAndDoesNotCheckout(t *testing.T) {
 	if string(headBefore) != string(headAfter) {
 		t.Errorf("switch must not check out in worktree mode (HEAD changed %q→%q)", headBefore, headAfter)
 	}
-	_ = wantPath
-	_ = os.Stdout
+
+	// Verify --path-only prints exactly the worktree path.
+	resetSwitchFlags()
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	err := RunSwitch([]string{"feat/a", "--path-only"})
+	_ = w.Close()
+	os.Stdout = old
+	if err != nil {
+		t.Fatalf("switch --path-only: %v", err)
+	}
+	out, _ := io.ReadAll(r)
+	if got := strings.TrimSpace(string(out)); got != wantPath {
+		t.Errorf("--path-only printed %q, want %q", got, wantPath)
+	}
 }
