@@ -202,6 +202,14 @@ func runMergeLogic(stackFlag string, yes bool, method string, autoMerge bool, js
 	// for the post-merge sync.
 	gitpkg.ResetHead()
 
+	if s.Worktree {
+		lock, lerr := stack.AcquireLock(root, s.StackID, stackLockTimeout)
+		if lerr != nil {
+			return lerr
+		}
+		defer func() { _ = lock.Release() }()
+	}
+
 	node.Status = "merged"
 	if err := stack.Save(root, s); err != nil {
 		return fmt.Errorf("cannot save stack: %w", err)

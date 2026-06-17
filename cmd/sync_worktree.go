@@ -34,6 +34,11 @@ func continueWorktreeSync(root string, local *stack.LocalState, progress *stack.
 	if err != nil {
 		return err
 	}
+	lock, err := stack.AcquireLock(root, s.StackID, stackLockTimeout)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 	node := s.FindNode(progress.PausedAt)
 	if node != nil {
 		node.BaseTip = progress.ParentTip
