@@ -259,6 +259,12 @@
       "short": "Create a GitHub PR for the current branch",
       "flags": [
         {
+          "name": "draft",
+          "type": "bool",
+          "default": "false",
+          "description": "open the PR as a draft"
+        },
+        {
           "name": "json",
           "type": "bool",
           "default": "false",
@@ -556,5 +562,5 @@
       "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "8208c90c9a7ae669606f1193a9ebf7ba664dd60a8029f93fe6f514596091e900"
+  "hash": "97c70b4d5356140627dc6771ef30623d27126bf969b610d0b55c1b76ccc0d74f"
 }

@@ -19,9 +19,13 @@ import (
 
 // PRResult is the structured output of sdf pr when --json is used.
 type PRResult struct {
-	Number int    `json:"number"`
-	URL    string `json:"url"`
-	Title  string `json:"title"`
+	Number    int    `json:"number"`
+	Pr        int    `json:"pr"`
+	URL       string `json:"url"`
+	Title     string `json:"title"`
+	Draft     bool   `json:"draft"`
+	Created   bool   `json:"created"`
+	ErrorCode string `json:"error_code,omitempty"`
 }
 
 var prCmd = &cobra.Command{
@@ -35,6 +39,7 @@ func init() {
 	rootCmd.AddCommand(prCmd)
 	prCmd.Flags().String("title", "", "PR title (default: auto-generated from branch name)")
 	prCmd.Flags().Bool("json", false, "output result as JSON")
+	prCmd.Flags().Bool("draft", false, "open the PR as a draft")
 }
 
 // RunPR is a compatibility wrapper for callers that use the old interface.
@@ -43,9 +48,25 @@ func RunPR(args []string) error {
 	return rootCmd.Execute()
 }
 
+// emitPRResult outputs a PRResult in JSON or human-readable form.
+// Task 6 (--ready) will reuse this helper.
+func emitPRResult(res PRResult, jsonFlag bool) error {
+	if jsonFlag {
+		data, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			return fmt.Errorf("cannot marshal result: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+	fmt.Println(res.URL)
+	return nil
+}
+
 func runPR(cmd *cobra.Command, args []string) error {
 	title, _ := cmd.Flags().GetString("title")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
+	draft, _ := cmd.Flags().GetBool("draft")
 
 	root, err := stack.FindRoot()
 	if err != nil {
@@ -67,8 +88,22 @@ func runPR(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("branch %q is not in stack %q — run `sdf branch` to add it", branch, s.StackID)
 	}
 
+	// Idempotent: if a PR already exists for this branch, return its details
+	// instead of erroring. This allows `sdf pr` to be re-run safely.
 	if node.PR > 0 {
-		return fmt.Errorf("branch %q already has PR #%d", branch, node.PR)
+		res := PRResult{
+			Number:  node.PR,
+			Pr:      node.PR,
+			Created: false,
+		}
+		// Best-effort: enrich with live details from gh when available.
+		if ghpkg.Available() {
+			if info, viewErr := ghpkg.PRView(branch); viewErr == nil {
+				res.URL = info.URL
+				res.Draft = info.IsDraft
+			}
+		}
+		return emitPRResult(res, jsonFlag)
 	}
 
 	if !ghpkg.Available() {
@@ -129,7 +164,7 @@ func runPR(cmd *cobra.Command, args []string) error {
 	if !jsonFlag {
 		fmt.Printf("Creating PR: %s (base: %s)...\n", prTitle, ui.Branch(base))
 	}
-	url, err := ghpkg.PRCreate(prTitle, body, base, branch, false)
+	url, err := ghpkg.PRCreate(prTitle, body, base, branch, draft)
 	if err != nil {
 		return fmt.Errorf("cannot create PR: %w", err)
 	}
@@ -147,27 +182,27 @@ func runPR(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if jsonFlag {
-		result := PRResult{
-			Number: node.PR,
-			URL:    url,
-			Title:  prTitle,
-		}
-		data, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("cannot marshal result: %w", err)
-		}
-		fmt.Println(string(data))
-	} else {
-		fmt.Println(url)
+	result := PRResult{
+		Number:  node.PR,
+		Pr:      node.PR,
+		URL:     url,
+		Title:   prTitle,
+		Draft:   draft,
+		Created: true,
+	}
 
-		// Update stack navigation in all PRs
-		fmt.Println("Updating stack navigation in PR descriptions...")
-		navBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
-		defer func() { _ = navBus.Finish() }()
-		if err := updateStackNavForAllPRs(root, s, nil, navBus); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
-		}
+	if jsonFlag {
+		return emitPRResult(result, true)
+	}
+
+	fmt.Println(url)
+
+	// Update stack navigation in all PRs
+	fmt.Println("Updating stack navigation in PR descriptions...")
+	navBus := render.NewBus(os.Stdout, os.Stderr, render.Options{})
+	defer func() { _ = navBus.Finish() }()
+	if err := updateStackNavForAllPRs(root, s, nil, navBus); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update PR descriptions: %v\n", err)
 	}
 
 	return nil
