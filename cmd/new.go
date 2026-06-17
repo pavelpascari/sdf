@@ -15,10 +15,13 @@ import (
 
 // NewResult is the structured output of sdf new when --json is used.
 type NewResult struct {
-	Stack  string `json:"stack"`
-	Base   string `json:"base"`
-	Branch string `json:"branch"`
-	Pushed bool   `json:"pushed"`
+	Stack        string `json:"stack"`
+	Base         string `json:"base"`
+	Branch       string `json:"branch"`
+	WorktreePath string `json:"worktree_path,omitempty"`
+	Pushed       bool   `json:"pushed"`
+	Created      bool   `json:"created"`
+	ErrorCode    string `json:"error_code,omitempty"`
 }
 
 var newCmd = &cobra.Command{
@@ -104,9 +107,33 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 	// Migrate legacy layout if needed
 	stack.MigrateIfNeeded(root)
 
-	// Check if a stack with this name already exists
-	if _, err := stack.LoadStack(root, stackName); err == nil {
-		return "", fmt.Errorf("stack %q already exists in %s", stackName, root)
+	// Check if a stack with this name already exists — idempotent re-run returns
+	// current state instead of erroring, so flow can safely re-issue the command
+	// on crash-resume.
+	if existing, loadErr := stack.LoadStack(root, stackName); loadErr == nil {
+		var firstNode stack.Node
+		if len(existing.Nodes) > 0 {
+			firstNode = existing.Nodes[0]
+		}
+		if jsonFlag {
+			result := NewResult{
+				Stack:        stackName,
+				Base:         existing.Base,
+				Branch:       firstNode.Branch,
+				WorktreePath: firstNode.WorktreePath,
+				Pushed:       false,
+				Created:      false,
+			}
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("cannot marshal result: %w", err)
+			}
+			output := string(data)
+			fmt.Println(output)
+			return output, nil
+		}
+		fmt.Fprintf(os.Stderr, "note: stack %q already exists — returning current state\n", stackName)
+		return "", nil
 	}
 
 	// Resolve the base branch
@@ -203,10 +230,12 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 
 	if jsonFlag {
 		result := NewResult{
-			Stack:  stackName,
-			Base:   baseBranch,
-			Branch: branchName,
-			Pushed: pushed,
+			Stack:        stackName,
+			Base:         baseBranch,
+			Branch:       branchName,
+			WorktreePath: node.WorktreePath,
+			Pushed:       pushed,
+			Created:      true,
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

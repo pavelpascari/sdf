@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,8 @@ func bareRepoWithClone(t *testing.T) string {
 	run(work, "add", ".")
 	run(work, "commit", "-m", "init")
 	run(work, "push", "-u", "origin", "main")
+	// Set remote HEAD so DefaultBranch() auto-detection works in tests.
+	run(work, "remote", "set-head", "origin", "main")
 
 	// Resolve symlinks so that paths returned here match what git and os.Getwd
 	// return (on macOS /var is a symlink to /private/var).
@@ -81,5 +84,43 @@ func TestNewWorktreeModeCreatesWorktree(t *testing.T) {
 	out, _ := exec.Command("git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD").CombinedOutput()
 	if got := string(out); got != "main\n" {
 		t.Errorf("main repo HEAD = %q, want main", got)
+	}
+}
+
+func TestNewJSONIncludesWorktreePath(t *testing.T) {
+	root := bareRepoWithClone(t)
+	out, err := RunNewWithOutput([]string{"--branch", "feat/a", "--worktrees", "--json", "feat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r NewResult
+	if e := json.Unmarshal([]byte(out), &r); e != nil {
+		t.Fatal(e)
+	}
+	if r.WorktreePath == "" {
+		t.Errorf("worktree_path must be set for --worktrees")
+	}
+	if !r.Created {
+		t.Errorf("created must be true on first create")
+	}
+	_ = root
+}
+
+func TestNewIsIdempotent(t *testing.T) {
+	bareRepoWithClone(t)
+	if _, err := RunNewWithOutput([]string{"--branch", "feat/a", "--worktrees", "--json", "feat"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := RunNewWithOutput([]string{"--branch", "feat/a", "--worktrees", "--json", "feat"})
+	if err != nil {
+		t.Fatalf("re-run must not error: %v", err)
+	}
+	var r NewResult
+	json.Unmarshal([]byte(out), &r)
+	if r.Created {
+		t.Errorf("created must be false on re-run")
+	}
+	if r.Stack != "feat" || r.Branch != "feat/a" {
+		t.Errorf("re-run must return existing state: %+v", r)
 	}
 }
