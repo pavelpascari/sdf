@@ -312,6 +312,143 @@ Or use a relative path with the `{repo}` placeholder:
 sdf config set worktree.base_path /workareas/{repo}
 ```
 
+## JSON output contract
+
+Every `sdf` command that writes machine-readable output accepts `--json` and prints a single JSON object to stdout. This section documents the stable field names that automation tools and AI agents can rely on.
+
+### Idempotency and `created`
+
+`new`, `branch`, and `pr` are idempotent. Re-running a command that already succeeded returns the current resource with `"created": false` and exits 0. The first successful run returns `"created": true`. On re-run, a note is printed to stderr; stdout is always valid JSON.
+
+```sh
+sdf new my-feature --json
+# first run:  { "stack": "my-feature", ..., "created": true }
+# second run: { "stack": "my-feature", ..., "created": false }
+```
+
+### `sdf new --json`
+
+```json
+{
+  "stack": "my-feature",
+  "base": "main",
+  "branch": "my-feature/my-feature",
+  "worktree_path": "/path/to/my-feature-my-feature",
+  "pushed": true,
+  "created": true
+}
+```
+
+- `worktree_path` — absolute path to the branch's worktree directory; present only when the stack was created with `--worktrees`, omitted otherwise.
+- `created` — `true` when this invocation created the stack; `false` when it already existed.
+
+### `sdf branch --json`
+
+```json
+{
+  "branch": "my-feature/ui",
+  "parent": "my-feature/api",
+  "worktree_path": "/path/to/my-feature-ui",
+  "created": true
+}
+```
+
+### `sdf pr --json` and `sdf pr --draft` / `sdf pr --ready`
+
+```sh
+sdf pr --json            # create a ready PR
+sdf pr --draft --json    # create as draft
+sdf pr --ready --json    # flip an existing draft PR to ready
+```
+
+`PRResult` fields:
+
+```json
+{
+  "number": 42,
+  "pr": 42,
+  "url": "https://github.com/org/repo/pull/42",
+  "title": "feat(ui): add login form",
+  "draft": false,
+  "created": true
+}
+```
+
+- `pr` — alias of `number`; both fields are always present.
+- `draft` — `true` when the PR is in draft state.
+- `created` — `true` when this invocation opened the PR; `false` when the PR already existed (idempotent re-run).
+- `--ready` — marks an existing draft PR as ready. Idempotent on an already-ready PR. Errors clearly if no PR exists for the branch.
+
+### `sdf status --json` — `sync_state` enum
+
+Each node in `branches[]` carries a `sync_state` field:
+
+| Value | Meaning |
+|-------|---------|
+| `"in_sync"` | Branch is current with its (effective) parent. |
+| `"needs_sync"` | Parent advanced or a parent merged; branch must be synced. |
+| `"conflicted"` | A rebase is paused in this branch's worktree, awaiting conflict resolution. |
+| `""` (omitted) | Base branch or a node without a meaningful sync state. |
+
+`status` (the PR lifecycle field on each node) remains `open | merged | closed` — it is distinct from `sync_state`.
+
+### Worktree `sdf sync --json` — `branches[].status` and `conflicts`
+
+Run inside a branch's worktree, `sdf sync` and `sdf sync --continue` emit exactly one entry in `branches[]`:
+
+```json
+{
+  "branches": [
+    {
+      "branch": "my-feature/ui",
+      "status": "conflicted",
+      "conflicts": ["src/app.go", "src/handler.go"],
+      "pushed": false
+    }
+  ]
+}
+```
+
+`status` values:
+
+| Value | Meaning |
+|-------|---------|
+| `"clean"` | Branch was rebased onto its parent and pushed (`pushed: true`). |
+| `"noop"` | Already up to date with parent; nothing was rebased or pushed. |
+| `"conflicted"` | Rebase paused; `conflicts` lists the conflicted file paths. |
+
+**A conflict is a normal, actionable outcome — not a process error.** When `status` is `"conflicted"`, the top-level `error` field is empty and the process exits 0. Resolve the conflicts in the worktree, stage the files, then re-run `sdf sync --continue`.
+
+`error` and `error_code` at the top level are reserved for genuine failures (lock timeout, push rejection, IO errors).
+
+### Lock-timeout error (`error_code`)
+
+When two `sdf` invocations race and one cannot acquire the stack lock, the blocked invocation emits:
+
+```json
+{
+  "error": "timed out waiting for stack lock",
+  "error_code": "lock_timeout"
+}
+```
+
+and exits with code **75** (EX_TEMPFAIL). Integrators can detect `error_code: "lock_timeout"` and retry. All other errors exit with code 1.
+
+In non-`--json` mode, exit 75 is the distinguishable signal; the human-readable error is printed to stderr.
+
+### Stable field-name summary
+
+| Command | Stable JSON keys |
+|---------|-----------------|
+| `new` | `stack`, `base`, `branch`, `worktree_path`, `pushed`, `created`, `error_code` |
+| `branch` | `branch`, `parent`, `worktree_path`, `created`, `error_code` |
+| `pr` | `number`, `pr`, `url`, `title`, `draft`, `created`, `error_code` |
+| `status` node | `branch`, `status`, `sync_state`, `worktree_path`, `pr` |
+| `sync` | `branches[].{branch, status, conflicts, pushed}`, `error`, `error_code` |
+| `switch --path-only` | bare absolute path on stdout (no JSON wrapper) |
+
+All JSON changes across sdf releases are additive. No existing field is renamed or removed.
+
 ## Configuration
 
 `sdf` uses a two-tier configuration system:
