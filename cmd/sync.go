@@ -43,12 +43,14 @@ type SyncResult struct {
 
 // BranchResult describes what happened to a single branch during sync.
 type BranchResult struct {
-	Branch      string `json:"branch"`
-	PR          int    `json:"pr,omitempty"`
-	Action      string `json:"action"`
-	Pushed      bool   `json:"pushed,omitempty"`
-	BaseUpdated bool   `json:"base_updated,omitempty"`
-	Reason      string `json:"reason,omitempty"`
+	Branch      string   `json:"branch"`
+	PR          int      `json:"pr,omitempty"`
+	Action      string   `json:"action"`
+	Pushed      bool     `json:"pushed,omitempty"`
+	BaseUpdated bool     `json:"base_updated,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
+	Status      string   `json:"status,omitempty"`    // worktree sync: clean | noop | conflicted
+	Conflicts   []string `json:"conflicts,omitempty"` // worktree sync: conflicted paths
 }
 
 // PRUpdate describes a PR field update during sync.
@@ -189,7 +191,7 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 					if normalizeSymlinks(prog.WorktreePath) == normWtRoot {
 						s, err := stack.LoadByBranch(root, branch)
 						if err == nil && s.Worktree {
-							return continueWorktreeSync(root, s.StackID, branch, bus)
+							return continueWorktreeSync(root, s.StackID, branch, result, bus)
 						}
 					}
 				}
@@ -202,7 +204,7 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 		if s, e := stack.LoadByBranch(root, cur); e == nil && s.Worktree {
 			local, _ := stack.LoadLocal(root)
 			if local != nil && local.WorktreeProgress != nil && local.WorktreeProgress[cur] != nil {
-				return continueWorktreeSync(root, s.StackID, cur, bus)
+				return continueWorktreeSync(root, s.StackID, cur, result, bus)
 			}
 			return fmt.Errorf("no paused worktree sync for %s — run `sdf sync` in this worktree", cur)
 		}
@@ -223,7 +225,7 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 		// This can happen if a worktree conflict was recorded before the per-branch
 		// map was introduced. Route to continueWorktreeSync using the stored stackID.
 		if s, e := stack.LoadByBranch(root, progress.PausedAt); e == nil {
-			return continueWorktreeSync(root, s.StackID, progress.PausedAt, bus)
+			return continueWorktreeSync(root, s.StackID, progress.PausedAt, result, bus)
 		}
 	}
 
@@ -336,7 +338,7 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 	if s.Worktree {
 		cur, _ := gitpkg.CurrentBranch()
 		if currentWorktreeNode(s, cur) != nil {
-			return runWorktreeSyncStep(root, s.StackID, cur, bus)
+			return runWorktreeSyncStep(root, s.StackID, cur, result, bus)
 		}
 		return runWorktreeDashboard(root, s, bus)
 	}
