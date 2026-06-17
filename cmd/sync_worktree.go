@@ -147,6 +147,26 @@ func runWorktreeSyncStep(root string, s *stack.Stack, node *stack.Node, bus *ren
 	return nil
 }
 
+// cleanupMergedWorktree removes the worktree of a just-merged node and reports
+// which downstream worktree now needs to sync. Safe to call only for worktree stacks.
+func cleanupMergedWorktree(root string, s *stack.Stack, node *stack.Node, force bool, bus *render.Bus) {
+	if node.WorktreePath == "" {
+		return
+	}
+	if clean, _ := gitpkg.IsCleanAt(node.WorktreePath); !clean && !force {
+		bus.Warnf("  %s worktree for %s has uncommitted changes; leaving it in place (use `git worktree remove --force` to drop)", ui.SymWarn, ui.Branch(node.Branch))
+		return
+	}
+	if err := removeWorktreeForNode(root, node, force); err != nil {
+		bus.Warnf("  %s could not remove worktree for %s: %v", ui.SymWarn, ui.Branch(node.Branch), err)
+		return
+	}
+	bus.Printf("  %s removed worktree for %s", ui.SymOK, ui.Branch(node.Branch))
+	if child := findNextOpenNode(s, node.Branch); child != nil {
+		bus.Printf("  Downstream %s now needs to sync (run `sdf sync` in its worktree).", ui.Branch(child.Branch))
+	}
+}
+
 // runWorktreeDashboard prints per-branch readiness when sdf sync is run from
 // the main repo of a worktree-mode stack. It never rebases anything.
 func runWorktreeDashboard(root string, s *stack.Stack, bus *render.Bus) error {

@@ -209,6 +209,18 @@ func runMergeLogic(stackFlag string, yes bool, method string, autoMerge bool, js
 
 	mergeBus.Printf("  %s PR %s merged", ui.SymOK, ui.PR(node.PR))
 
+	// Worktree stacks: remove merged worktree and skip cascade (pull model).
+	if s.Worktree {
+		cleanupMergedWorktree(root, s, node, false, mergeBus)
+		_ = stack.Save(root, s)
+		if jsonMode {
+			_ = mergeBus.Finish()
+			data, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(data))
+		}
+		return nil // pull model: downstream syncs on its own turn, no cascade
+	}
+
 	// Post-merge: sync remaining branches
 	if remaining > 0 {
 		mergeBus.Print("\nSyncing remaining branches...")
