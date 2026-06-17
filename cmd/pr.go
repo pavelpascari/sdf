@@ -40,6 +40,8 @@ func init() {
 	prCmd.Flags().String("title", "", "PR title (default: auto-generated from branch name)")
 	prCmd.Flags().Bool("json", false, "output result as JSON")
 	prCmd.Flags().Bool("draft", false, "open the PR as a draft")
+	prCmd.Flags().Bool("ready", false, "mark the branch's draft PR as ready for review")
+	prCmd.Flags().String("branch", "", "target branch (default: current)")
 }
 
 // RunPR is a compatibility wrapper for callers that use the old interface.
@@ -67,15 +69,22 @@ func runPR(cmd *cobra.Command, args []string) error {
 	title, _ := cmd.Flags().GetString("title")
 	jsonFlag, _ := cmd.Flags().GetBool("json")
 	draft, _ := cmd.Flags().GetBool("draft")
+	ready, _ := cmd.Flags().GetBool("ready")
+	branchFlag, _ := cmd.Flags().GetString("branch")
 
 	root, err := stack.FindRoot()
 	if err != nil {
 		return err
 	}
 
-	branch, err := gitpkg.CurrentBranch()
-	if err != nil {
-		return fmt.Errorf("cannot determine current branch: %w", err)
+	var branch string
+	if branchFlag != "" {
+		branch = branchFlag
+	} else {
+		branch, err = gitpkg.CurrentBranch()
+		if err != nil {
+			return fmt.Errorf("cannot determine current branch: %w", err)
+		}
 	}
 
 	s, err := resolveStack(root, "")
@@ -86,6 +95,23 @@ func runPR(cmd *cobra.Command, args []string) error {
 	node := s.FindNode(branch)
 	if node == nil {
 		return fmt.Errorf("branch %q is not in stack %q — run `sdf branch` to add it", branch, s.StackID)
+	}
+
+	// --ready: flip a draft PR to ready-for-review. Idempotent.
+	if ready {
+		if node.PR == 0 {
+			return fmt.Errorf("no PR for branch %q — run `sdf pr` first", branch)
+		}
+		if ghpkg.Available() {
+			if err := ghpkg.PRReady(node.PR); err != nil {
+				return fmt.Errorf("cannot mark PR #%d ready: %w", node.PR, err)
+			}
+		}
+		res := PRResult{Number: node.PR, Pr: node.PR, Draft: false, Created: false}
+		if pv, e := ghpkg.PRView(branch); e == nil {
+			res.URL = pv.URL
+		}
+		return emitPRResult(res, jsonFlag)
 	}
 
 	// Idempotent: if a PR already exists for this branch, return its details

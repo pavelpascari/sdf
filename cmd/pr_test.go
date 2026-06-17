@@ -11,7 +11,19 @@ import (
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/testutil"
+	"github.com/spf13/pflag"
 )
+
+// resetPRFlags restores prCmd's flags to their defaults so that reusing the
+// package-level rootCmd across in-process test invocations does not leak flag
+// state (e.g. a prior --ready or --draft). A real `sdf` run is process-isolated;
+// this reproduces that isolation for tests.
+func resetPRFlags() {
+	prCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
+}
 
 func TestRunPR_EmptyBranchAheadOfBase(t *testing.T) {
 	dir := newTestRepo(t)
@@ -147,6 +159,23 @@ func TestPRIdempotentWhenPRExists(t *testing.T) {
 	err = RunPR([]string{"--json"})
 	if err != nil {
 		t.Fatalf("pr must be idempotent when a PR exists, got %v", err)
+	}
+}
+
+func TestPRReadyRequiresExistingPR(t *testing.T) {
+	t.Cleanup(resetPRFlags)
+	root := bareRepoWithClone(t)
+	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := stack.LoadStack(root, "feat")
+	chdir(t, s.Nodes[0].WorktreePath)
+	err := RunPR([]string{"--ready", "--json"})
+	if err == nil {
+		t.Fatalf("pr --ready with no PR must error clearly")
+	}
+	if !strings.Contains(err.Error(), "no PR") {
+		t.Errorf("error should mention no PR: %v", err)
 	}
 }
 
