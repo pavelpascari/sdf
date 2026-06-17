@@ -422,6 +422,12 @@
           "type": "bool",
           "default": "false",
           "description": "output result as JSON"
+        },
+        {
+          "name": "path-only",
+          "type": "bool",
+          "default": "false",
+          "description": "print only the worktree path (worktree mode)"
         }
       ]
     },
@@ -544,5 +550,5 @@
       "description": "Base directory for per-branch worktrees ({repo} = repo dir name)"
     }
   ],
-  "hash": "7354837ea5c6785a80d681b1194b765313bb069e021841ae2ccaab5dbcae829a"
+  "hash": "0ee688f4714055dff528dd9e7effd9026df97b6802ec97c567d373d05208c770"
 }
