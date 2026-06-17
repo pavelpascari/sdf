@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -169,17 +170,27 @@ func RunSync(args []string) error {
 
 // runSyncContinue resumes a sync that was paused for manual conflict resolution.
 func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
-	// Worktree-mode check: look for a WorktreeProgress entry whose WorktreePath
-	// matches the current working directory. This is more reliable than
-	// CurrentBranch() because git returns "HEAD" when a rebase is paused.
+	// Worktree-mode check: identify the current worktree root via git (works in
+	// detached HEAD and from any subdirectory) and match it against stored
+	// WorktreeProgress entries. This is more reliable than os.Getwd() (which
+	// fails if the user cd'd into a subdirectory) and more reliable than
+	// CurrentBranch() (which returns "HEAD" during a paused rebase).
 	if local0, _ := stack.LoadLocal(root); local0 != nil && len(local0.WorktreeProgress) > 0 {
-		cwd, cwdErr := os.Getwd()
-		if cwdErr == nil {
+		if wtRoot, err := gitpkg.RepoRoot(); err == nil {
+			normalizeSymlinks := func(p string) string {
+				if resolved, err := filepath.EvalSymlinks(p); err == nil {
+					return resolved
+				}
+				return p
+			}
+			normWtRoot := normalizeSymlinks(wtRoot)
 			for branch, prog := range local0.WorktreeProgress {
-				if prog != nil && prog.WorktreePath != "" && prog.WorktreePath == cwd {
-					s, err := stack.LoadByBranch(root, branch)
-					if err == nil && s.Worktree {
-						return continueWorktreeSync(root, s.StackID, branch, bus)
+				if prog != nil && prog.WorktreePath != "" {
+					if normalizeSymlinks(prog.WorktreePath) == normWtRoot {
+						s, err := stack.LoadByBranch(root, branch)
+						if err == nil && s.Worktree {
+							return continueWorktreeSync(root, s.StackID, branch, bus)
+						}
 					}
 				}
 			}

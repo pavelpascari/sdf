@@ -58,9 +58,7 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 			} else {
 				bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
 			}
-			if err := stack.Save(root, s); err != nil {
-				return err
-			}
+			// stack.Save is NOT called here; WithLock saves on nil return.
 		}
 		// Clear this branch's entry from WorktreeProgress under the lock.
 		local, _ := stack.LoadLocal(root)
