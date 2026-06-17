@@ -4,7 +4,6 @@ package git
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -15,20 +14,7 @@ var Binary = "git"
 
 // run executes a git command and returns its trimmed stdout.
 func run(args ...string) (string, error) {
-	cmd := exec.Command(Binary, args...)
-	out, err := cmd.CombinedOutput()
-	output := strings.TrimSpace(string(out))
-
-	exitCode := 0
-	if err != nil {
-		exitCode = 1
-	}
-	recordRun(args, output, exitCode)
-
-	if err != nil {
-		return output, fmt.Errorf("git %s: %s", strings.Join(args, " "), output)
-	}
-	return output, nil
+	return runIn("", args...)
 }
 
 // CurrentBranch returns the current checked-out branch name.
@@ -135,13 +121,7 @@ func RebaseAbort() error {
 
 // RebaseContinue continues a rebase after conflicts are resolved.
 func RebaseContinue() error {
-	cmd := exec.Command("git", "rebase", "--continue")
-	cmd.Env = append(cmd.Environ(), "GIT_EDITOR=true")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git rebase --continue: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
+	return rebaseContinueIn("")
 }
 
 // ConflictedFiles returns the list of files with merge conflicts.

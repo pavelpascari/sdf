@@ -46,9 +46,11 @@ func AcquireLock(root, stackID string, timeout time.Duration) (*Lock, error) {
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if err == nil {
-			data, _ := json.Marshal(lockData{PID: os.Getpid(), Stamp: time.Now().Unix()})
-			_, _ = f.Write(data)
+			// Atomically claimed ownership via O_EXCL. Close the empty file and
+			// fill content through the shared writeLockFile path so there is only
+			// one place that serializes lockData.
 			_ = f.Close()
+			_ = writeLockFile(path, lockData{PID: os.Getpid(), Stamp: time.Now().Unix()})
 			return &Lock{path: path}, nil
 		}
 		if !os.IsExist(err) {

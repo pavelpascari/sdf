@@ -16,21 +16,70 @@ type WorktreeInfo struct {
 	Head   string // commit SHA
 }
 
-// runAt executes a git command in the given directory and records it.
-func runAt(dir string, args ...string) (string, error) {
-	full := append([]string{"-C", dir}, args...)
-	cmd := exec.Command(Binary, full...)
+// runIn executes a git command, optionally in the given directory.
+// When dir is empty the command runs in the current working directory;
+// when dir is non-empty "-C dir" is prepended to the arguments.
+// The recordRun call mirrors what run() and runAt() would have recorded:
+//   - no "-C dir" prefix when dir == ""
+//   - "-C dir" prefix when dir != ""
+func runIn(dir string, args ...string) (string, error) {
+	var cmdArgs []string
+	var recorded []string
+	if dir == "" {
+		cmdArgs = args
+		recorded = args
+	} else {
+		cmdArgs = append([]string{"-C", dir}, args...)
+		recorded = cmdArgs
+	}
+	cmd := exec.Command(Binary, cmdArgs...)
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
 	}
-	recordRun(full, output, exitCode)
+	recordRun(recorded, output, exitCode)
 	if err != nil {
-		return output, fmt.Errorf("git %s: %s", strings.Join(full, " "), output)
+		return output, fmt.Errorf("git %s: %s", strings.Join(cmdArgs, " "), output)
 	}
 	return output, nil
+}
+
+// runAt executes a git command in the given directory and records it.
+func runAt(dir string, args ...string) (string, error) {
+	return runIn(dir, args...)
+}
+
+// rebaseContinueIn continues a paused rebase, optionally inside dir.
+// GIT_EDITOR=true suppresses the commit-message editor.
+// When dir is empty the command runs in the current working directory.
+func rebaseContinueIn(dir string) error {
+	var cmdArgs []string
+	var recorded []string
+	if dir == "" {
+		cmdArgs = []string{"rebase", "--continue"}
+		recorded = cmdArgs
+	} else {
+		cmdArgs = []string{"-C", dir, "rebase", "--continue"}
+		recorded = cmdArgs
+	}
+	cmd := exec.Command(Binary, cmdArgs...)
+	cmd.Env = append(cmd.Environ(), "GIT_EDITOR=true")
+	out, err := cmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	recordRun(recorded, output, exitCode)
+	if err != nil {
+		if dir == "" {
+			return fmt.Errorf("git rebase --continue: %s", output)
+		}
+		return fmt.Errorf("git -C %s rebase --continue: %s", dir, output)
+	}
+	return nil
 }
 
 // GitCommonDir returns the absolute path to the shared .git directory,
@@ -143,19 +192,7 @@ func PushAt(dir, branch string) error {
 
 // RebaseContinueAt continues a paused rebase inside dir with a no-op editor.
 func RebaseContinueAt(dir string) error {
-	cmd := exec.Command(Binary, "-C", dir, "rebase", "--continue")
-	cmd.Env = append(cmd.Environ(), "GIT_EDITOR=true")
-	out, err := cmd.CombinedOutput()
-	output := strings.TrimSpace(string(out))
-	exitCode := 0
-	if err != nil {
-		exitCode = 1
-	}
-	recordRun([]string{"-C", dir, "rebase", "--continue"}, output, exitCode)
-	if err != nil {
-		return fmt.Errorf("git -C %s rebase --continue: %s", dir, output)
-	}
-	return nil
+	return rebaseContinueIn(dir)
 }
 
 // RebaseAbortAt aborts a paused rebase inside dir.
