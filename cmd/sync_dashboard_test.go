@@ -9,6 +9,7 @@ import (
 )
 
 func TestDashboardReportsReadinessWithoutRebasing(t *testing.T) {
+	resetSyncFlags()
 	root := bareRepoWithClone(t)
 	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
 		t.Fatal(err)

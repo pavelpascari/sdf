@@ -9,7 +9,19 @@ import (
 
 	gitpkg "github.com/pavelpascari/sdf/internal/git"
 	"github.com/pavelpascari/sdf/internal/stack"
+	"github.com/spf13/pflag"
 )
+
+// resetSyncFlags restores syncCmd's flags to their defaults so that reusing the
+// package-level rootCmd across in-process test invocations does not leak flag
+// state (e.g. a prior --continue). A real `sdf` run is process-isolated; this
+// reproduces that isolation for tests.
+func resetSyncFlags() {
+	syncCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
+}
 
 func chdir(t *testing.T, dir string) {
 	t.Helper()
@@ -34,6 +46,7 @@ func commitInWorktree(t *testing.T, wt, file, content, msg string) {
 }
 
 func TestWorktreeSyncRebasesOntoAdvancedParent(t *testing.T) {
+	resetSyncFlags()
 	root := bareRepoWithClone(t)
 	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
 		t.Fatal(err)
@@ -66,6 +79,7 @@ func TestWorktreeSyncRebasesOntoAdvancedParent(t *testing.T) {
 }
 
 func TestWorktreeSyncRejectsDirtyWorktree(t *testing.T) {
+	resetSyncFlags()
 	root := bareRepoWithClone(t)
 	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
 		t.Fatal(err)
