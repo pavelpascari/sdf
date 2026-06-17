@@ -38,6 +38,15 @@ func removeWorktreeForNode(root string, node *stack.Node, force bool) error {
 	return nil
 }
 
+// branchWorktreeDir returns the directory git ops for a branch must run in:
+// the branch's worktree in worktree mode, or "" (the process CWD) otherwise.
+func branchWorktreeDir(s *stack.Stack, branch string) string {
+	if n := s.FindNode(branch); n != nil && n.WorktreePath != "" {
+		return n.WorktreePath
+	}
+	return ""
+}
+
 // currentWorktreeNode returns the stack node for currentBranch when that node
 // has a worktree path (i.e. we are operating inside its worktree). Returns nil
 // when currentBranch is the base, not a node, or has no worktree.

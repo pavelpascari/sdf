@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -157,6 +158,65 @@ func TestMainWorktreeRootFromLinkedWorktree(t *testing.T) {
 	wantResolved, _ := filepath.EvalSymlinks(repo)
 	if gotResolved != wantResolved {
 		t.Errorf("MainWorktreeRoot = %q, want %q", gotResolved, wantResolved)
+	}
+}
+
+func TestCherryPickAtAndResetHardAt(t *testing.T) {
+	repo := initTestRepo(t)
+	chdir(t, repo)
+
+	// Create a worktree on a new branch "wt-branch" based on main.
+	wtPath := filepath.Join(t.TempDir(), "wt-branch")
+	if err := WorktreeAdd(wtPath, "wt-branch", "main"); err != nil {
+		t.Fatalf("WorktreeAdd: %v", err)
+	}
+
+	// Record the worktree's HEAD before cherry-pick.
+	beforeSHA, err := RevParseAt(wtPath, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParseAt before: %v", err)
+	}
+
+	// Make a commit on a side branch "side" from main (in the main repo dir).
+	mustGit(t, repo, "checkout", "-b", "side")
+	if err := os.WriteFile(filepath.Join(repo, "side.txt"), []byte("side\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", "side.txt")
+	mustGit(t, repo, "commit", "-m", "side commit")
+
+	// Get the SHA of that commit.
+	sideSHACmd := exec.Command("git", "-C", repo, "rev-parse", "HEAD")
+	sideSHAOut, err := sideSHACmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("rev-parse side HEAD: %v\n%s", err, sideSHAOut)
+	}
+	sideSHA := strings.TrimSpace(string(sideSHAOut))
+
+	// Cherry-pick the side commit into the worktree.
+	if err := CherryPickAt(wtPath, sideSHA); err != nil {
+		t.Fatalf("CherryPickAt: %v", err)
+	}
+
+	// The worktree HEAD should now differ from beforeSHA.
+	afterPickSHA, err := RevParseAt(wtPath, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParseAt after cherry-pick: %v", err)
+	}
+	if afterPickSHA == beforeSHA {
+		t.Errorf("HEAD did not change after CherryPickAt; still %s", beforeSHA)
+	}
+
+	// ResetHardAt should move HEAD back to beforeSHA.
+	if err := ResetHardAt(wtPath, beforeSHA); err != nil {
+		t.Fatalf("ResetHardAt: %v", err)
+	}
+	afterResetSHA, err := RevParseAt(wtPath, "HEAD")
+	if err != nil {
+		t.Fatalf("RevParseAt after reset: %v", err)
+	}
+	if afterResetSHA != beforeSHA {
+		t.Errorf("after ResetHardAt: HEAD = %s, want %s", afterResetSHA, beforeSHA)
 	}
 }
 

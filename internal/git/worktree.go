@@ -176,6 +176,36 @@ func ConflictedFilesAt(dir string) ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
+// CherryPickAt runs `git cherry-pick <commits...>` inside the worktree at dir.
+func CherryPickAt(dir string, commits ...string) error {
+	_, err := runAt(dir, append([]string{"cherry-pick"}, commits...)...)
+	return err
+}
+
+// CherryPickAbortAt aborts a paused cherry-pick inside the worktree at dir.
+func CherryPickAbortAt(dir string) error {
+	_, err := runAt(dir, "cherry-pick", "--abort")
+	return err
+}
+
+// ResetHardAt runs `git reset --hard <ref>` inside the worktree at dir.
+func ResetHardAt(dir, ref string) error {
+	_, err := runAt(dir, "reset", "--hard", ref)
+	return err
+}
+
+// AddAt runs `git add <paths...>` inside the worktree at dir.
+func AddAt(dir string, paths ...string) error {
+	_, err := runAt(dir, append([]string{"add"}, paths...)...)
+	return err
+}
+
+// CheckoutAt runs `git checkout <branch>` inside the worktree at dir.
+func CheckoutAt(dir, branch string) error {
+	_, err := runAt(dir, "checkout", branch)
+	return err
+}
+
 // IsRebaseInProgressAt reports whether a rebase is paused in the worktree at dir.
 func IsRebaseInProgressAt(dir string) (bool, error) {
 	for _, name := range []string{"rebase-merge", "rebase-apply"} {

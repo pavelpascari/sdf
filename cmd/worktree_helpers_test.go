@@ -78,3 +78,19 @@ func TestCurrentWorktreeNode(t *testing.T) {
 		t.Errorf("main is not a node; expected nil")
 	}
 }
+
+func TestBranchWorktreeDir(t *testing.T) {
+	s := &stack.Stack{StackID: "feat", Base: "main", Worktree: true, Nodes: []stack.Node{
+		{Branch: "feat/a", WorktreePath: "/tmp/wt/feat-a"},
+		{Branch: "feat/b"},
+	}}
+	if got := branchWorktreeDir(s, "feat/a"); got != "/tmp/wt/feat-a" {
+		t.Errorf("branchWorktreeDir(feat/a) = %q, want /tmp/wt/feat-a", got)
+	}
+	if got := branchWorktreeDir(s, "feat/b"); got != "" {
+		t.Errorf("branchWorktreeDir(feat/b) = %q, want empty", got)
+	}
+	if got := branchWorktreeDir(s, "main"); got != "" {
+		t.Errorf("branchWorktreeDir(main) = %q, want empty (not a node)", got)
+	}
+}
