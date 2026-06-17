@@ -238,7 +238,7 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		}
 
 		if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
-			if conflictErr := handleMoveConflict(s, a.Branch, err, bus); conflictErr != nil {
+			if conflictErr := handleMoveConflict(s, a.Branch, err, bus, ""); conflictErr != nil {
 				// Save progress with resume index
 				ls, _ := stack.LoadLocal(root)
 				if ls.RestackProgress != nil {
@@ -414,7 +414,7 @@ func runRestackContinue() error {
 		}
 
 		if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
-			if conflictErr := handleMoveConflict(s, a.Branch, err, bus); conflictErr != nil {
+			if conflictErr := handleMoveConflict(s, a.Branch, err, bus, ""); conflictErr != nil {
 				ls.RestackProgress.ResumeIndex = i
 				stack.SaveLocal(root, ls)
 				stack.Save(root, s)
