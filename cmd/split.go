@@ -329,12 +329,14 @@ execute:
 
 	// --- Save session ID ---
 	if result.SessionID != "" {
-		local, _ := stack.LoadLocal(root)
-		if local.SplitSessions == nil {
-			local.SplitSessions = make(map[string]string)
-		}
-		local.SplitSessions[stackName] = result.SessionID
-		stack.SaveLocal(root, local)
+		sessionID := result.SessionID
+		_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+			if ls.SplitSessions == nil {
+				ls.SplitSessions = make(map[string]string)
+			}
+			ls.SplitSessions[stackName] = sessionID
+			return nil
+		})
 	}
 
 	if noPush {

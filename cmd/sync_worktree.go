@@ -10,6 +10,20 @@ import (
 	"github.com/pavelpascari/sdf/internal/ui"
 )
 
+// clearWorktreeProgress removes one branch's entry from WorktreeProgress under
+// the repo-wide local lock. Callers may hold a stack lock when calling this
+// (stack-outer / local-inner — the allowed nesting order). The body is tiny and
+// git-free, never acquiring a stack lock.
+func clearWorktreeProgress(root, branch string) error {
+	return stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		delete(ls.WorktreeProgress, branch)
+		if len(ls.WorktreeProgress) == 0 {
+			ls.WorktreeProgress = nil
+		}
+		return nil
+	})
+}
+
 // continueWorktreeSync finishes a paused in-worktree rebase for the given
 // branch. It reads progress from WorktreeProgress[branch] under the lock,
 // does the rebase-state detection in the worktree, then acquires the stack
@@ -33,17 +47,11 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 		bus.Printf("  %s %s rebased (completed outside sdf)", ui.SymOK, ui.Branch(progress.PausedAt))
 	default:
 		bus.Printf("Rebase of %s was aborted. Clearing paused state.", ui.Branch(progress.PausedAt))
-		// Clear only this branch's entry under the lock.
+		// Clear only this branch's entry. The stack lock guards the stack file;
+		// the WorktreeProgress mutation goes through the repo-wide local lock
+		// (stack-outer / local-inner, the allowed nesting order).
 		lockErr := stack.WithLock(root, stackID, func(_ *stack.Stack) error {
-			local, _ := stack.LoadLocal(root)
-			if local == nil {
-				local = &stack.LocalState{}
-			}
-			delete(local.WorktreeProgress, branch)
-			if len(local.WorktreeProgress) == 0 {
-				local.WorktreeProgress = nil
-			}
-			return stack.SaveLocal(root, local)
+			return clearWorktreeProgress(root, branch)
 		})
 		return lockErr
 	}
@@ -60,16 +68,9 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 			}
 			// stack.Save is NOT called here; WithLock saves on nil return.
 		}
-		// Clear this branch's entry from WorktreeProgress under the lock.
-		local, _ := stack.LoadLocal(root)
-		if local == nil {
-			local = &stack.LocalState{}
-		}
-		delete(local.WorktreeProgress, branch)
-		if len(local.WorktreeProgress) == 0 {
-			local.WorktreeProgress = nil
-		}
-		if err := stack.SaveLocal(root, local); err != nil {
+		// Clear this branch's entry from WorktreeProgress via the repo-wide
+		// local lock (nested inside the stack lock — allowed order).
+		if err := clearWorktreeProgress(root, branch); err != nil {
 			return err
 		}
 		if child := findNextOpenNode(s, progress.PausedAt); child != nil {
@@ -152,23 +153,23 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 		bus.Printf("  rebasing %s onto %s...", ui.Branch(branch), ui.Branch(parent))
 		if err := gitpkg.RebaseOntoAt(wt, parent, rebaseOldBase, branch); err != nil {
 			// Pause for in-worktree manual resolution.
-			// Read-modify-write local.json INSIDE the lock so WorktreeProgress is
+			// Write WorktreeProgress through the repo-wide local lock so it is
 			// never clobbered by a concurrent sdf process in another worktree.
+			// Nested inside the stack lock (stack-outer / local-inner — allowed).
 			conflicts, _ := gitpkg.ConflictedFilesAt(wt)
-			local, _ := stack.LoadLocal(root)
-			if local == nil {
-				local = &stack.LocalState{}
-			}
-			if local.WorktreeProgress == nil {
-				local.WorktreeProgress = make(map[string]*stack.SyncProgress)
-			}
-			local.WorktreeProgress[branch] = &stack.SyncProgress{
+			progress := &stack.SyncProgress{
 				PausedAt:     branch,
 				ResumeIndex:  s.NodeIndex(branch),
 				ParentTip:    parentTip,
 				WorktreePath: wt,
 			}
-			_ = stack.SaveLocal(root, local)
+			_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+				if ls.WorktreeProgress == nil {
+					ls.WorktreeProgress = make(map[string]*stack.SyncProgress)
+				}
+				ls.WorktreeProgress[branch] = progress
+				return nil
+			})
 			bus.Warnf("  %s conflict rebasing %s", ui.SymFail, ui.Branch(branch))
 			for _, f := range conflicts {
 				bus.Printf("      %s", f)

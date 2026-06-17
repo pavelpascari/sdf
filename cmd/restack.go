@@ -205,8 +205,7 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	originalNodes := make([]stack.Node, len(s.Nodes))
 	copy(originalNodes, s.Nodes)
 
-	ls, _ := stack.LoadLocal(root)
-	ls.RestackProgress = &stack.RestackProgress{
+	restackProgress := &stack.RestackProgress{
 		StackID:        s.StackID,
 		OriginalBranch: originalBranch,
 		OriginalNodes:  originalNodes,
@@ -214,7 +213,10 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 		Plan:           serialPlan,
 		ResumeIndex:    0,
 	}
-	if err := stack.SaveLocal(root, ls); err != nil {
+	if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = restackProgress
+		return nil
+	}); err != nil {
 		return fmt.Errorf("cannot save restack progress: %w", err)
 	}
 
@@ -244,11 +246,12 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 			}
 			if rebaseErr := gitpkg.RebaseOntoAt(dir, parentTip, oldBase, a.Branch); rebaseErr != nil {
 				if conflictErr := handleMoveConflict(s, a.Branch, rebaseErr, bus, dir); conflictErr != nil {
-					ls, _ := stack.LoadLocal(root)
-					if ls.RestackProgress != nil {
-						ls.RestackProgress.ResumeIndex = i
-					}
-					stack.SaveLocal(root, ls)
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
 					_ = stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
 						fresh.Nodes = s.Nodes
 						return nil
@@ -263,11 +266,12 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 			if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
 				if conflictErr := handleMoveConflict(s, a.Branch, err, bus, ""); conflictErr != nil {
 					// Save progress with resume index
-					ls, _ := stack.LoadLocal(root)
-					if ls.RestackProgress != nil {
-						ls.RestackProgress.ResumeIndex = i
-					}
-					stack.SaveLocal(root, ls)
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
 					stack.Save(root, s)
 					gitpkg.Checkout(originalBranch)
 					return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
@@ -345,9 +349,10 @@ func runRestackLogic(sourceBranch, afterBranch string) error {
 	}
 
 	// Clear restack progress
-	ls, _ = stack.LoadLocal(root)
-	ls.RestackProgress = nil
-	stack.SaveLocal(root, ls)
+	_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = nil
+		return nil
+	})
 
 	bus.Printf("\n%s Restack complete.", ui.SymOK)
 	return nil
@@ -449,8 +454,10 @@ func runRestackAbort() error {
 	}
 
 	// Clear progress
-	ls.RestackProgress = nil
-	if err := stack.SaveLocal(root, ls); err != nil {
+	if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = nil
+		return nil
+	}); err != nil {
 		return fmt.Errorf("cannot clear restack progress: %w", err)
 	}
 
@@ -507,8 +514,12 @@ func runRestackContinue() error {
 			}
 			if rebaseErr := gitpkg.RebaseOntoAt(dir, parentTip, oldBase, a.Branch); rebaseErr != nil {
 				if conflictErr := handleMoveConflict(s, a.Branch, rebaseErr, bus, dir); conflictErr != nil {
-					ls.RestackProgress.ResumeIndex = i
-					stack.SaveLocal(root, ls)
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
 					_ = stack.WithLock(root, s.StackID, func(fresh *stack.Stack) error {
 						fresh.Nodes = s.Nodes
 						return nil
@@ -522,8 +533,12 @@ func runRestackContinue() error {
 		} else {
 			if err := gitpkg.RebaseOnto(parentTip, oldBase, a.Branch); err != nil {
 				if conflictErr := handleMoveConflict(s, a.Branch, err, bus, ""); conflictErr != nil {
-					ls.RestackProgress.ResumeIndex = i
-					stack.SaveLocal(root, ls)
+					_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+						if ls.RestackProgress != nil {
+							ls.RestackProgress.ResumeIndex = i
+						}
+						return nil
+					})
 					stack.Save(root, s)
 					gitpkg.Checkout(progress.OriginalBranch)
 					return fmt.Errorf("rebase of %s failed: %w — resolve conflicts and run `sdf restack --continue` or `sdf restack --abort`",
@@ -602,8 +617,10 @@ func runRestackContinue() error {
 			return fmt.Errorf("cannot save stack: %w", err)
 		}
 	}
-	ls.RestackProgress = nil
-	if err := stack.SaveLocal(root, ls); err != nil {
+	if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.RestackProgress = nil
+		return nil
+	}); err != nil {
 		return fmt.Errorf("cannot clear restack progress: %w", err)
 	}
 

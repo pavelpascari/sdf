@@ -240,8 +240,10 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 	default:
 		// The parent tip is NOT an ancestor — the rebase was aborted.
 		bus.Printf("Rebase of %s was aborted. Starting a fresh sync.", ui.Branch(progress.PausedAt))
-		local.SyncProgress = nil
-		stack.SaveLocal(root, local)
+		_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+			ls.SyncProgress = nil
+			return nil
+		})
 		return runSyncFull(root, "", false, false, false, false, result, bus)
 	}
 
@@ -293,8 +295,10 @@ func runSyncContinue(root string, result *SyncResult, bus *render.Bus) error {
 		return fmt.Errorf("cannot save stack: %w", err)
 	}
 
-	local.SyncProgress = nil
-	stack.SaveLocal(root, local)
+	_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.SyncProgress = nil
+		return nil
+	})
 
 	gitpkg.Checkout(progress.OriginalBranch)
 
@@ -313,8 +317,10 @@ func runSyncFull(root, stackName string, skipConfirm, flagWithContent, jsonMode,
 				"  To abort:     run `git rebase --abort`, then `sdf sync`",
 				local.SyncProgress.PausedAt)
 		}
-		local.SyncProgress = nil
-		stack.SaveLocal(root, local)
+		_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+			ls.SyncProgress = nil
+			return nil
+		})
 	}
 
 	s, err := resolveStack(root, stackName)
@@ -1484,14 +1490,16 @@ func pauseForManualResolution(root string, s *stack.Stack, branch, originalBranc
 
 	stack.Save(root, s)
 
-	local, _ := stack.LoadLocal(root)
-	local.SyncProgress = &stack.SyncProgress{
+	progress := &stack.SyncProgress{
 		PausedAt:       branch,
 		ResumeIndex:    nodeIndex,
 		OriginalBranch: originalBranch,
 		ParentTip:      parentTip,
 	}
-	stack.SaveLocal(root, local)
+	_ = stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+		ls.SyncProgress = progress
+		return nil
+	})
 
 	bus.Printf("\n  Sync paused. Resolve conflicts in %s, then:", ui.Branch(branch))
 	bus.Print("")

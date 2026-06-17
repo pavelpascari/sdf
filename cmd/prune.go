@@ -94,11 +94,20 @@ func runPrune(cmd *cobra.Command, args []string) error {
 	// Remove stale split plan files for stacks that no longer exist.
 	pruneSplitPlans(root, keepStacks, apply, &result)
 
-	if pruneLocalState(local, keepStacks) {
+	// Compute which local.json entries are stale. Branch-existence (git) checks
+	// happen HERE, outside the local lock, so the locked apply below stays tiny
+	// and git-free (deadlock rule: no git inside a WithLocalLock body).
+	plan := planLocalPrune(local, keepStacks)
+	if plan.any() {
 		result.LocalPruned = true
 		result.Actions = append(result.Actions, "prune stale entries from .sdf/local.json")
 		if apply {
-			if err := stack.SaveLocal(root, local); err != nil {
+			// Apply the precomputed plan against a FRESH LocalState under the
+			// repo-wide lock so a concurrent writer's update is not clobbered.
+			if err := stack.WithLocalLock(root, func(ls *stack.LocalState) error {
+				plan.apply(ls)
+				return nil
+			}); err != nil {
 				return fmt.Errorf("cannot save local state: %w", err)
 			}
 		}
@@ -224,39 +233,68 @@ func pruneSplitPlans(root string, keepStacks map[string]bool, apply bool, result
 	}
 }
 
-func pruneLocalState(local *stack.LocalState, keepStacks map[string]bool) bool {
-	changed := false
+// localPrunePlan is a precomputed set of stale local.json entries to delete.
+// It is derived once (with git queries) outside the local lock, then applied
+// inside a tiny git-free WithLocalLock body so concurrent writers are not lost.
+type localPrunePlan struct {
+	splitSessions    map[string]bool // stack IDs to delete from SplitSessions
+	worktreeBranches map[string]bool // branches to delete from WorktreeProgress
+	dropSync         bool            // drop SyncProgress
+}
+
+func (p localPrunePlan) any() bool {
+	return len(p.splitSessions) > 0 || len(p.worktreeBranches) > 0 || p.dropSync
+}
+
+// apply deletes exactly the planned keys from ls. It only removes keys that are
+// still present, so an entry added by a concurrent writer after the plan was
+// computed is left untouched.
+func (p localPrunePlan) apply(ls *stack.LocalState) {
+	for id := range p.splitSessions {
+		delete(ls.SplitSessions, id)
+	}
+	if len(ls.SplitSessions) == 0 {
+		ls.SplitSessions = nil
+	}
+	if p.dropSync {
+		ls.SyncProgress = nil
+	}
+	for b := range p.worktreeBranches {
+		delete(ls.WorktreeProgress, b)
+	}
+	if len(ls.WorktreeProgress) == 0 {
+		ls.WorktreeProgress = nil
+	}
+}
+
+// planLocalPrune inspects a loaded LocalState snapshot and returns the set of
+// stale entries to delete. Git branch-existence checks happen here (outside any
+// lock). It does not mutate local.
+func planLocalPrune(local *stack.LocalState, keepStacks map[string]bool) localPrunePlan {
+	plan := localPrunePlan{
+		splitSessions:    map[string]bool{},
+		worktreeBranches: map[string]bool{},
+	}
 	if local == nil {
-		return false
+		return plan
 	}
 
-	if len(local.SplitSessions) > 0 {
-		for stackID := range local.SplitSessions {
-			if !keepStacks[stackID] {
-				delete(local.SplitSessions, stackID)
-				changed = true
-			}
-		}
-		if len(local.SplitSessions) == 0 {
-			local.SplitSessions = nil
+	for stackID := range local.SplitSessions {
+		if !keepStacks[stackID] {
+			plan.splitSessions[stackID] = true
 		}
 	}
 
 	if local.SyncProgress != nil && local.SyncProgress.PausedAt != "" &&
 		!gitpkg.BranchExists(local.SyncProgress.PausedAt) {
-		local.SyncProgress = nil
-		changed = true
+		plan.dropSync = true
 	}
 
 	for b := range local.WorktreeProgress {
 		if !gitpkg.BranchExists(b) {
-			delete(local.WorktreeProgress, b)
-			changed = true
+			plan.worktreeBranches[b] = true
 		}
 	}
-	if len(local.WorktreeProgress) == 0 && local.WorktreeProgress != nil {
-		local.WorktreeProgress = nil
-	}
 
-	return changed
+	return plan
 }
