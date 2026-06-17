@@ -36,7 +36,7 @@ func TestPruneMissingNodes(t *testing.T) {
 		},
 	}
 
-	removed := pruneMissingNodes(s)
+	removed, _ := pruneMissingNodes(s)
 	if removed != 1 {
 		t.Fatalf("removed = %d, want 1", removed)
 	}
