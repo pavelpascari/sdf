@@ -101,9 +101,50 @@ func runWorktreeSyncStep(root string, s *stack.Stack, node *stack.Node, bus *ren
 	return nil
 }
 
-// runWorktreeDashboard prints a short status when sdf sync is run from the
-// main worktree of a worktree-mode stack. Task 11 replaces this stub.
+// runWorktreeDashboard prints per-branch readiness when sdf sync is run from
+// the main repo of a worktree-mode stack. It never rebases anything.
 func runWorktreeDashboard(root string, s *stack.Stack, bus *render.Bus) error {
-	bus.Print("Worktree stack — run `sdf sync` inside a branch worktree to integrate it.")
+	bus.Printf("Stack %s (worktree mode) — branch readiness:", ui.Bold.Render(s.StackID))
+	for i := range s.Nodes {
+		node := &s.Nodes[i]
+		if node.Status == "merged" || node.Status == "closed" {
+			bus.Printf("  %s %s (%s)", ui.SymOK, ui.Branch(node.Branch), node.Status)
+			continue
+		}
+		state := worktreeReadiness(s, node)
+		bus.Printf("  %s %s — %s", state.symbol, ui.Branch(node.Branch), state.label)
+	}
+	bus.Print("\nRun `sdf sync` inside a branch's worktree to integrate it.")
+
+	// Stack-wide nav refresh still runs from the main repo.
+	if err := updateStackNavForAllPRs(root, s, nil, bus); err != nil {
+		bus.Warnf("warning: could not update PR descriptions: %v", err)
+	}
 	return nil
+}
+
+type readinessState struct {
+	symbol string
+	label  string
+}
+
+func worktreeReadiness(s *stack.Stack, node *stack.Node) readinessState {
+	if node.WorktreePath == "" {
+		return readinessState{ui.SymWarn, "no worktree (run `sdf worktree enable`)"}
+	}
+	if inProgress, _ := gitpkg.IsRebaseInProgressAt(node.WorktreePath); inProgress {
+		return readinessState{ui.SymFail, "rebase paused — resolve, then `sdf sync --continue`"}
+	}
+	parent := s.ParentBranch(node.Branch)
+	parentTip, err := gitpkg.RevParse(parent)
+	if err != nil {
+		return readinessState{ui.SymWarn, "cannot resolve parent"}
+	}
+	if parentTip != node.BaseTip {
+		return readinessState{ui.SymWarn, fmt.Sprintf("needs sync (%s advanced)", parent)}
+	}
+	if clean, _ := gitpkg.IsCleanAt(node.WorktreePath); !clean {
+		return readinessState{ui.SymOK, "up to date (uncommitted work present)"}
+	}
+	return readinessState{ui.SymOK, "up to date"}
 }
