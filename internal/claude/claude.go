@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Binary is the name (or path) of the claude executable.
@@ -36,14 +37,16 @@ func Version() (string, error) {
 // The sessionName is unused by the current CLI but kept for call-site clarity.
 func RunPrompt(sessionName, prompt string) (string, error) {
 	cmd := exec.Command(Binary, "-p", prompt)
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
 	output := strings.TrimSpace(string(out))
 
 	exitCode := 0
 	if err != nil {
 		exitCode = 1
 	}
-	recordRun([]string{"-p", prompt}, output, exitCode)
+	recordRun([]string{"-p", prompt}, output, exitCode, elapsed)
 
 	if err != nil {
 		return output, fmt.Errorf("claude %s: %s", sessionName, output)

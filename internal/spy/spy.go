@@ -13,12 +13,13 @@ import (
 
 // Invocation records a single call to an external binary.
 type Invocation struct {
-	Actor     string   `json:"actor"`
-	Binary    string   `json:"binary"`
-	Args      []string `json:"args"`
-	Stdout    string   `json:"stdout"`
-	ExitCode  int      `json:"exit_code"`
-	Timestamp string   `json:"timestamp"`
+	Actor      string   `json:"actor"`
+	Binary     string   `json:"binary"`
+	Args       []string `json:"args"`
+	Stdout     string   `json:"stdout"`
+	ExitCode   int      `json:"exit_code"`
+	Timestamp  string   `json:"timestamp"`
+	DurationNs int64    `json:"duration_ns"`
 }
 
 // Recorder captures invocations to a JSONL file.
@@ -81,24 +82,25 @@ func (r *Recorder) Binary() string {
 
 // Record appends an invocation to the log. No-op on nil receiver.
 // Uses the recorder's name as actor and its binary as the tool.
-func (r *Recorder) Record(args []string, stdout string, exitCode int) {
-	r.RecordAs(r.name, r.binary, args, stdout, exitCode)
+func (r *Recorder) Record(args []string, stdout string, exitCode int, elapsed time.Duration) {
+	r.RecordAs(r.name, r.binary, args, stdout, exitCode, elapsed)
 }
 
 // RecordAs appends an invocation with explicit actor and binary names.
 // Use this for combined logs (e.g., full.jsonl) where one recorder captures
 // invocations from multiple tools and actors. No-op on nil receiver.
-func (r *Recorder) RecordAs(actor, binary string, args []string, stdout string, exitCode int) {
+func (r *Recorder) RecordAs(actor, binary string, args []string, stdout string, exitCode int, elapsed time.Duration) {
 	if r == nil {
 		return
 	}
 	inv := Invocation{
-		Actor:     actor,
-		Binary:    binary,
-		Args:      args,
-		Stdout:    stdout,
-		ExitCode:  exitCode,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Actor:      actor,
+		Binary:     binary,
+		Args:       args,
+		Stdout:     stdout,
+		ExitCode:   exitCode,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
+		DurationNs: elapsed.Nanoseconds(),
 	}
 	data, err := json.Marshal(inv)
 	if err != nil {

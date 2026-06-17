@@ -4,6 +4,7 @@ package gh
 
 import (
 	"os"
+	"time"
 
 	"github.com/pavelpascari/sdf/internal/spy"
 )
@@ -18,9 +19,9 @@ func init() {
 	}
 }
 
-func recordRun(args []string, output string, exitCode int) {
+func recordRun(args []string, output string, exitCode int, elapsed time.Duration) {
 	if spyRec != nil {
-		spyRec.Record(args, output, exitCode)
-		fullSpy.RecordAs("sdf", "gh", args, output, exitCode)
+		spyRec.Record(args, output, exitCode, elapsed)
+		fullSpy.RecordAs("sdf", "gh", args, output, exitCode, elapsed)
 	}
 }
