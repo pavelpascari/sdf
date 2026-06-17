@@ -65,3 +65,25 @@ func TestStealsStaleLock(t *testing.T) {
 	}
 	l.Release()
 }
+
+func TestStaleLockReclaimsOldCorruptFile(t *testing.T) {
+	root := sdfRepo(t)
+	path := filepath.Join(root, SDFDir, "feat.lock")
+	// Fresh corrupt file: NOT stale (being written) -> AcquireLock should time out fast.
+	if err := os.WriteFile(path, []byte("not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AcquireLock(root, "feat", 150*time.Millisecond); err == nil {
+		t.Fatal("fresh corrupt lock should not be stolen")
+	}
+	// Make it old: now it IS stale and should be reclaimed.
+	old := time.Now().Add(-2 * staleAfter)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	l, err := AcquireLock(root, "feat", time.Second)
+	if err != nil {
+		t.Fatalf("old corrupt lock should be reclaimed: %v", err)
+	}
+	_ = l.Release()
+}

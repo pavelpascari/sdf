@@ -80,8 +80,14 @@ func isStaleLock(path string) bool {
 	}
 	var d lockData
 	if json.Unmarshal(data, &d) != nil {
-		// Unparseable (e.g. file is still being written) — treat as held, not stale,
-		// so we don't accidentally steal a lock that is in the process of being acquired.
+		// Unparseable: likely a lock being written right now (O_EXCL created,
+		// content not yet flushed). Treat a recent file as held to avoid a
+		// TOCTOU steal, but reclaim a stale one via mtime so a crash between
+		// create and write cannot leave a permanent lock.
+		info, statErr := os.Stat(path)
+		if statErr != nil || time.Since(info.ModTime()) > staleAfter {
+			return true
+		}
 		return false
 	}
 	if time.Since(time.Unix(d.Stamp, 0)) > staleAfter {
