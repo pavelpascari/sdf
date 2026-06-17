@@ -138,7 +138,15 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		// Create the branch in its own worktree, branched from the parent.
 		// The main repo's checkout is left untouched.
 		if err := addWorktreeForNode(cfg, root, &newNode, parent); err != nil {
-			return err
+			// If the branch already exists (concurrent/previous invocation created
+			// it), fall through to the in-lock re-check rather than hard-erroring.
+			// The WithLock block will either find the node (idempotent return) or
+			// insert exactly one node serialized against the concurrent writer.
+			if !gitpkg.BranchExists(branchName) {
+				return err
+			}
+			// Branch exists; record the worktree path so the node is consistent.
+			newNode.WorktreePath = cfg.WorktreePathFor(root, branchName)
 		}
 	} else {
 		if currentBranch != parent {
@@ -147,7 +155,12 @@ func runBranch(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if err := gitpkg.CreateBranch(branchName); err != nil {
-			return fmt.Errorf("cannot create branch: %w", err)
+			// If the branch already exists (concurrent/previous invocation created
+			// it), fall through to the in-lock re-check rather than hard-erroring.
+			if !gitpkg.BranchExists(branchName) {
+				return fmt.Errorf("cannot create branch: %w", err)
+			}
+			// Branch exists; continue to the WithLock block below.
 		}
 	}
 

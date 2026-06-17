@@ -323,3 +323,66 @@ func TestRunBranch_InLockRecheckIdempotent(t *testing.T) {
 		t.Errorf("stack has %d nodes, want 3 (branchA, branchB, newbranch)", len(s.Nodes))
 	}
 }
+
+// TestRunBranch_GitBranchExistsNodeAbsent exercises the concurrent LOSER path:
+// the git branch already exists (created by the winner) but the stack node
+// does NOT exist yet (the winner's WithLock write hasn't landed or this process
+// loaded the stack before the winner persisted). RunBranch must NOT hard-error
+// on the failing CreateBranch call; instead it must fall through to the
+// WithLock block, insert exactly one node, and return without error.
+//
+// This is the C1 gap fix: previously runBranch would hard-error at
+// gitpkg.CreateBranch when the branch existed, never reaching the in-lock
+// re-check. Now it probes BranchExists after the error and continues.
+func TestRunBranch_GitBranchExistsNodeAbsent(t *testing.T) {
+	dir := branchTestRepo(t, false) // [branchA, branchB], HEAD on branchB
+
+	// Simulate the WINNER's git side: create the git branch directly without
+	// touching the stack JSON (as if the winner created the branch but hasn't
+	// persisted the node yet — or we are the loser who loaded the stack first).
+	gitpkg.Checkout("branchB")
+	if err := exec.Command("git", "-C", dir, "branch", "branchX").Run(); err != nil {
+		t.Fatalf("pre-create git branch branchX: %v", err)
+	}
+
+	// Stack JSON has NO node for branchX — this is the loser's exact state.
+	s0, err := stack.LoadStack(dir, "test-stack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s0.FindNode("branchX") != nil {
+		t.Fatal("test setup error: branchX node must not exist yet")
+	}
+
+	// RunBranch must NOT return an error (the git-already-exists must fall
+	// through to the in-lock path which inserts the node cleanly).
+	if err := RunBranch([]string{"--no-prefix", "branchX"}); err != nil {
+		t.Fatalf("RunBranch must succeed when git branch exists but node absent, got: %v", err)
+	}
+
+	// Exactly one branchX node must now exist.
+	s, err := stack.LoadStack(dir, "test-stack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, n := range s.Nodes {
+		if n.Branch == "branchX" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("branchX appears %d times, want 1", count)
+	}
+	if len(s.Nodes) != 3 {
+		t.Errorf("stack has %d nodes, want 3 (branchA, branchB, branchX)", len(s.Nodes))
+	}
+	// The node must be valid.
+	node := s.FindNode("branchX")
+	if node == nil {
+		t.Fatal("branchX node not found after RunBranch")
+	}
+	if node.Status == "" {
+		t.Error("branchX node has empty status")
+	}
+}
