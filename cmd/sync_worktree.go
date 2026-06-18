@@ -28,7 +28,7 @@ func clearWorktreeProgress(root, branch string) error {
 // branch. It reads progress from WorktreeProgress[branch] under the lock,
 // does the rebase-state detection in the worktree, then acquires the stack
 // lock for the BaseTip update, push, save, and WorktreeProgress cleanup.
-func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
+func continueWorktreeSync(root, stackID, branch string, result *SyncResult, bus *render.Bus) error {
 	// Read progress outside the lock first (read-only; detect rebase state).
 	local0, _ := stack.LoadLocal(root)
 	if local0 == nil || local0.WorktreeProgress == nil || local0.WorktreeProgress[branch] == nil {
@@ -41,6 +41,18 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 	case inProg:
 		bus.Printf("  rebasing %s (continuing)...", ui.Branch(progress.PausedAt))
 		if err := gitpkg.RebaseContinueAt(wt); err != nil {
+			// Rebase still has conflicts.
+			conflicts, _ := gitpkg.ConflictedFilesAt(wt)
+			if result != nil {
+				// JSON / flow mode: structured output, no Go error.
+				result.Branches = append(result.Branches, BranchResult{
+					Branch:    branch,
+					Status:    "conflicted",
+					Conflicts: conflicts,
+				})
+				return nil
+			}
+			// Human mode: keep the existing error so callers get a non-zero signal.
 			return fmt.Errorf("rebase --continue failed: %w\n\nResolve remaining conflicts, stage them, and run `sdf sync --continue` again", err)
 		}
 	case gitpkg.IsAncestor(progress.ParentTip, progress.PausedAt):
@@ -57,13 +69,17 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 	}
 
 	var childBranch string
+	var prNum int
+	var pushOK bool
 	lockErr := stack.WithLock(root, stackID, func(s *stack.Stack) error {
 		node := s.FindNode(progress.PausedAt)
 		if node != nil {
+			prNum = node.PR
 			node.BaseTip = progress.ParentTip
 			if err := gitpkg.PushAt(wt, node.Branch); err != nil {
 				bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(node.Branch), err)
 			} else {
+				pushOK = true
 				bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(node.Branch))
 			}
 			// stack.Save is NOT called here; WithLock saves on nil return.
@@ -82,6 +98,15 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 		return lockErr
 	}
 
+	if result != nil {
+		result.Branches = append(result.Branches, BranchResult{
+			Branch: branch,
+			PR:     prNum,
+			Status: "clean",
+			Pushed: pushOK,
+		})
+	}
+
 	if childBranch != "" {
 		bus.Printf("\nDownstream %s now needs to sync.", ui.Branch(childBranch))
 	}
@@ -97,7 +122,7 @@ func continueWorktreeSync(root, stackID, branch string, bus *render.Bus) error {
 //  1. Pre-lock: load base branch name, fetch from origin, fast-forward base.
 //  2. Locked: reload a fresh stack, mutate node.BaseTip, push, save.
 //  3. Post-lock: reload stack read-only, refresh PR nav links.
-func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
+func runWorktreeSyncStep(root, stackID, branch string, result *SyncResult, bus *render.Bus) error {
 	// --- Phase 1: fetch/ff BEFORE acquiring the lock ---
 	// Quick read-only load to discover the base branch name.
 	sForBase, err := stack.LoadStack(root, stackID)
@@ -115,7 +140,12 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 	}
 
 	// --- Phase 2: acquire lock, reload fresh, mutate ---
-	worked := false
+	// stepKind is set inside the lock to communicate the outcome to the post-lock
+	// section without holding the lock. Values: "noop", "conflict", "clean".
+	stepKind := ""
+	var stepConflicts []string
+	var stepPR int
+	var stepPushed bool
 	var childBranch string
 
 	lockErr := stack.WithLock(root, stackID, func(s *stack.Stack) error {
@@ -132,7 +162,8 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 		}
 		if parentTip == node.BaseTip {
 			bus.Printf("%s %s is up to date with %s", ui.SymOK, ui.Branch(branch), ui.Branch(parent))
-			return nil // no-op; worked stays false
+			stepKind = "noop"
+			return nil
 		}
 
 		clean, err := gitpkg.IsCleanAt(wt)
@@ -170,6 +201,17 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 				ls.WorktreeProgress[branch] = progress
 				return nil
 			})
+
+			stepKind = "conflict"
+			stepConflicts = conflicts
+
+			if result != nil {
+				// JSON / flow mode: populate structured output, no Go error.
+				// Human-readable guidance is skipped; the caller reads the JSON.
+				return nil
+			}
+			// Human mode: print guidance and return an error so humans get
+			// a non-zero exit signal and the existing conflict tests still pass.
 			bus.Warnf("  %s conflict rebasing %s", ui.SymFail, ui.Branch(branch))
 			for _, f := range conflicts {
 				bus.Printf("      %s", f)
@@ -178,9 +220,11 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 			return fmt.Errorf("conflict in %s", branch)
 		}
 
+		pushOK := false
 		if err := gitpkg.PushAt(wt, branch); err != nil {
 			bus.Warnf("  %s push failed for %s: %v", ui.SymFail, ui.Branch(branch), err)
 		} else {
+			pushOK = true
 			bus.Printf("  %s %s rebased and pushed", ui.SymOK, ui.Branch(branch))
 		}
 
@@ -203,18 +247,47 @@ func runWorktreeSyncStep(root, stackID, branch string, bus *render.Bus) error {
 		if child := findNextOpenNode(s, branch); child != nil {
 			childBranch = child.Branch
 		}
-		worked = true
+		stepKind = "clean"
+		stepPR = node.PR
+		stepPushed = pushOK
 		return nil // stack.WithLock saves on nil return
 	})
 	if lockErr != nil {
 		return lockErr
 	}
 
-	if !worked {
+	// Populate result (json mode only — result is nil in human mode).
+	if result != nil {
+		switch stepKind {
+		case "noop":
+			result.Branches = append(result.Branches, BranchResult{
+				Branch: branch,
+				Status: "noop",
+			})
+		case "conflict":
+			result.Branches = append(result.Branches, BranchResult{
+				Branch:    branch,
+				Status:    "conflicted",
+				Conflicts: stepConflicts,
+			})
+			// Conflict is NOT a Go error in json mode; return nil so runSyncCmd
+			// does not set result.Error.
+			return nil
+		case "clean":
+			result.Branches = append(result.Branches, BranchResult{
+				Branch: branch,
+				PR:     stepPR,
+				Status: "clean",
+				Pushed: stepPushed,
+			})
+		}
+	}
+
+	if stepKind == "" || stepKind == "noop" {
 		return nil
 	}
 
-	// --- Phase 3: post-lock — refresh PR nav links ---
+	// --- Phase 3: post-lock — refresh PR nav links (only on clean rebase) ---
 	// Reload the stack read-only so nav sees the updated BaseTip.
 	freshStack, err := stack.LoadStack(root, stackID)
 	if err != nil {

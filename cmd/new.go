@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -15,10 +17,13 @@ import (
 
 // NewResult is the structured output of sdf new when --json is used.
 type NewResult struct {
-	Stack  string `json:"stack"`
-	Base   string `json:"base"`
-	Branch string `json:"branch"`
-	Pushed bool   `json:"pushed"`
+	Stack        string `json:"stack"`
+	Base         string `json:"base"`
+	Branch       string `json:"branch"`
+	WorktreePath string `json:"worktree_path,omitempty"`
+	Pushed       bool   `json:"pushed"`
+	Created      bool   `json:"created"`
+	ErrorCode    string `json:"error_code,omitempty"`
 }
 
 var newCmd = &cobra.Command{
@@ -104,12 +109,7 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 	// Migrate legacy layout if needed
 	stack.MigrateIfNeeded(root)
 
-	// Check if a stack with this name already exists
-	if _, err := stack.LoadStack(root, stackName); err == nil {
-		return "", fmt.Errorf("stack %q already exists in %s", stackName, root)
-	}
-
-	// Resolve the base branch
+	// Resolve the base branch before acquiring the lock (no I/O risk here).
 	baseBranch := base
 	if baseBranch == "" {
 		detected, err := gitpkg.DefaultBranch()
@@ -124,8 +124,63 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 		return "", fmt.Errorf("base branch %q does not exist — check the name or use --base <branch>", baseBranch)
 	}
 
-	if err := stack.Init(root, stackName, baseBranch); err != nil {
-		return "", err
+	// Ensure .sdf/ exists so AcquireLock can create its lock file.
+	// This is idempotent — MkdirAll succeeds if the directory already exists.
+	if err := os.MkdirAll(filepath.Join(root, stack.SDFDir), 0755); err != nil {
+		return "", fmt.Errorf("cannot create .sdf directory: %w", err)
+	}
+
+	// Existence check + Init are performed atomically under the stack advisory
+	// lock so two concurrent "sdf new <same-stack>" invocations cannot both see
+	// "not found" and double-create. AcquireLock is used directly because
+	// WithLock calls LoadStack, which fails for stacks that don't exist yet.
+	//
+	// errStackExists is a local sentinel: the winner returns false/created,
+	// the loser (or a sequential re-run) returns the idempotent state.
+	errStackExists := errors.New("stack already exists")
+	var existingStack *stack.Stack
+	lockErr := func() error {
+		lock, err := stack.AcquireLock(root, stackName, stack.LockTimeout)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = lock.Release() }()
+
+		// In-lock existence re-check.
+		if s, loadErr := stack.LoadStack(root, stackName); loadErr == nil {
+			existingStack = s
+			return errStackExists
+		}
+		return stack.Init(root, stackName, baseBranch)
+	}()
+	if errors.Is(lockErr, errStackExists) {
+		// Stack already exists (race winner or sequential re-run) — return idempotently.
+		var firstNode stack.Node
+		if len(existingStack.Nodes) > 0 {
+			firstNode = existingStack.Nodes[0]
+		}
+		if jsonFlag {
+			result := NewResult{
+				Stack:        stackName,
+				Base:         existingStack.Base,
+				Branch:       firstNode.Branch,
+				WorktreePath: firstNode.WorktreePath,
+				Pushed:       false,
+				Created:      false,
+			}
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return "", fmt.Errorf("cannot marshal result: %w", err)
+			}
+			output := string(data)
+			fmt.Println(output)
+			return output, nil
+		}
+		fmt.Fprintf(os.Stderr, "note: stack %q already exists — returning current state\n", stackName)
+		return "", nil
+	}
+	if lockErr != nil {
+		return "", lockErr
 	}
 
 	// Mark worktree mode on the freshly-created stack under the advisory lock
@@ -203,10 +258,12 @@ func runNewCore(stackName, base, branchFlag string, jsonFlag, worktree bool) (st
 
 	if jsonFlag {
 		result := NewResult{
-			Stack:  stackName,
-			Base:   baseBranch,
-			Branch: branchName,
-			Pushed: pushed,
+			Stack:        stackName,
+			Base:         baseBranch,
+			Branch:       branchName,
+			WorktreePath: node.WorktreePath,
+			Pushed:       pushed,
+			Created:      true,
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

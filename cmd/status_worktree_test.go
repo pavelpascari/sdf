@@ -4,6 +4,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"testing"
 
@@ -65,5 +66,44 @@ func TestStatusJSONIncludesWorktreePath(t *testing.T) {
 	}
 	if result.Nodes[0].WorktreePath != wantPath {
 		t.Errorf("Nodes[0].WorktreePath = %q, want %q", result.Nodes[0].WorktreePath, wantPath)
+	}
+}
+
+func TestStatusReportsConflictedSyncState(t *testing.T) {
+	root := bareRepoWithClone(t)
+	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunBranch([]string{"feat/b", "--no-prefix"}); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := stack.LoadStack(root, "feat")
+	wtA, wtB := s.FindNode("feat/a").WorktreePath, s.FindNode("feat/b").WorktreePath
+	// Create a conflict and pause a rebase in feat/b's worktree.
+	commitInWorktree(t, wtA, "shared.txt", "A\n", "a")
+	commitInWorktree(t, wtB, "shared.txt", "B\n", "b")
+	chdir(t, wtB)
+	resetSyncFlags()
+	_ = RunSync(nil) // conflicts → paused rebase in wtB
+	// status from main repo must report feat/b conflicted.
+	chdir(t, root)
+	resetStatusFlags()
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	_ = RunStatus([]string{"--json"})
+	w.Close()
+	os.Stdout = old
+	out, _ := io.ReadAll(r)
+	var sr StatusResult
+	json.Unmarshal(out, &sr)
+	var got string
+	for _, n := range sr.Nodes {
+		if n.Branch == "feat/b" {
+			got = n.SyncState
+		}
+	}
+	if got != "conflicted" {
+		t.Errorf("feat/b sync_state = %q, want conflicted", got)
 	}
 }

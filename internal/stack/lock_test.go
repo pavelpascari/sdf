@@ -3,6 +3,7 @@ package stack
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,4 +108,17 @@ func TestStaleLockReclaimsOldCorruptFile(t *testing.T) {
 		t.Fatalf("old corrupt lock should be reclaimed: %v", err)
 	}
 	_ = l.Release()
+}
+
+func TestAcquireLockTimeoutReturnsSentinel(t *testing.T) {
+	root := sdfRepo(t)
+	l, err := AcquireLock(root, "feat", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Release()
+	_, err = AcquireLock(root, "feat", 100*time.Millisecond)
+	if !errors.Is(err, ErrLockTimeout) {
+		t.Fatalf("expected ErrLockTimeout, got %v", err)
+	}
 }

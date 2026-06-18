@@ -223,7 +223,7 @@ func TestPRCreate_Arguments(t *testing.T) {
 	})
 	testutil.SetBinary(t, &Binary, fake)
 
-	url, err := PRCreate("feat: add auth", "PR body here", "main", "feat/auth")
+	url, err := PRCreate("feat: add auth", "PR body here", "main", "feat/auth", false)
 	if err != nil {
 		t.Fatalf("PRCreate failed: %v", err)
 	}
@@ -240,6 +240,32 @@ func TestPRCreate_Arguments(t *testing.T) {
 	if log[0] != expected {
 		t.Errorf("unexpected arguments:\n  got:  %s\n  want: %s", log[0], expected)
 	}
+}
+
+func TestPRCreateDraftFlag(t *testing.T) {
+	got := prCreateArgs("t", "b", "main", "feat/x", true)
+	if !containsArg(got, "--draft") {
+		t.Errorf("draft create must pass --draft: %v", got)
+	}
+	got = prCreateArgs("t", "b", "main", "feat/x", false)
+	if containsArg(got, "--draft") {
+		t.Errorf("non-draft must not pass --draft: %v", got)
+	}
+}
+
+func TestPRReadyArgs(t *testing.T) {
+	if a := prReadyArgs(42); a[0] != "pr" || a[1] != "ready" || a[2] != "42" {
+		t.Errorf("pr ready args = %v", a)
+	}
+}
+
+func containsArg(a []string, s string) bool {
+	for _, x := range a {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPRView_ParsesJSON(t *testing.T) {

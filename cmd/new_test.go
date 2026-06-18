@@ -125,20 +125,16 @@ func TestNew_CreatesBranchWithCustomName(t *testing.T) {
 	}
 }
 
-func TestNew_RejectsExistingStack(t *testing.T) {
+func TestNew_IdempotentExistingStack(t *testing.T) {
 	newTestRepo(t)
 
 	if err := RunNew([]string{"--base", "main", "my-feature"}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Second new with same name should fail
-	err := RunNew([]string{"--base", "main", "my-feature"})
-	if err == nil {
-		t.Fatal("expected error for duplicate stack name")
-	}
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("expected 'already exists' error, got: %s", err)
+	// Second new with same name must succeed (idempotent re-run for flow crash-resume).
+	if err := RunNew([]string{"--base", "main", "my-feature"}); err != nil {
+		t.Fatalf("re-run must not error: %v", err)
 	}
 }
 

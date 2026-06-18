@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,19 @@ import (
 	ghpkg "github.com/pavelpascari/sdf/internal/gh"
 	"github.com/pavelpascari/sdf/internal/stack"
 	"github.com/pavelpascari/sdf/internal/testutil"
+	"github.com/spf13/pflag"
 )
+
+// resetPRFlags restores prCmd's flags to their defaults so that reusing the
+// package-level rootCmd across in-process test invocations does not leak flag
+// state (e.g. a prior --ready or --draft). A real `sdf` run is process-isolated;
+// this reproduces that isolation for tests.
+func resetPRFlags() {
+	prCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
+}
 
 func TestRunPR_EmptyBranchAheadOfBase(t *testing.T) {
 	dir := newTestRepo(t)
@@ -125,5 +138,89 @@ func TestLoadPRTemplate_Missing(t *testing.T) {
 	tmpl := loadPRTemplate(dir)
 	if tmpl != "" {
 		t.Fatalf("expected empty template, got: %q", tmpl)
+	}
+}
+
+func TestPRIdempotentWhenPRExists(t *testing.T) {
+	root := bareRepoWithClone(t)
+	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	s, err := stack.LoadStack(root, "feat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Nodes[0].PR = 7 // pretend a PR already exists
+	if err := stack.Save(root, s); err != nil {
+		t.Fatal(err)
+	}
+	// Re-running pr for a branch that already has a PR must NOT error.
+	chdir(t, s.Nodes[0].WorktreePath)
+	err = RunPR([]string{"--json"})
+	if err != nil {
+		t.Fatalf("pr must be idempotent when a PR exists, got %v", err)
+	}
+}
+
+func TestPRReadyRequiresExistingPR(t *testing.T) {
+	t.Cleanup(resetPRFlags)
+	root := bareRepoWithClone(t)
+	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := stack.LoadStack(root, "feat")
+	chdir(t, s.Nodes[0].WorktreePath)
+	err := RunPR([]string{"--ready", "--json"})
+	if err == nil {
+		t.Fatalf("pr --ready with no PR must error clearly")
+	}
+	if !strings.Contains(err.Error(), "no PR") {
+		t.Errorf("error should mention no PR: %v", err)
+	}
+}
+
+func TestPRResultFieldsOnIdempotent(t *testing.T) {
+	root := bareRepoWithClone(t)
+	if _, err := runNewCore("feat", "main", "feat/a", false, true); err != nil {
+		t.Fatal(err)
+	}
+	s, err := stack.LoadStack(root, "feat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Nodes[0].PR = 42
+	if err := stack.Save(root, s); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, s.Nodes[0].WorktreePath)
+
+	// Capture stdout
+	origStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = RunPR([]string{"--json"})
+
+	w.Close()
+	os.Stdout = origStdout
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+
+	if err != nil {
+		t.Fatalf("pr must be idempotent when a PR exists, got %v", err)
+	}
+
+	var res PRResult
+	if jsonErr := json.Unmarshal(buf[:n], &res); jsonErr != nil {
+		t.Fatalf("cannot unmarshal PRResult: %v (raw: %q)", jsonErr, string(buf[:n]))
+	}
+	if res.Number != 42 {
+		t.Errorf("Number = %d, want 42", res.Number)
+	}
+	if res.Pr != 42 {
+		t.Errorf("Pr = %d, want 42", res.Pr)
+	}
+	if res.Created {
+		t.Errorf("Created should be false for idempotent re-run")
 	}
 }
