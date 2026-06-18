@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/pavelpascari/sdf/compare/v0.4.0...v0.4.1) (2026-06-18)
+
+
+### Features
+
+* sdf↔flow integration — idempotent commands, PR draft/ready, structured sync JSON (v0.5.0) ([#232](https://github.com/pavelpascari/sdf/issues/232)) ([64fcd5f](https://github.com/pavelpascari/sdf/commit/64fcd5f3e7ec76a49d2541778e838ef8b5c717ca))
+
 ## [0.4.0](https://github.com/pavelpascari/sdf/compare/v0.3.10...v0.4.0) (2026-06-17)
 
 
