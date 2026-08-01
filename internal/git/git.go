@@ -87,7 +87,7 @@ func FastForward(branch string) error {
 	if localTip == remoteTip {
 		return nil
 	}
-	if !IsAncestor(localTip, remote) {
+	if !IsAncestor(localTip, remoteTip) {
 		return fmt.Errorf("%s has diverged from %s", branch, remote)
 	}
 	worktrees, err := WorktreeList()

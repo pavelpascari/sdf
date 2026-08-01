@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pavelpascari/sdf/internal/testutil"
 )
 
 // initTestRepo creates a git repo with one commit on "main" and returns its path.
@@ -274,6 +276,26 @@ func TestFastForward(t *testing.T) {
 		}
 		if mainTip != localTip {
 			t.Errorf("diverged main moved from %s to %s", localTip, mainTip)
+		}
+	})
+
+	t.Run("pinned remote tip ancestry", func(t *testing.T) {
+		dir := t.TempDir()
+		fakeGit := testutil.FakeBin(t, dir, "git", map[string]string{
+			"rev-parse origin/main":                         "remote-tip",
+			"rev-parse main":                                "local-tip",
+			"merge-base --is-ancestor local-tip remote-tip": "",
+			"worktree list --porcelain":                     "",
+			"branch --force main remote-tip":                "",
+		})
+		testutil.SetBinary(t, &Binary, fakeGit)
+
+		if err := FastForward("main"); err != nil {
+			t.Fatalf("FastForward: %v", err)
+		}
+		calls := strings.Join(testutil.ReadLog(t, dir, "git"), "\n")
+		if !strings.Contains(calls, "merge-base --is-ancestor local-tip remote-tip") {
+			t.Errorf("ancestry check did not use pinned remote tip:\n%s", calls)
 		}
 	})
 
