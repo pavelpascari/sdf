@@ -73,8 +73,7 @@ func FetchAll() error {
 	return err
 }
 
-// FastForward updates a local branch to match its remote tracking branch
-// without checking it out. Uses git update-ref to move the branch pointer.
+// FastForward updates a local branch to match its remote tracking branch.
 func FastForward(branch string) error {
 	remote := "origin/" + branch
 	remoteTip, err := RevParse(remote)
@@ -88,11 +87,36 @@ func FastForward(branch string) error {
 	if localTip == remoteTip {
 		return nil
 	}
-	// Only fast-forward if the local tip is an ancestor of remote
 	if !IsAncestor(localTip, remote) {
 		return fmt.Errorf("%s has diverged from %s", branch, remote)
 	}
-	_, err = run("update-ref", "refs/heads/"+branch, remoteTip)
+	worktrees, err := WorktreeList()
+	if err != nil {
+		return err
+	}
+	var branchWorktree *WorktreeInfo
+	for i := range worktrees {
+		worktree := &worktrees[i]
+		if worktree.Branch != branch {
+			continue
+		}
+		if branchWorktree != nil {
+			return fmt.Errorf("%s is checked out in multiple worktrees: %s and %s", branch, branchWorktree.Path, worktree.Path)
+		}
+		branchWorktree = worktree
+	}
+	if branchWorktree != nil {
+		clean, err := IsCleanAt(branchWorktree.Path)
+		if err != nil {
+			return err
+		}
+		if !clean {
+			return fmt.Errorf("%s is checked out at %s with uncommitted changes", branch, branchWorktree.Path)
+		}
+		_, err = runAt(branchWorktree.Path, "merge", "--ff-only", remoteTip)
+		return err
+	}
+	_, err = run("branch", "--force", branch, remoteTip)
 	return err
 }
 
