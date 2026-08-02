@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pavelpascari/sdf/internal/testutil"
 )
 
 // initTestRepo creates a git repo with one commit on "main" and returns its path.
@@ -30,6 +32,293 @@ func mustGit(t *testing.T, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+}
+
+func advanceRemoteMain(t *testing.T, repo string) string {
+	t.Helper()
+	mustGit(t, repo, "branch", "remote-main")
+	remoteWorktree := filepath.Join(t.TempDir(), "remote-main")
+	mustGit(t, repo, "worktree", "add", remoteWorktree, "remote-main")
+	if err := os.WriteFile(filepath.Join(remoteWorktree, "remote.txt"), []byte("remote\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, remoteWorktree, "add", "remote.txt")
+	mustGit(t, remoteWorktree, "commit", "-m", "advance remote main")
+	remoteTip, err := RevParseAt(remoteWorktree, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "update-ref", "refs/remotes/origin/main", remoteTip)
+	return remoteTip
+}
+
+func TestFastForward(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	t.Run("current worktree", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		remoteTip := advanceRemoteMain(t, repo)
+
+		if err := FastForward("main"); err != nil {
+			t.Fatalf("FastForward: %v", err)
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != remoteTip {
+			t.Errorf("main tip = %s, want %s", mainTip, remoteTip)
+		}
+		if _, err := os.Stat(filepath.Join(repo, "remote.txt")); err != nil {
+			t.Errorf("fast-forwarded file missing: %v", err)
+		}
+		clean, err := IsCleanAt(repo)
+		if err != nil || !clean {
+			t.Errorf("current worktree should be clean, clean=%v err=%v", clean, err)
+		}
+	})
+
+	t.Run("branch in multiple worktrees", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		duplicateWorktree := filepath.Join(t.TempDir(), "duplicate-main")
+		mustGit(t, repo, "worktree", "add", "--force", duplicateWorktree, "main")
+		initialTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advanceRemoteMain(t, repo)
+
+		err = FastForward("main")
+		if err == nil || !strings.Contains(err.Error(), "multiple worktrees") {
+			t.Fatalf("FastForward error = %v, want multiple-worktrees error", err)
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != initialTip {
+			t.Errorf("main moved from %s to %s", initialTip, mainTip)
+		}
+	})
+
+	t.Run("linked worktree", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		featureWorktree := filepath.Join(t.TempDir(), "feature")
+		mustGit(t, repo, "worktree", "add", "-b", "feature", featureWorktree, "main")
+		remoteTip := advanceRemoteMain(t, repo)
+		chdir(t, featureWorktree)
+
+		if err := FastForward("main"); err != nil {
+			t.Fatalf("FastForward: %v", err)
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != remoteTip {
+			t.Errorf("main tip = %s, want %s", mainTip, remoteTip)
+		}
+		if _, err := os.Stat(filepath.Join(repo, "remote.txt")); err != nil {
+			t.Errorf("fast-forwarded file missing: %v", err)
+		}
+		clean, err := IsCleanAt(repo)
+		if err != nil || !clean {
+			t.Errorf("base worktree should be clean, clean=%v err=%v", clean, err)
+		}
+	})
+
+	t.Run("dirty linked worktree", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		featureWorktree := filepath.Join(t.TempDir(), "feature")
+		mustGit(t, repo, "worktree", "add", "-b", "feature", featureWorktree, "main")
+		initialTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advanceRemoteMain(t, repo)
+		if err := os.WriteFile(filepath.Join(repo, "f.txt"), []byte("dirty\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		chdir(t, featureWorktree)
+
+		if err := FastForward("main"); err == nil {
+			t.Fatal("FastForward should reject a dirty checked-out branch")
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != initialTip {
+			t.Errorf("main moved from %s to %s", initialTip, mainTip)
+		}
+		contents, err := os.ReadFile(filepath.Join(repo, "f.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(contents) != "dirty\n" {
+			t.Errorf("dirty contents = %q, want %q", contents, "dirty\\n")
+		}
+	})
+
+	t.Run("untracked file collision", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		initialTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advanceRemoteMain(t, repo)
+		if err := os.WriteFile(filepath.Join(repo, "remote.txt"), []byte("local\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := FastForward("main"); err == nil {
+			t.Fatal("FastForward should reject an untracked file collision")
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != initialTip {
+			t.Errorf("main moved from %s to %s", initialTip, mainTip)
+		}
+		contents, err := os.ReadFile(filepath.Join(repo, "remote.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(contents) != "local\n" {
+			t.Errorf("untracked contents = %q, want %q", contents, "local\\n")
+		}
+	})
+
+	t.Run("stale registered worktree", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		initialTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustGit(t, repo, "checkout", "--detach", initialTip)
+		mainWorktree := filepath.Join(t.TempDir(), "main")
+		mustGit(t, repo, "worktree", "add", mainWorktree, "main")
+		advanceRemoteMain(t, repo)
+		if err := os.RemoveAll(mainWorktree); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := FastForward("main"); err == nil {
+			t.Fatal("FastForward should reject a stale registered worktree")
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != initialTip {
+			t.Errorf("main moved from %s to %s", initialTip, mainTip)
+		}
+	})
+
+	t.Run("branch without worktree", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		initialTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		remoteTip := advanceRemoteMain(t, repo)
+		mustGit(t, repo, "checkout", "--detach", initialTip)
+
+		if err := FastForward("main"); err != nil {
+			t.Fatalf("FastForward: %v", err)
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != remoteTip {
+			t.Errorf("main tip = %s, want %s", mainTip, remoteTip)
+		}
+		headTip, err := RevParseAt(repo, "HEAD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if headTip != initialTip {
+			t.Errorf("detached HEAD moved from %s to %s", initialTip, headTip)
+		}
+	})
+
+	t.Run("diverged branch", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		advanceRemoteMain(t, repo)
+		if err := os.WriteFile(filepath.Join(repo, "local.txt"), []byte("local\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		mustGit(t, repo, "add", "local.txt")
+		mustGit(t, repo, "commit", "-m", "advance local main")
+		localTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := FastForward("main"); err == nil {
+			t.Fatal("FastForward should reject a diverged branch")
+		}
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mainTip != localTip {
+			t.Errorf("diverged main moved from %s to %s", localTip, mainTip)
+		}
+	})
+
+	t.Run("pinned remote tip ancestry", func(t *testing.T) {
+		dir := t.TempDir()
+		fakeGit := testutil.FakeBin(t, dir, "git", map[string]string{
+			"rev-parse origin/main":                         "remote-tip",
+			"rev-parse main":                                "local-tip",
+			"merge-base --is-ancestor local-tip remote-tip": "",
+			"worktree list --porcelain":                     "",
+			"branch --force main remote-tip":                "",
+		})
+		testutil.SetBinary(t, &Binary, fakeGit)
+
+		if err := FastForward("main"); err != nil {
+			t.Fatalf("FastForward: %v", err)
+		}
+		calls := strings.Join(testutil.ReadLog(t, dir, "git"), "\n")
+		if !strings.Contains(calls, "merge-base --is-ancestor local-tip remote-tip") {
+			t.Errorf("ancestry check did not use pinned remote tip:\n%s", calls)
+		}
+	})
+
+	t.Run("already current", func(t *testing.T) {
+		repo := initTestRepo(t)
+		chdir(t, repo)
+		mainTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustGit(t, repo, "update-ref", "refs/remotes/origin/main", mainTip)
+
+		if err := FastForward("main"); err != nil {
+			t.Fatalf("FastForward: %v", err)
+		}
+		currentTip, err := RevParseAt(repo, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if currentTip != mainTip {
+			t.Errorf("current main moved from %s to %s", mainTip, currentTip)
+		}
+	})
 }
 
 func TestWorktreeAddRemoveAndList(t *testing.T) {
