@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/pavelpascari/sdf/compare/v0.4.1...v0.4.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* **git:** keep fast-forwarded worktrees clean ([#239](https://github.com/pavelpascari/sdf/issues/239)) ([bd950ca](https://github.com/pavelpascari/sdf/commit/bd950ca7443e5e8125daa6b38d4668263c215461))
+
 ## [0.4.1](https://github.com/pavelpascari/sdf/compare/v0.4.0...v0.4.1) (2026-06-18)
 
 
